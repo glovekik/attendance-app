@@ -994,8 +994,12 @@ const makeStyles = (c: any) => StyleSheet.create({
     justifyContent: "flex-start",
     columnGap: 10,
     rowGap: 10 },
+  // flexBasis is intentionally below 33% so 3 tiles plus the two
+  // column gaps always fit within 100% of the row. 31.5% was so tight
+  // that the gap math pushed the 3rd tile to wrap on phones, giving a
+  // 2-per-row layout.
   tile: {
-    flexBasis: "31.5%",
+    flexBasis: "30%",
     flexGrow: 0,
     flexShrink: 0,
     aspectRatio: 1,

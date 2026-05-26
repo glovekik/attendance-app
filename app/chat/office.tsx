@@ -21,14 +21,15 @@ import { ChatThread, MentionUser } from "../../src/components/ChatThread";
 import {
   listOfficeMessages,
   sendOfficeMessage,
-  deleteOfficeMessage } from "../../src/services/chat";
+  deleteOfficeMessage,
+  markChatRead } from "../../src/services/chat";
 
 import { getMe } from "../../src/services/api";
 
 import { listUserDirectory } from "../../src/services/users";
 
 import { User } from "../../src/types";
-
+
 import { useTheme } from "../../src/theme/ThemeProvider";
 // Pull `@First Last` tokens from the message text and map each to a known
 // directory user id. Longest names matched first so "@Alex Smith" wins over
@@ -71,6 +72,9 @@ export default function OfficeChat() {
         router.replace("/login");
         return;
       }
+      // Stamp chatLastReadAt so the dashboard Chat-tile badge clears
+      // when the user lands here. Same treatment team chat already gets.
+      markChatRead(token).catch(() => {});
       try {
         const [user, directory] = await Promise.all([
           getMe(token),

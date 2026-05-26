@@ -423,7 +423,9 @@ const makeStyles = (c: any) => StyleSheet.create({
     columnGap: 10,
     rowGap: 10 },
   tile: {
-    flexBasis: "31.5%",
+    // < 33% so 3 tiles + 2 column gaps always fit on one row. At
+    // 31.5% the gap math pushed the 3rd tile to wrap on phones.
+    flexBasis: "30%",
     flexGrow: 0,
     flexShrink: 0,
     aspectRatio: 1,
