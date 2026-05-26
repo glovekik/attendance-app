@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useCallback } from "react";
+﻿import React, { useEffect, useState, useCallback, useMemo} from "react";
 
 import {
   View,
@@ -7,15 +7,14 @@ import {
   FlatList,
   TouchableOpacity,
   ActivityIndicator,
-  SafeAreaView,
   RefreshControl,
   Modal,
   TextInput,
   Alert,
   ScrollView,
   KeyboardAvoidingView,
-  Platform,
-} from "react-native";
+  Platform } from "react-native";
+import { SafeAreaView } from "react-native-safe-area-context";
 
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useRouter } from "expo-router";
@@ -24,26 +23,19 @@ import { Ionicons } from "@expo/vector-icons";
 import {
   listMyReviews,
   submitSelfEval,
-  acknowledgeReview,
-} from "../src/services/reviews";
-import { DimensionRating, Review, ReviewStatus } from "../src/types";
+  acknowledgeReview } from "../src/services/reviews";
+import { DimensionRating, Review } from "../src/types";
 
-const STATUS_COLOR: Record<ReviewStatus, string> = {
-  SELF_EVAL: "#f59e0b",
-  MANAGER_EVAL: "#3b82f6",
-  SUBMITTED: "#8b5cf6",
-  ACKNOWLEDGED: "#16a34a",
-};
-
-const STATUS_LABEL: Record<ReviewStatus, string> = {
-  SELF_EVAL: "Self-eval needed",
-  MANAGER_EVAL: "Manager evaluating",
-  SUBMITTED: "Awaiting your acknowledgement",
-  ACKNOWLEDGED: "Acknowledged",
-};
+import { useTheme } from "../src/theme/ThemeProvider";
+import {
+  reviewStatusColor,
+  reviewStatusLabel } from "../src/theme/statusColors";
 
 export default function MyReviews() {
   const router = useRouter();
+  const { theme } = useTheme();
+  const c = theme.colors;
+  const styles = useMemo(() => makeStyles(c), [c]);
   const [items, setItems] = useState<Review[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -66,7 +58,10 @@ export default function MyReviews() {
       const data = await listMyReviews(token);
       setItems(data || []);
     } catch (err: any) {
-      console.log("my-reviews load error", err);
+      Alert.alert(
+        "Couldn't load reviews",
+        err?.message || "Pull down to retry."
+      );
     } finally {
       setLoading(false);
       setRefreshing(false);
@@ -108,8 +103,7 @@ export default function MyReviews() {
         accomplishments: accomplishments.trim() || undefined,
         challenges: challenges.trim() || undefined,
         ratings: dimRatings.length ? dimRatings : undefined,
-        overallSelfRating,
-      });
+        overallSelfRating });
       setSelected(null);
       load();
     } catch (err: any) {
@@ -138,7 +132,7 @@ export default function MyReviews() {
   if (loading) {
     return (
       <View style={styles.loader}>
-        <ActivityIndicator size="large" color="#3b82f6" />
+        <ActivityIndicator size="large" color={c.accent} />
       </View>
     );
   }
@@ -146,8 +140,8 @@ export default function MyReviews() {
   return (
     <SafeAreaView style={styles.safe}>
       <View style={styles.header}>
-        <TouchableOpacity onPress={() => router.back()}>
-          <Ionicons name="arrow-back" size={24} color="#fff" />
+        <TouchableOpacity onPress={() => (router.canGoBack() ? router.back() : router.replace("/"))}>
+          <Ionicons name="arrow-back" size={24} color={c.text} />
         </TouchableOpacity>
         <Text style={styles.title}>My Reviews</Text>
         <View style={{ width: 24 }} />
@@ -163,40 +157,43 @@ export default function MyReviews() {
           <RefreshControl
             refreshing={refreshing}
             onRefresh={onRefresh}
-            tintColor="#3b82f6"
-            colors={["#3b82f6"]}
+            tintColor={c.accent}
+            colors={[c.accent]}
           />
         }
         ListEmptyComponent={
           <View style={styles.empty}>
-            <Ionicons name="star-outline" size={42} color="#475569" />
+            <Ionicons name="star-outline" size={42} color={c.textFaint} />
             <Text style={styles.emptyText}>No reviews yet</Text>
           </View>
         }
-        renderItem={({ item }) => (
-          <TouchableOpacity
-            style={styles.card}
-            onPress={() => open(item)}
-            activeOpacity={0.85}
-          >
-            <View style={styles.cardTop}>
-              <Text style={styles.cardTitle}>{item.type}</Text>
-              <View
-                style={[
-                  styles.pill,
-                  { backgroundColor: STATUS_COLOR[item.status] },
-                ]}
-              >
-                <Text style={styles.pillText}>
-                  {STATUS_LABEL[item.status]}
-                </Text>
+        renderItem={({ item }) => {
+          const sc = reviewStatusColor(item.status, c);
+          return (
+            <TouchableOpacity
+              style={styles.card}
+              onPress={() => open(item)}
+              activeOpacity={0.85}
+            >
+              <View style={styles.cardTop}>
+                <Text style={styles.cardTitle}>{item.type}</Text>
+                <View
+                  style={[
+                    styles.pill,
+                    { backgroundColor: sc.bg },
+                  ]}
+                >
+                  <Text style={[styles.pillText, { color: sc.fg }]}>
+                    {reviewStatusLabel(item.status)}
+                  </Text>
+                </View>
               </View>
-            </View>
-            <Text style={styles.row}>
-              {item.periodStart} → {item.periodEnd}
-            </Text>
-          </TouchableOpacity>
-        )}
+              <Text style={styles.row}>
+                {item.periodStart} → {item.periodEnd}
+              </Text>
+            </TouchableOpacity>
+          );
+        }}
       />
 
       <Modal
@@ -215,7 +212,7 @@ export default function MyReviews() {
                 {selected?.type} review
               </Text>
               <TouchableOpacity onPress={() => setSelected(null)}>
-                <Ionicons name="close" size={24} color="#94a3b8" />
+                <Ionicons name="close" size={24} color={c.textMuted} />
               </TouchableOpacity>
             </View>
 
@@ -236,7 +233,7 @@ export default function MyReviews() {
                       onChangeText={setAccomplishments}
                       multiline
                       textAlignVertical="top"
-                      placeholderTextColor="#475569"
+                      placeholderTextColor={c.textFaint}
                       placeholder="What did you do well..."
                     />
 
@@ -247,7 +244,7 @@ export default function MyReviews() {
                       onChangeText={setChallenges}
                       multiline
                       textAlignVertical="top"
-                      placeholderTextColor="#475569"
+                      placeholderTextColor={c.textFaint}
                       placeholder="What was hard..."
                     />
 
@@ -283,7 +280,7 @@ export default function MyReviews() {
                             setDimRatings(copy);
                           }}
                           placeholder="Comment (optional)"
-                          placeholderTextColor="#475569"
+                          placeholderTextColor={c.textFaint}
                         />
                       </View>
                     ))}
@@ -324,7 +321,7 @@ export default function MyReviews() {
                   <>
                     <Text style={styles.section}>SELF-EVAL SUBMITTED</Text>
                     <Text style={styles.body}>
-                      Manager is evaluating. You'll be notified when
+                      Manager is evaluating. You&apos;ll be notified when
                       ready.
                     </Text>
                   </>
@@ -408,133 +405,118 @@ export default function MyReviews() {
   );
 }
 
-const styles = StyleSheet.create({
-  safe: { flex: 1, backgroundColor: "#0b1220" },
+const makeStyles = (c: any) => StyleSheet.create({
+  safe: { flex: 1, backgroundColor: c.bg },
   loader: {
     flex: 1,
-    backgroundColor: "#0b1220",
+    backgroundColor: c.bg,
     justifyContent: "center",
-    alignItems: "center",
-  },
+    alignItems: "center" },
   header: {
     flexDirection: "row",
     alignItems: "center",
     paddingHorizontal: 16,
     paddingVertical: 14,
     borderBottomWidth: 1,
-    borderBottomColor: "#1f2937",
-    gap: 12,
-  },
-  title: { color: "#fff", fontSize: 18, fontWeight: "800", flex: 1 },
+    borderBottomColor: c.surfaceBorder,
+    gap: 12 },
+  title: { color: c.text, fontSize: 18, fontWeight: "800", flex: 1 },
   card: {
-    backgroundColor: "#111827",
+    backgroundColor: c.surface,
     padding: 14,
     borderRadius: 14,
     marginBottom: 8,
     borderWidth: 1,
-    borderColor: "#1f2937",
-  },
+    borderColor: c.surfaceBorder },
   cardTop: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    gap: 8,
-  },
-  cardTitle: { color: "#fff", fontSize: 15, fontWeight: "700" },
+    gap: 8 },
+  cardTitle: { color: c.text, fontSize: 15, fontWeight: "700" },
   pill: {
     paddingHorizontal: 8,
     paddingVertical: 3,
-    borderRadius: 6,
-  },
-  pillText: { color: "#fff", fontSize: 10, fontWeight: "800" },
-  row: { color: "#94a3b8", fontSize: 12, marginTop: 6 },
+    borderRadius: 6 },
+  pillText: { color: c.text, fontSize: 10, fontWeight: "800" },
+  row: { color: c.textMuted, fontSize: 12, marginTop: 6 },
   emptyWrap: { flex: 1, justifyContent: "center" },
   empty: { alignItems: "center", gap: 10 },
-  emptyText: { color: "#475569", fontSize: 14 },
+  emptyText: { color: c.textMuted, fontSize: 14 },
   modalWrap: {
     flex: 1,
     justifyContent: "flex-end",
-    backgroundColor: "rgba(0,0,0,0.5)",
-  },
+    backgroundColor: c.overlay },
   modal: {
-    backgroundColor: "#0f172a",
+    backgroundColor: c.surfaceMuted,
     padding: 20,
     borderTopLeftRadius: 18,
     borderTopRightRadius: 18,
     borderTopWidth: 1,
-    borderTopColor: "#1e293b",
-    maxHeight: "92%",
-  },
+    borderTopColor: c.surfaceBorder,
+    maxHeight: "92%" },
   modalHeader: {
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
-    marginBottom: 8,
-  },
-  modalTitle: { color: "#fff", fontSize: 17, fontWeight: "800" },
-  hint: { color: "#64748b", fontSize: 12 },
+    marginBottom: 8 },
+  modalTitle: { color: c.text, fontSize: 17, fontWeight: "800" },
+  hint: { color: c.textMuted, fontSize: 12 },
   section: {
-    color: "#64748b",
+    color: c.textMuted,
     fontSize: 10,
     letterSpacing: 1.5,
     fontWeight: "800",
     marginTop: 18,
-    marginBottom: 8,
-  },
+    marginBottom: 8 },
   label: {
-    color: "#94a3b8",
+    color: c.textMuted,
     fontSize: 11,
     letterSpacing: 1.2,
     fontWeight: "700",
     marginTop: 12,
-    marginBottom: 6,
-  },
+    marginBottom: 6 },
   input: {
-    backgroundColor: "#111827",
-    color: "#fff",
+    backgroundColor: c.surface,
+    color: c.text,
     paddingHorizontal: 12,
     paddingVertical: 10,
     borderRadius: 10,
     borderWidth: 1,
-    borderColor: "#1f2937",
-  },
-  body: { color: "#cbd5e1", fontSize: 13, lineHeight: 18 },
+    borderColor: c.surfaceBorder },
+  body: { color: c.text, fontSize: 13, lineHeight: 18 },
   dimBox: {
-    backgroundColor: "#111827",
+    backgroundColor: c.surface,
     padding: 12,
     borderRadius: 10,
     marginTop: 8,
     borderWidth: 1,
-    borderColor: "#1f2937",
-  },
+    borderColor: c.surfaceBorder },
   dimBoxRead: {
-    backgroundColor: "#111827",
+    backgroundColor: c.surface,
     padding: 10,
     borderRadius: 8,
     marginTop: 6,
     borderWidth: 1,
-    borderColor: "#1f2937",
-  },
-  dimName: { color: "#fff", fontSize: 13, fontWeight: "700" },
+    borderColor: c.surfaceBorder },
+  dimName: { color: c.text, fontSize: 13, fontWeight: "700" },
   starsRow: { flexDirection: "row", gap: 6, marginTop: 6 },
   dimComment: {
-    backgroundColor: "#0b1220",
-    color: "#fff",
+    backgroundColor: c.bg,
+    color: c.text,
     paddingHorizontal: 10,
     paddingVertical: 6,
     borderRadius: 8,
     borderWidth: 1,
-    borderColor: "#1f2937",
+    borderColor: c.surfaceBorder,
     marginTop: 6,
-    fontSize: 12,
-  },
-  dimCommentRead: { color: "#94a3b8", fontSize: 12, marginTop: 4 },
+    fontSize: 12 },
+  dimCommentRead: { color: c.textMuted, fontSize: 12, marginTop: 4 },
   bigBtn: {
     paddingVertical: 14,
     borderRadius: 12,
     alignItems: "center",
-    marginTop: 18,
-  },
-  bigPrimary: { backgroundColor: "#3b82f6" },
-  bigBtnText: { color: "#fff", fontWeight: "800", fontSize: 14 },
-});
+    marginTop: 18 },
+  bigPrimary: { backgroundColor: c.accent },
+  bigBtnText: { color: c.text, fontWeight: "800", fontSize: 14 } });
+

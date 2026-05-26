@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useCallback } from "react";
+﻿import React, { useEffect, useState, useCallback, useMemo} from "react";
 
 import {
   View,
@@ -7,15 +7,14 @@ import {
   FlatList,
   TouchableOpacity,
   ActivityIndicator,
-  SafeAreaView,
   RefreshControl,
   Modal,
   TextInput,
   Alert,
   ScrollView,
   KeyboardAvoidingView,
-  Platform,
-} from "react-native";
+  Platform } from "react-native";
+import { SafeAreaView } from "react-native-safe-area-context";
 
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useRouter } from "expo-router";
@@ -23,23 +22,17 @@ import { Ionicons } from "@expo/vector-icons";
 
 import {
   listHrInterviews,
-  createInterview,
-} from "../src/services/interviews";
+  createInterview } from "../src/services/interviews";
 import { listCandidates } from "../src/services/candidates";
 import { listUsers } from "../src/services/users";
+import { useTheme } from "../src/theme/ThemeProvider";
+import { interviewStatusColor } from "../src/theme/statusColors";
 import {
   Candidate,
   INTERVIEW_MODES,
   Interview,
   InterviewMode,
-  User,
-} from "../src/types";
-
-const STATUS_COLOR: Record<string, string> = {
-  SCHEDULED: "#3b82f6",
-  COMPLETED: "#16a34a",
-  CANCELLED: "#64748b",
-};
+  User } from "../src/types";
 
 const fmtTime = (iso: string) => {
   try {
@@ -51,6 +44,9 @@ const fmtTime = (iso: string) => {
 
 export default function HrInterviews() {
   const router = useRouter();
+  const { theme } = useTheme();
+  const c = theme.colors;
+  const styles = useMemo(() => makeStyles(c), [c]);
   const [items, setItems] = useState<Interview[]>([]);
   const [candidates, setCandidates] = useState<Candidate[]>([]);
   const [users, setUsers] = useState<User[]>([]);
@@ -92,7 +88,10 @@ export default function HrInterviews() {
       setCandidates(cands || []);
       setUsers(allUsers || []);
     } catch (err: any) {
-      console.log("interviews load error", err);
+      Alert.alert(
+        "Couldn't load interviews",
+        err?.message || "Pull down to retry."
+      );
     } finally {
       setLoading(false);
       setRefreshing(false);
@@ -139,8 +138,7 @@ export default function HrInterviews() {
         location: location.trim() || undefined,
         interviewerIds,
         round: round.trim() || undefined,
-        notes: notes.trim() || undefined,
-      });
+        notes: notes.trim() || undefined });
       setShowForm(false);
       resetForm();
       load();
@@ -169,18 +167,18 @@ export default function HrInterviews() {
   return (
     <SafeAreaView style={styles.safe}>
       <View style={styles.header}>
-        <TouchableOpacity onPress={() => router.back()}>
-          <Ionicons name="arrow-back" size={24} color="#fff" />
+        <TouchableOpacity onPress={() => (router.canGoBack() ? router.back() : router.replace("/"))}>
+          <Ionicons name="arrow-back" size={24} color={c.text} />
         </TouchableOpacity>
         <Text style={styles.title}>Interviews</Text>
         <TouchableOpacity onPress={() => setShowForm(true)}>
-          <Ionicons name="add-circle" size={28} color="#3b82f6" />
+          <Ionicons name="add-circle" size={28} color={c.accent} />
         </TouchableOpacity>
       </View>
 
       {loading ? (
         <View style={styles.loader}>
-          <ActivityIndicator size="large" color="#3b82f6" />
+          <ActivityIndicator size="large" color={c.accent} />
         </View>
       ) : (
         <FlatList
@@ -193,8 +191,8 @@ export default function HrInterviews() {
             <RefreshControl
               refreshing={refreshing}
               onRefresh={onRefresh}
-              tintColor="#3b82f6"
-              colors={["#3b82f6"]}
+              tintColor={c.accent}
+              colors={[c.accent]}
             />
           }
           ListEmptyComponent={
@@ -202,14 +200,14 @@ export default function HrInterviews() {
               <Ionicons
                 name="chatbubbles-outline"
                 size={42}
-                color="#475569"
+                color={c.textFaint}
               />
               <Text style={styles.emptyText}>No interviews</Text>
             </View>
           }
           renderItem={({ item }) => {
             const cand =
-              candidates.find((c) => c.id === item.candidateId)?.name ||
+              candidates.find((x) => x.id === item.candidateId)?.name ||
               item.candidate?.name ||
               "Unknown";
             const interviewerNames = item.interviewerIds
@@ -218,6 +216,7 @@ export default function HrInterviews() {
                   users.find((u) => u.id === id)?.name || "?"
               )
               .join(", ");
+            const sc = interviewStatusColor(item.status, c);
             return (
               <TouchableOpacity
                 style={styles.card}
@@ -229,13 +228,10 @@ export default function HrInterviews() {
                   <View
                     style={[
                       styles.pill,
-                      {
-                        backgroundColor:
-                          STATUS_COLOR[item.status] || "#64748b",
-                      },
+                      { backgroundColor: sc.bg },
                     ]}
                   >
-                    <Text style={styles.pillText}>{item.status}</Text>
+                    <Text style={[styles.pillText, { color: sc.fg }]}>{item.status}</Text>
                   </View>
                 </View>
                 <Text style={styles.row}>
@@ -274,7 +270,7 @@ export default function HrInterviews() {
             <View style={styles.modalHeader}>
               <Text style={styles.modalTitle}>Schedule interview</Text>
               <TouchableOpacity onPress={() => setShowForm(false)}>
-                <Ionicons name="close" size={24} color="#94a3b8" />
+                <Ionicons name="close" size={24} color={c.textMuted} />
               </TouchableOpacity>
             </View>
 
@@ -312,7 +308,7 @@ export default function HrInterviews() {
                 value={scheduledAt}
                 onChangeText={setScheduledAt}
                 placeholder="2026-05-12T15:00:00+00:00"
-                placeholderTextColor="#475569"
+                placeholderTextColor={c.textFaint}
                 autoCapitalize="none"
               />
 
@@ -324,7 +320,7 @@ export default function HrInterviews() {
                     value={durationMinutes}
                     onChangeText={setDurationMinutes}
                     keyboardType="number-pad"
-                    placeholderTextColor="#475569"
+                    placeholderTextColor={c.textFaint}
                   />
                 </View>
                 <View style={{ flex: 1 }}>
@@ -334,7 +330,7 @@ export default function HrInterviews() {
                     value={round}
                     onChangeText={setRound}
                     placeholder="Technical 1"
-                    placeholderTextColor="#475569"
+                    placeholderTextColor={c.textFaint}
                   />
                 </View>
               </View>
@@ -368,7 +364,7 @@ export default function HrInterviews() {
                 value={location}
                 onChangeText={setLocation}
                 placeholder="Meeting room 2 / Zoom link"
-                placeholderTextColor="#475569"
+                placeholderTextColor={c.textFaint}
                 autoCapitalize="none"
               />
 
@@ -379,7 +375,7 @@ export default function HrInterviews() {
                 style={styles.input}
                 onPress={() => setShowPicker(true)}
               >
-                <Text style={{ color: "#cbd5e1" }}>
+                <Text style={{ color: c.text }}>
                   {interviewerIds.length === 0
                     ? "Tap to add..."
                     : interviewerIds
@@ -399,7 +395,7 @@ export default function HrInterviews() {
                 onChangeText={setNotes}
                 multiline
                 textAlignVertical="top"
-                placeholderTextColor="#475569"
+                placeholderTextColor={c.textFaint}
               />
               <View style={{ height: 12 }} />
             </ScrollView>
@@ -441,18 +437,18 @@ export default function HrInterviews() {
                 <Ionicons
                   name="checkmark-done"
                   size={24}
-                  color="#3b82f6"
+                  color={c.accent}
                 />
               </TouchableOpacity>
             </View>
             <View style={styles.searchBox}>
-              <Ionicons name="search" size={16} color="#64748b" />
+              <Ionicons name="search" size={16} color={c.textMuted} />
               <TextInput
                 style={styles.searchInput}
                 value={pickerSearch}
                 onChangeText={setPickerSearch}
                 placeholder="Search..."
-                placeholderTextColor="#475569"
+                placeholderTextColor={c.textFaint}
                 autoCapitalize="none"
               />
             </View>
@@ -496,7 +492,7 @@ export default function HrInterviews() {
             <View style={styles.modalHeader}>
               <Text style={styles.modalTitle}>Interview detail</Text>
               <TouchableOpacity onPress={() => setSelected(null)}>
-                <Ionicons name="close" size={24} color="#94a3b8" />
+                <Ionicons name="close" size={24} color={c.textMuted} />
               </TouchableOpacity>
             </View>
             {selected && (
@@ -522,18 +518,21 @@ export default function HrInterviews() {
                   </>
                 )}
                 <Text style={styles.detailLabel}>Status</Text>
-                <View
-                  style={[
-                    styles.pill,
-                    {
-                      backgroundColor:
-                        STATUS_COLOR[selected.status] || "#64748b",
-                      alignSelf: "flex-start",
-                    },
-                  ]}
-                >
-                  <Text style={styles.pillText}>{selected.status}</Text>
-                </View>
+                {(() => {
+                  const sc = interviewStatusColor(selected.status, c);
+                  return (
+                    <View
+                      style={[
+                        styles.pill,
+                        { backgroundColor: sc.bg, alignSelf: "flex-start" },
+                      ]}
+                    >
+                      <Text style={[styles.pillText, { color: sc.fg }]}>
+                        {selected.status}
+                      </Text>
+                    </View>
+                  );
+                })()}
 
                 <Text style={styles.detailLabel}>Feedback</Text>
                 {!selected.feedback || selected.feedback.length === 0 ? (
@@ -575,138 +574,123 @@ export default function HrInterviews() {
   );
 }
 
-const styles = StyleSheet.create({
-  safe: { flex: 1, backgroundColor: "#0b1220" },
+const makeStyles = (c: any) => StyleSheet.create({
+  safe: { flex: 1, backgroundColor: c.bg },
   loader: {
     flex: 1,
-    backgroundColor: "#0b1220",
+    backgroundColor: c.bg,
     justifyContent: "center",
-    alignItems: "center",
-  },
+    alignItems: "center" },
   header: {
     flexDirection: "row",
     alignItems: "center",
     paddingHorizontal: 16,
     paddingVertical: 14,
     borderBottomWidth: 1,
-    borderBottomColor: "#1f2937",
-    gap: 12,
-  },
-  title: { color: "#fff", fontSize: 18, fontWeight: "800", flex: 1 },
+    borderBottomColor: c.surfaceBorder,
+    gap: 12 },
+  title: { color: c.text, fontSize: 18, fontWeight: "800", flex: 1 },
   card: {
-    backgroundColor: "#111827",
+    backgroundColor: c.surface,
     padding: 14,
     borderRadius: 14,
     marginBottom: 8,
     borderWidth: 1,
-    borderColor: "#1f2937",
-  },
+    borderColor: c.surfaceBorder },
   cardTop: {
     flexDirection: "row",
     alignItems: "center",
-    justifyContent: "space-between",
-  },
-  who: { color: "#fff", fontSize: 15, fontWeight: "700" },
+    justifyContent: "space-between" },
+  who: { color: c.text, fontSize: 15, fontWeight: "700" },
   pill: {
     paddingHorizontal: 8,
     paddingVertical: 3,
-    borderRadius: 6,
-  },
-  pillText: { color: "#fff", fontSize: 10, fontWeight: "800" },
-  row: { color: "#94a3b8", fontSize: 12, marginTop: 6 },
+    borderRadius: 6 },
+  pillText: { color: c.text, fontSize: 10, fontWeight: "800" },
+  row: { color: c.textMuted, fontSize: 12, marginTop: 6 },
   round: { color: "#8b5cf6", fontSize: 11, marginTop: 4 },
   emptyWrap: { flex: 1, justifyContent: "center" },
   empty: { alignItems: "center", gap: 10 },
-  emptyText: { color: "#475569", fontSize: 14 },
+  emptyText: { color: c.textMuted, fontSize: 14 },
   modalWrap: {
     flex: 1,
     justifyContent: "flex-end",
-    backgroundColor: "rgba(0,0,0,0.5)",
-  },
+    backgroundColor: c.overlay },
   modal: {
-    backgroundColor: "#0f172a",
+    backgroundColor: c.surfaceMuted,
     padding: 20,
     borderTopLeftRadius: 18,
     borderTopRightRadius: 18,
     borderTopWidth: 1,
-    borderTopColor: "#1e293b",
-    maxHeight: "92%",
-  },
+    borderTopColor: c.surfaceBorder,
+    maxHeight: "92%" },
   pickerModal: {
-    backgroundColor: "#0f172a",
+    backgroundColor: c.surfaceMuted,
     padding: 16,
     borderTopLeftRadius: 18,
     borderTopRightRadius: 18,
     borderTopWidth: 1,
-    borderTopColor: "#1e293b",
-    maxHeight: "85%",
-  },
+    borderTopColor: c.surfaceBorder,
+    maxHeight: "85%" },
   modalHeader: {
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
-    marginBottom: 10,
-  },
-  modalTitle: { color: "#fff", fontSize: 17, fontWeight: "800" },
+    marginBottom: 10 },
+  modalTitle: { color: c.text, fontSize: 17, fontWeight: "800" },
   label: {
-    color: "#94a3b8",
+    color: c.textMuted,
     fontSize: 11,
     letterSpacing: 1.2,
     fontWeight: "700",
     marginTop: 14,
-    marginBottom: 6,
-  },
+    marginBottom: 6 },
   input: {
-    backgroundColor: "#111827",
-    color: "#fff",
+    backgroundColor: c.surface,
+    color: c.text,
     paddingHorizontal: 12,
     paddingVertical: 10,
     borderRadius: 10,
     borderWidth: 1,
-    borderColor: "#1f2937",
-    minHeight: 42,
-  },
+    borderColor: c.surfaceBorder,
+    minHeight: 42 },
   chipRow: { flexDirection: "row", flexWrap: "wrap", gap: 6 },
   chip: {
     paddingHorizontal: 10,
     paddingVertical: 6,
     borderRadius: 999,
-    backgroundColor: "#111827",
+    backgroundColor: c.surface,
     borderWidth: 1,
-    borderColor: "#1f2937",
-  },
-  chipActive: { backgroundColor: "#3b82f6", borderColor: "#3b82f6" },
-  chipText: { color: "#94a3b8", fontSize: 11, fontWeight: "700" },
-  chipTextActive: { color: "#fff" },
-  hint: { color: "#64748b", fontSize: 11, fontStyle: "italic" },
+    borderColor: c.surfaceBorder },
+  chipActive: { backgroundColor: c.accent, borderColor: c.accent },
+  chipText: { color: c.textMuted, fontSize: 11, fontWeight: "700" },
+  chipTextActive: { color: c.text },
+  hint: { color: c.textMuted, fontSize: 11, fontStyle: "italic" },
   actions: { flexDirection: "row", gap: 10, marginTop: 14 },
   btn: {
     flex: 1,
     paddingVertical: 14,
     borderRadius: 12,
-    alignItems: "center",
-  },
-  btnGhost: { backgroundColor: "#1e293b" },
-  btnGhostText: { color: "#94a3b8", fontWeight: "700" },
-  btnPrimary: { backgroundColor: "#3b82f6" },
+    alignItems: "center" },
+  btnGhost: { backgroundColor: c.surfaceMuted },
+  btnGhostText: { color: c.textMuted, fontWeight: "700" },
+  btnPrimary: { backgroundColor: c.accent },
   btnPrimaryText: { color: "#fff", fontWeight: "800" },
   searchBox: {
     flexDirection: "row",
     alignItems: "center",
-    backgroundColor: "#111827",
+    backgroundColor: c.surface,
     borderRadius: 10,
     paddingHorizontal: 10,
     gap: 6,
     marginBottom: 10,
     borderWidth: 1,
-    borderColor: "#1f2937",
-  },
+    borderColor: c.surfaceBorder },
   searchInput: {
     flex: 1,
-    color: "#fff",
+    color: c.text,
     paddingVertical: 8,
-    fontSize: 13,
-  },
+    fontSize: 13 },
   pickerRow: {
     flexDirection: "row",
     alignItems: "center",
@@ -714,33 +698,29 @@ const styles = StyleSheet.create({
     paddingHorizontal: 4,
     gap: 10,
     borderBottomWidth: 1,
-    borderBottomColor: "#111827",
-  },
-  pickerName: { color: "#fff", fontSize: 14, fontWeight: "700" },
-  pickerSub: { color: "#94a3b8", fontSize: 11, marginTop: 2 },
+    borderBottomColor: c.surfaceBorder },
+  pickerName: { color: c.text, fontSize: 14, fontWeight: "700" },
+  pickerSub: { color: c.textMuted, fontSize: 11, marginTop: 2 },
   detailLabel: {
-    color: "#64748b",
+    color: c.textMuted,
     fontSize: 10,
     letterSpacing: 1.5,
     fontWeight: "800",
     marginTop: 12,
-    marginBottom: 4,
-  },
-  detailBody: { color: "#fff", fontSize: 14, fontWeight: "600" },
+    marginBottom: 4 },
+  detailBody: { color: c.text, fontSize: 14, fontWeight: "600" },
   feedbackCard: {
-    backgroundColor: "#111827",
+    backgroundColor: c.surface,
     padding: 10,
     borderRadius: 10,
     marginTop: 6,
     borderWidth: 1,
-    borderColor: "#1f2937",
-  },
-  feedbackBy: { color: "#fff", fontSize: 13, fontWeight: "700" },
+    borderColor: c.surfaceBorder },
+  feedbackBy: { color: c.text, fontSize: 13, fontWeight: "700" },
   feedbackRec: {
     color: "#8b5cf6",
     fontSize: 11,
     fontWeight: "800",
-    marginTop: 3,
-  },
-  feedbackLine: { color: "#cbd5e1", fontSize: 12, marginTop: 4 },
-});
+    marginTop: 3 },
+  feedbackLine: { color: c.text, fontSize: 12, marginTop: 4 } });
+

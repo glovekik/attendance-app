@@ -1,7 +1,6 @@
-import React, {
+﻿import React, {
   useEffect,
-  useState,
-} from "react";
+  useState, useMemo} from "react";
 
 import {
   View,
@@ -11,17 +10,15 @@ import {
   TouchableOpacity,
   TextInput,
   ActivityIndicator,
-  SafeAreaView,
   Switch,
-  Platform,
-} from "react-native";
+  Platform } from "react-native";
+import { SafeAreaView } from "react-native-safe-area-context";
 
 import AsyncStorage from "@react-native-async-storage/async-storage";
 
 import {
   useRouter,
-  useLocalSearchParams,
-} from "expo-router";
+  useLocalSearchParams } from "expo-router";
 
 import { Ionicons } from "@expo/vector-icons";
 
@@ -30,13 +27,11 @@ import DateTimePicker from "@react-native-community/datetimepicker";
 import {
   WebDateField,
   dateToYMD,
-  ymdToDate,
-} from "../../src/components/WebDateField";
+  ymdToDate } from "../../src/components/WebDateField";
 
 import {
   getTeam,
-  listMyLedTeams,
-} from "../../src/services/teams";
+  listMyLedTeams } from "../../src/services/teams";
 
 import { listUsers } from "../../src/services/users";
 import { getMe } from "../../src/services/api";
@@ -44,11 +39,11 @@ import { createTask, getMyTasks } from "../../src/services/tasks";
 import { scheduleTaskReminder } from "../../src/services/reminders";
 import { requestNotificationPermission } from "../../src/services/notifications";
 
+import { useTheme } from "../../src/theme/ThemeProvider";
 import {
   Team,
   User,
-  hasRole,
-} from "../../src/types";
+  hasRole } from "../../src/types";
 
 const isWeb = Platform.OS === "web";
 
@@ -57,6 +52,12 @@ const INTERVALS = [5, 10, 15, 30, 60];
 export default function NewTask() {
 
   const router = useRouter();
+
+  const { theme } = useTheme();
+
+  const c = theme.colors;
+
+  const styles = useMemo(() => makeStyles(c), [c]);
 
   const params = useLocalSearchParams();
   const teamId = params.teamId as string;
@@ -80,8 +81,7 @@ export default function NewTask() {
   const [popup, setPopup] = useState({
     visible: false,
     type: "success" as "success" | "error",
-    message: "",
-  });
+    message: "" });
 
   const showPopup = (
     msg: string,
@@ -128,8 +128,7 @@ export default function NewTask() {
                   id,
                   name: `User …${id.slice(-4)}`,
                   email: "",
-                  role: "USER" as const,
-                }));
+                  role: "USER" as const }));
           t = { ...found, members };
         }
 
@@ -150,8 +149,7 @@ export default function NewTask() {
       weekday: "short",
       month: "short",
       day: "numeric",
-      year: "numeric",
-    });
+      year: "numeric" });
 
   // ================= SAVE =================
   const save = async () => {
@@ -186,8 +184,7 @@ export default function NewTask() {
         dueDate: hasDueDate ? dateToYMD(dueDate) : undefined,
         reminderIntervalMinutes: reminderEnabled
           ? interval
-          : undefined,
-      };
+          : undefined };
 
       const res = await createTask(token, teamId, payload);
 
@@ -210,7 +207,8 @@ export default function NewTask() {
       showPopup("Task created");
 
       setTimeout(() => {
-        router.back();
+        if (router.canGoBack()) router.back();
+        else router.replace("/");
       }, 700);
 
     } catch (err: any) {
@@ -223,7 +221,7 @@ export default function NewTask() {
   if (loadingTeam) {
     return (
       <View style={styles.loader}>
-        <ActivityIndicator size="large" color="#2563eb" />
+        <ActivityIndicator size="large" color={c.accent} />
       </View>
     );
   }
@@ -253,9 +251,9 @@ export default function NewTask() {
         <View style={styles.header}>
           <TouchableOpacity
             style={styles.backBtn}
-            onPress={() => router.back()}
+            onPress={() => (router.canGoBack() ? router.back() : router.replace("/"))}
           >
-            <Ionicons name="chevron-back" size={22} color="#fff" />
+            <Ionicons name="chevron-back" size={22} color={c.text} />
           </TouchableOpacity>
 
           <View style={{ flex: 1 }}>
@@ -273,7 +271,7 @@ export default function NewTask() {
           value={title}
           onChangeText={setTitle}
           placeholder="What needs to be done?"
-          placeholderTextColor="#64748b"
+          placeholderTextColor={c.textFaint}
         />
 
         {/* DESCRIPTION */}
@@ -283,7 +281,7 @@ export default function NewTask() {
           value={description}
           onChangeText={setDescription}
           placeholder="Optional details"
-          placeholderTextColor="#64748b"
+          placeholderTextColor={c.textFaint}
           multiline
         />
 
@@ -310,7 +308,7 @@ export default function NewTask() {
             </TouchableOpacity>
           ))}
           {(team?.members || []).length === 0 && (
-            <Text style={{ color: "#94a3b8" }}>
+            <Text style={{ color: c.textMuted }}>
               No members in this team yet.
             </Text>
           )}
@@ -371,7 +369,7 @@ export default function NewTask() {
                 <Ionicons
                   name="chevron-forward"
                   size={18}
-                  color="#64748b"
+                  color={c.textMuted}
                 />
               </TouchableOpacity>
               {showDuePicker && (
@@ -426,7 +424,7 @@ export default function NewTask() {
               ))}
             </View>
             <Text style={styles.hint}>
-              Reminders fire on the assignee's device after they open
+              Reminders fire on the assignee&apos;s device after they open
               the app. They stop once the task is marked done.
             </Text>
           </>
@@ -458,16 +456,15 @@ export default function NewTask() {
   );
 }
 
-const styles = StyleSheet.create({
-  safe: { flex: 1, backgroundColor: "#0b1220" },
+const makeStyles = (c: any) => StyleSheet.create({
+  safe: { flex: 1, backgroundColor: c.bg },
   container: { flex: 1 },
   content: { padding: 20, paddingBottom: 60 },
   loader: {
     flex: 1,
-    backgroundColor: "#0b1220",
+    backgroundColor: c.bg,
     justifyContent: "center",
-    alignItems: "center",
-  },
+    alignItems: "center" },
 
   popup: {
     position: "absolute",
@@ -476,151 +473,131 @@ const styles = StyleSheet.create({
     right: 20,
     padding: 14,
     borderRadius: 14,
-    zIndex: 999,
-  },
+    zIndex: 999 },
   successPopup: { backgroundColor: "#16a34a" },
   errorPopup: { backgroundColor: "#dc2626" },
-  popupText: { color: "#fff", fontWeight: "700", textAlign: "center" },
+  popupText: { color: c.text, fontWeight: "700", textAlign: "center" },
 
   header: {
     flexDirection: "row",
     alignItems: "center",
     marginBottom: 16,
     marginTop: 10,
-    gap: 12,
-  },
+    gap: 12 },
   backBtn: {
     width: 42,
     height: 42,
     borderRadius: 12,
-    backgroundColor: "#111827",
+    backgroundColor: c.surface,
     justifyContent: "center",
     alignItems: "center",
     borderWidth: 1,
-    borderColor: "#1f2937",
-  },
-  title: { color: "#fff", fontSize: 24, fontWeight: "800" },
-  subtitle: { color: "#94a3b8", fontSize: 13, marginTop: 3 },
+    borderColor: c.surfaceBorder },
+  title: { color: c.text, fontSize: 24, fontWeight: "800" },
+  subtitle: { color: c.textMuted, fontSize: 13, marginTop: 3 },
 
   section: {
-    color: "#64748b",
+    color: c.textMuted,
     fontSize: 12,
     letterSpacing: 1.5,
     fontWeight: "700",
     marginBottom: 8,
-    marginTop: 18,
-  },
+    marginTop: 18 },
 
   toggleRow: {
     flexDirection: "row",
     alignItems: "center",
-    justifyContent: "space-between",
-  },
+    justifyContent: "space-between" },
 
   miniLabel: {
-    color: "#94a3b8",
+    color: c.textMuted,
     fontSize: 12,
     fontWeight: "600",
     marginTop: 12,
-    marginBottom: 6,
-  },
+    marginBottom: 6 },
 
   hint: {
-    color: "#64748b",
+    color: c.textMuted,
     fontSize: 11,
     fontStyle: "italic",
-    marginTop: 10,
-  },
+    marginTop: 10 },
 
   input: {
-    backgroundColor: "#111827",
-    color: "#fff",
+    backgroundColor: c.surface,
+    color: c.text,
     borderRadius: 12,
     padding: 13,
     borderWidth: 1,
-    borderColor: "#1f2937",
-    fontSize: 14,
-  },
+    borderColor: c.surfaceBorder,
+    fontSize: 14 },
 
   multiline: {
     minHeight: 90,
-    textAlignVertical: "top",
-  },
+    textAlignVertical: "top" },
 
   assigneeWrap: {
     flexDirection: "row",
     flexWrap: "wrap",
-    gap: 8,
-  },
+    gap: 8 },
   assigneeBtn: {
     paddingHorizontal: 12,
     paddingVertical: 8,
-    backgroundColor: "#111827",
+    backgroundColor: c.surface,
     borderRadius: 10,
     borderWidth: 1,
-    borderColor: "#1f2937",
-  },
+    borderColor: c.surfaceBorder },
   assigneeActive: {
-    backgroundColor: "#2563eb",
-    borderColor: "#2563eb",
-  },
-  assigneeText: { color: "#94a3b8", fontWeight: "600", fontSize: 13 },
+    backgroundColor: c.accent,
+    borderColor: c.accent },
+  assigneeText: { color: c.textMuted, fontWeight: "600", fontSize: 13 },
 
   intervalRow: {
     flexDirection: "row",
     gap: 8,
-    flexWrap: "wrap",
-  },
+    flexWrap: "wrap" },
   intervalBtn: {
     paddingHorizontal: 14,
     paddingVertical: 10,
-    backgroundColor: "#111827",
+    backgroundColor: c.surface,
     borderRadius: 10,
     borderWidth: 1,
-    borderColor: "#1f2937",
-  },
+    borderColor: c.surfaceBorder },
   intervalActive: {
-    backgroundColor: "#2563eb",
-    borderColor: "#2563eb",
-  },
-  intervalText: { color: "#94a3b8", fontWeight: "700", fontSize: 13 },
+    backgroundColor: c.accent,
+    borderColor: c.accent },
+  intervalText: { color: c.textMuted, fontWeight: "700", fontSize: 13 },
 
   row: {
     flexDirection: "row",
     alignItems: "center",
-    backgroundColor: "#111827",
+    backgroundColor: c.surface,
     borderRadius: 12,
     padding: 12,
     marginBottom: 8,
     borderWidth: 1,
-    borderColor: "#1f2937",
-    gap: 12,
-  },
+    borderColor: c.surfaceBorder,
+    gap: 12 },
   rowIcon: {
     width: 36,
     height: 36,
     borderRadius: 10,
-    backgroundColor: "#2563eb",
+    backgroundColor: c.accent,
     justifyContent: "center",
-    alignItems: "center",
-  },
-  rowLabel: { color: "#94a3b8", fontSize: 11, fontWeight: "600" },
+    alignItems: "center" },
+  rowLabel: { color: c.textMuted, fontSize: 11, fontWeight: "600" },
   rowValue: {
-    color: "#fff",
+    color: c.text,
     fontSize: 14,
     fontWeight: "700",
-    marginTop: 2,
-  },
+    marginTop: 2 },
 
   saveBtn: {
     marginTop: 26,
-    backgroundColor: "#2563eb",
+    backgroundColor: c.accent,
     paddingVertical: 16,
     borderRadius: 14,
     flexDirection: "row",
     justifyContent: "center",
     alignItems: "center",
-    gap: 8,
-  },
-  saveText: { color: "#fff", fontWeight: "700", fontSize: 16 },
-});
+    gap: 8 },
+  saveText: { color: c.text, fontWeight: "700", fontSize: 16 } });

@@ -1,7 +1,4 @@
-import React, {
-  useEffect,
-  useState,
-} from "react";
+﻿import React, { useCallback, useState, useMemo} from "react";
 
 import {
   View,
@@ -11,994 +8,667 @@ import {
   TouchableOpacity,
   TextInput,
   ActivityIndicator,
-} from "react-native";
+  RefreshControl } from "react-native";
+import { SafeAreaView } from "react-native-safe-area-context";
 
 import AsyncStorage from "@react-native-async-storage/async-storage";
-
-import { useRouter } from "expo-router";
-
+import { useRouter, useFocusEffect } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 
 import {
   checkIn,
   checkOut,
   getToday,
-} from "../src/services/api";
-
+  getMe } from "../src/services/api";
 import { getMyTasks } from "../src/services/tasks";
-
 import { dateToYMD } from "../src/components/WebDateField";
-
 import {
   OFFICE,
   ALLOWED_RADIUS,
   getCurrentLocation,
-  getDistance,
-} from "../src/utils/location";
+  getDistance } from "../src/utils/location";
 
+import { useTheme } from "../src/theme/ThemeProvider";
+import { User } from "../src/types";
+import {
+  BottomTabBar,
+  BOTTOM_BAR_RESERVED_HEIGHT } from "../src/components/BottomTabBar";
+import { notify } from "../src/utils/confirm";
+
+const TYPES = ["OFFICE", "WFH", "LEAVE", "HOLIDAY"] as const;
+type AttType = (typeof TYPES)[number];
+
+/**
+ * Attendance — single focus on today's status. Big check-in/out CTA,
+ * attendance type chips, work notes on checkout, optional pull-from-tasks
+ * helper. Keeps the geofence guard for OFFICE check-ins.
+ */
 export default function Attendance() {
-
   const router = useRouter();
+  const { theme } = useTheme();
+  const c = theme.colors;
+  const styles = useMemo(() => makeStyles(c), [c]);
 
-  const [loading, setLoading] =
-    useState(true);
+  const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+  const [todayAtt, setTodayAtt] = useState<any>(null);
+  const [me, setMe] = useState<User | null>(null);
+  const [attType, setAttType] = useState<AttType>("OFFICE");
+  const [workNotes, setWorkNotes] = useState("");
+  const [acting, setActing] = useState(false);
+  const [pulling, setPulling] = useState(false);
 
-  const [todayAttendance, setTodayAttendance] =
-    useState<any>(null);
-
-  const [attendanceType, setAttendanceType] =
-    useState("OFFICE");
-
-  const [workNotes, setWorkNotes] =
-    useState("");
-
-  const [popup, setPopup] =
-    useState({
-
-      visible: false,
-
-      type: "success",
-
-      message: "",
-    });
-
-  // ================= FORMAT TIME =================
-  const formatTime = (
-    time: string
-  ) => {
-
-    if (!time) return "-";
-
+  const load = useCallback(async () => {
     try {
-
-      const date =
-        new Date(time);
-
-      let hours =
-        date.getHours();
-
-      const minutes =
-        date.getMinutes();
-
-      const ampm =
-        hours >= 12
-          ? "PM"
-          : "AM";
-
-      hours =
-        hours % 12;
-
-      hours =
-        hours
-          ? hours
-          : 12;
-
-      const minuteStr =
-        minutes
-          .toString()
-          .padStart(2, "0");
-
-      return `${hours}:${minuteStr} ${ampm}`;
-
-    } catch (err) {
-
-      console.log(
-        "Time format error:",
-        err
-      );
-
-      return "-";
-    }
-  };
-
-  // ================= SUCCESS =================
-  const showSuccess = (
-    message: string
-  ) => {
-
-    setPopup({
-
-      visible: true,
-
-      type: "success",
-
-      message,
-    });
-
-    setTimeout(() => {
-
-      setPopup(prev => ({
-
-        ...prev,
-
-        visible: false,
-      }));
-
-    }, 3000);
-  };
-
-  // ================= ERROR =================
-  const showError = (
-    err: any
-  ) => {
-
-    console.log(err);
-
-    const message =
-
-      err?.message ||
-
-      err?.response?.data?.detail ||
-
-      "Something went wrong";
-
-    setPopup({
-
-      visible: true,
-
-      type: "error",
-
-      message,
-    });
-
-    setTimeout(() => {
-
-      setPopup(prev => ({
-
-        ...prev,
-
-        visible: false,
-      }));
-
-    }, 3000);
-  };
-
-  // ================= LOAD TODAY =================
-  const loadToday = async () => {
-
-    try {
-
-      const token =
-        await AsyncStorage.getItem(
-          "token"
-        );
-
-      if (!token) {
-
-        router.replace("/login");
-
-        return;
-      }
-
-      const res =
-        await getToday(token, dateToYMD(new Date()));
-
-      console.log(
-        "TODAY:",
-        res
-      );
-
-      setTodayAttendance(res);
-
-      if (
-        res?.attendanceType
-      ) {
-
-        setAttendanceType(
-          res.attendanceType
-        );
-      }
-
-      if (
-        res?.workNotes
-      ) {
-
-        setWorkNotes(
-          res.workNotes
-        );
-      }
-
-    } catch (err) {
-
-      showError(err);
-
-    }
-
-    setLoading(false);
-  };
-
-  // ================= PULL FROM TASKS =================
-  const pullFromTasks = async () => {
-
-    try {
-
       const token = await AsyncStorage.getItem("token");
-      if (!token) return;
-
-      const tasks = await getMyTasks(token, "COMPLETED");
-
-      const isToday = (iso?: string | null) => {
-        if (!iso) return false;
-        const d = new Date(iso);
-        const now = new Date();
-        return (
-          d.getFullYear() === now.getFullYear() &&
-          d.getMonth() === now.getMonth() &&
-          d.getDate() === now.getDate()
-        );
-      };
-
-      const done = (tasks || []).filter((t) =>
-        isToday(t.completedAt)
-      );
-
-      if (done.length === 0) {
-        showError({
-          message: "No tasks completed today yet",
-        });
+      if (!token) {
+        router.replace("/login");
         return;
       }
-
-      const summary = done
-        .map((t) => `- ${t.title}`)
-        .join("\n");
-
-      setWorkNotes(summary);
-
-      showSuccess(
-        `Pulled ${done.length} task${
-          done.length === 1 ? "" : "s"
-        }`
-      );
-
-    } catch (err) {
-      showError(err);
+      const [t, meRes] = await Promise.all([
+        getToday(token, dateToYMD(new Date())),
+        getMe(token).catch(() => null),
+      ]);
+      setTodayAtt(t || null);
+      setMe(meRes);
+      if (t?.attendanceType) setAttType(t.attendanceType);
+      if (t?.workNotes) setWorkNotes(t.workNotes);
+    } catch (err: any) {
+      notify("Couldn't load attendance", err?.message || "");
+    } finally {
+      setLoading(false);
+      setRefreshing(false);
     }
-  };
+  }, [router]);
 
-  // ================= HANDLE CHECKIN =================
-  const handleCheckIn =
-    async () => {
+  // Reload whenever the screen regains focus — not just on mount.
+  // expo-router keeps pushed screens mounted in the stack, so a plain
+  // useEffect would never re-run after a checkout/checkin performed on
+  // another screen (or a date rollover), leaving this page showing a
+  // stale status while the dashboard's useFocusEffect stays fresh.
+  useFocusEffect(
+    useCallback(() => {
+      load();
+    }, [load])
+  );
 
-      try {
-
-        const payload: any = {
-          date: dateToYMD(new Date()),
-          attendanceType: attendanceType,
-        };
-
-        // Capture coords for OFFICE so the server can validate the geofence
-        if (attendanceType === "OFFICE") {
-          try {
-            const coords = await getCurrentLocation();
-
-            // Optional UX-first hint before the network round-trip
-            const distance = getDistance(
-              coords.latitude,
-              coords.longitude,
-              OFFICE.latitude,
-              OFFICE.longitude
+  const onCheckIn = async () => {
+    if (acting) return;
+    try {
+      setActing(true);
+      // Capture the moment the user tapped the button as the source of
+      // truth for the timestamp — the backend should record this rather
+      // than recomputing from its own clock (which may be in a different
+      // timezone or drift from the device).
+      const now = new Date();
+      const payload: any = {
+        date: dateToYMD(now),
+        checkIn: now.toISOString(),
+        attendanceType: attType };
+      if (attType === "OFFICE") {
+        try {
+          const coords = await getCurrentLocation();
+          const distance = getDistance(
+            coords.latitude,
+            coords.longitude,
+            OFFICE.latitude,
+            OFFICE.longitude
+          );
+          if (distance > ALLOWED_RADIUS) {
+            notify(
+              "Too far from office",
+              `You're ${Math.round(
+                distance
+              )}m away. Switch to WFH if you're remote.`
             );
-            if (distance > ALLOWED_RADIUS) {
-              showError({
-                message: `You're ${Math.round(
-                  distance
-                )}m from office. Switch to WFH if remote.`,
-              });
-              return;
-            }
-
-            payload.latitude = coords.latitude;
-            payload.longitude = coords.longitude;
-          } catch (locErr: any) {
-            showError({
-              message:
-                locErr?.message ||
-                "Couldn't verify your location. Enable location and try again.",
-            });
             return;
           }
-        }
-
-        const token =
-          await AsyncStorage.getItem(
-            "token"
+          payload.latitude = coords.latitude;
+          payload.longitude = coords.longitude;
+        } catch (locErr: any) {
+          notify(
+            "Location required",
+            locErr?.message ||
+              "Enable location and try again, or switch to WFH."
           );
-
-        if (!token) return;
-
-        await checkIn(
-          token,
-          payload
-        );
-
-        showSuccess(
-          "Checked in successfully"
-        );
-
-        await loadToday();
-
-      } catch (err) {
-
-        showError(err);
-      }
-    };
-
-  // ================= HANDLE CHECKOUT =================
-  const handleCheckOut =
-    async () => {
-
-      try {
-
-        if (!workNotes.trim()) {
-
-          showError({
-            message:
-              "Please enter work notes"
-          });
-
           return;
         }
-
-        const token =
-          await AsyncStorage.getItem(
-            "token"
-          );
-
-        if (!token) return;
-
-        const payload = {
-
-          date: dateToYMD(new Date()),
-
-          workNotes:
-            workNotes,
-        };
-
-        await checkOut(
-          token,
-          payload
-        );
-
-        showSuccess(
-          "Checked out successfully"
-        );
-
-        await loadToday();
-
-      } catch (err) {
-
-        showError(err);
       }
-    };
+      const token = await AsyncStorage.getItem("token");
+      if (!token) return;
+      await checkIn(token, payload);
+      await load();
+    } catch (err: any) {
+      notify("Check-in failed", err?.message || "");
+    } finally {
+      setActing(false);
+    }
+  };
 
-  useEffect(() => {
+  const onCheckOut = async () => {
+    if (acting) return;
+    const trimmed = workNotes.trim();
+    if (trimmed.length < 5) {
+      notify(
+        "Work notes required",
+        "Briefly describe what you did today (at least 5 characters) before checking out."
+      );
+      return;
+    }
+    try {
+      setActing(true);
+      const token = await AsyncStorage.getItem("token");
+      if (!token) return;
+      const now = new Date();
+      await checkOut(token, {
+        date: dateToYMD(now),
+        checkOut: now.toISOString(),
+        workNotes: trimmed });
+      await load();
+    } catch (err: any) {
+      notify("Check-out failed", err?.message || "");
+    } finally {
+      setActing(false);
+    }
+  };
 
-    loadToday();
+  const pullFromTasks = async () => {
+    if (pulling) return;
+    try {
+      setPulling(true);
+      const token = await AsyncStorage.getItem("token");
+      if (!token) return;
+      const tasks = await getMyTasks(token, {
+        status: "COMPLETED",
+        limit: 30 });
+      const today = new Date();
+      const done = (tasks || []).filter((t) => {
+        if (!t.completedAt) return false;
+        const d = new Date(t.completedAt);
+        return (
+          d.getFullYear() === today.getFullYear() &&
+          d.getMonth() === today.getMonth() &&
+          d.getDate() === today.getDate()
+        );
+      });
+      if (done.length === 0) {
+        notify("Nothing today", "No tasks completed today yet.");
+        return;
+      }
+      const summary = done.map((t) => `- ${t.title}`).join("\n");
+      setWorkNotes((prev) =>
+        prev.trim() ? `${prev}\n${summary}` : summary
+      );
+    } catch (err: any) {
+      notify("Couldn't pull tasks", err?.message || "");
+    } finally {
+      setPulling(false);
+    }
+  };
 
-  }, []);
-
-  // ================= LOADING =================
   if (loading) {
-
     return (
-
-      <View style={styles.loader}>
-
-        <ActivityIndicator
-          size="large"
-          color="#2563eb"
-        />
-
+      <View style={[styles.loader, { backgroundColor: c.bg }]}>
+        <ActivityIndicator size="large" color={c.accent} />
       </View>
     );
   }
 
-  const status =
-    todayAttendance?.status;
+  // Once the user has a checkOut timestamp the day is done — regardless
+  // of which terminal status the backend classified it as (the rules
+  // engine maps to PRESENT/LATE/HALF_DAY at checkout, never "COMPLETED").
+  // Treating any of those as "checked in" caused the page to wrongly
+  // show "Not checked in" + the type chips after a real checkout.
+  const completed = !!todayAtt?.checkOut;
+  const checkedIn = !!todayAtt?.checkIn && !completed;
 
-  const checkedIn =
-    status === "CHECKED_IN";
-
-  const completed =
-    status === "COMPLETED";
+  const typeIconBg: Record<AttType, string> = {
+    OFFICE: c.pastelLavender,
+    WFH: c.pastelMint,
+    LEAVE: c.pastelPeach,
+    HOLIDAY: c.pastelYellow };
+  const typeIconFg: Record<AttType, string> = {
+    OFFICE: "#6d28d9",
+    WFH: "#15803d",
+    LEAVE: "#c2410c",
+    HOLIDAY: "#a16207" };
+  const typeIconName: Record<AttType, keyof typeof Ionicons.glyphMap> = {
+    OFFICE: "business-outline",
+    WFH: "home-outline",
+    LEAVE: "airplane-outline",
+    HOLIDAY: "sunny-outline" };
 
   return (
-
-    <View style={{ flex: 1 }}>
-
-      {/* POPUP */}
-      {popup.visible && (
-
-        <View
-          style={[
-
-            styles.popup,
-
-            popup.type === "success"
-              ? styles.successPopup
-              : styles.errorPopup,
-          ]}
-        >
-
-          <Text style={styles.popupText}>
-            {popup.message}
-          </Text>
-
-        </View>
-
-      )}
-
+    <SafeAreaView style={[styles.safe, { backgroundColor: c.bg }]}>
       <ScrollView
-        style={styles.container}
-        contentContainerStyle={
-          styles.content
+        contentContainerStyle={{
+          padding: 20,
+          paddingBottom: BOTTOM_BAR_RESERVED_HEIGHT + 24 }}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={() => {
+              setRefreshing(true);
+              load();
+            }}
+            tintColor={c.accent}
+            colors={[c.accent]}
+          />
         }
-        showsVerticalScrollIndicator={
-          false
-        }
+        showsVerticalScrollIndicator={false}
       >
-
         {/* HEADER */}
-        <View style={styles.header}>
-
+        <View style={styles.headerRow}>
           <TouchableOpacity
-            style={styles.backBtn}
             onPress={() =>
-              router.back()
+              router.canGoBack() ? router.back() : router.replace("/")
             }
+            style={[
+              styles.iconBtn,
+              { backgroundColor: c.surface, borderColor: c.surfaceBorder },
+            ]}
           >
-
-            <Ionicons
-              name="arrow-back"
-              size={22}
-              color="#fff"
-            />
-
+            <Ionicons name="chevron-back" size={22} color={c.text} />
           </TouchableOpacity>
-
-          <View style={{ flex: 1 }}>
-
-            <Text style={styles.title}>
+          <View style={{ flex: 1, marginLeft: 12 }}>
+            <Text style={[styles.title, { color: c.text }]}>
               Attendance
             </Text>
-
-            <Text style={styles.subtitle}>
-              Track your workday
+            <Text style={[styles.subtitle, { color: c.textMuted }]}>
+              {new Date().toLocaleDateString(undefined, {
+                weekday: "long",
+                month: "long",
+                day: "numeric" })}
             </Text>
-
           </View>
-
-          <TouchableOpacity
-            style={styles.historyBtn}
-            onPress={() =>
-              router.push("/history")
-            }
-          >
-
-            <Ionicons
-              name="time-outline"
-              size={20}
-              color="#fff"
-            />
-
-          </TouchableOpacity>
-
         </View>
 
         {/* STATUS CARD */}
-        <View style={styles.statusCard}>
-
-          <View style={styles.statusRow}>
-
-            <Text style={styles.statusLabel}>
-              Type
-            </Text>
-
-            <Text style={styles.statusValue}>
+        <View
+          style={[
+            styles.statusCard,
+            {
+              backgroundColor: c.surface,
+              borderColor: c.surfaceBorder,
+              shadowColor: c.shadow },
+          ]}
+        >
+          <View
+            style={[
+              styles.statusDot,
               {
-                todayAttendance
-                  ?.attendanceType || "-"
-              }
+                backgroundColor: completed
+                  ? c.successText
+                  : checkedIn
+                  ? c.accent
+                  : c.warningText },
+            ]}
+          />
+          <View style={{ flex: 1 }}>
+            <Text style={[styles.statusLabel, { color: c.textMuted }]}>
+              STATUS
             </Text>
-
+            <Text style={[styles.statusValue, { color: c.text }]}>
+              {completed
+                ? "Day complete"
+                : checkedIn
+                ? "Checked in"
+                : "Not checked in"}
+            </Text>
+            {todayAtt?.checkIn && (
+              <Text style={[styles.statusMeta, { color: c.textMuted }]}>
+                In · {formatTime(todayAtt.checkIn)}
+                {todayAtt?.checkOut
+                  ? `   Out · ${formatTime(todayAtt.checkOut)}`
+                  : ""}
+              </Text>
+            )}
           </View>
-
-          <View style={styles.statusRow}>
-
-            <Text style={styles.statusLabel}>
-              Status
-            </Text>
-
-            <Text style={styles.statusValue}>
-              {
-                todayAttendance
-                  ?.status || "NOT STARTED"
-              }
-            </Text>
-
-          </View>
-
-          <View style={styles.statusRow}>
-
-            <Text style={styles.statusLabel}>
-              Check In
-            </Text>
-
-            <Text style={styles.statusValue}>
-
-              {formatTime(
-                todayAttendance?.checkIn
-              )}
-
-            </Text>
-
-          </View>
-
-          <View style={styles.statusRow}>
-
-            <Text style={styles.statusLabel}>
-              Check Out
-            </Text>
-
-            <Text style={styles.statusValue}>
-
-              {formatTime(
-                todayAttendance?.checkOut
-              )}
-
-            </Text>
-
-          </View>
-
         </View>
 
-        {/* TYPE SELECT */}
-        {!checkedIn &&
-          !completed && (
-
-            <View style={styles.section}>
-
-              <Text style={styles.sectionTitle}>
-                Select Attendance Type
-              </Text>
-
-              <View style={styles.typeGrid}>
-
-                {[
-                  "OFFICE",
-                  "WFH",
-                  "LEAVE",
-                  "HOLIDAY",
-                ].map((item) => (
-
+        {/* TYPE PICKER */}
+        {!completed && (
+          <>
+            <Text style={[styles.section, { color: c.textMuted }]}>
+              TYPE
+            </Text>
+            <View style={styles.typeGrid}>
+              {TYPES.map((t) => {
+                const active = attType === t;
+                return (
                   <TouchableOpacity
-                    key={item}
+                    key={t}
+                    onPress={() => !checkedIn && setAttType(t)}
+                    activeOpacity={0.85}
+                    disabled={checkedIn}
                     style={[
-
-                      styles.typeBtn,
-
-                      attendanceType ===
-                        item &&
-                        styles.activeType,
+                      styles.typeCard,
+                      {
+                        backgroundColor: c.surface,
+                        borderColor: active ? c.accent : c.surfaceBorder,
+                        shadowColor: c.shadow,
+                        opacity: checkedIn && !active ? 0.4 : 1 },
                     ]}
-                    onPress={() =>
-                      setAttendanceType(
-                        item
-                      )
-                    }
                   >
-
-                    <Text
-                      style={
-                        styles.typeText
-                      }
+                    <View
+                      style={[
+                        styles.typeIcon,
+                        { backgroundColor: typeIconBg[t] },
+                      ]}
                     >
-                      {item}
+                      <Ionicons
+                        name={typeIconName[t]}
+                        size={22}
+                        color={typeIconFg[t]}
+                      />
+                    </View>
+                    <Text style={[styles.typeLabel, { color: c.text }]}>
+                      {t}
                     </Text>
-
                   </TouchableOpacity>
-
-                ))}
-
-              </View>
-
+                );
+              })}
             </View>
-
-          )}
-
-        {/* NOTES */}
-        {(checkedIn ||
-          completed) && (
-
-          <View style={styles.card}>
-
-            <View
-              style={{
-                flexDirection: "row",
-                justifyContent: "space-between",
-                alignItems: "center",
-                marginBottom: 10,
-              }}
-            >
-
-              <Text style={styles.label}>
-                Work Notes
-              </Text>
-
-              {!completed && (
-                <TouchableOpacity
-                  onPress={pullFromTasks}
-                  style={{
-                    flexDirection: "row",
-                    alignItems: "center",
-                    backgroundColor: "#1e293b",
-                    paddingHorizontal: 10,
-                    paddingVertical: 6,
-                    borderRadius: 8,
-                    gap: 4,
-                  }}
-                >
-                  <Ionicons
-                    name="sparkles-outline"
-                    size={14}
-                    color="#60a5fa"
-                  />
-                  <Text
-                    style={{
-                      color: "#60a5fa",
-                      fontSize: 12,
-                      fontWeight: "700",
-                    }}
-                  >
-                    Pull from tasks
-                  </Text>
-                </TouchableOpacity>
-              )}
-
-            </View>
-
-            <TextInput
-              style={styles.input}
-              placeholder="Enter work notes"
-              placeholderTextColor="#64748b"
-              value={workNotes}
-              onChangeText={
-                setWorkNotes
-              }
-              multiline
-              editable={!completed}
-            />
-
-          </View>
-
+          </>
         )}
 
-        {/* CHECK IN */}
-        {!checkedIn &&
-          !completed && (
-
-            <TouchableOpacity
-              style={
-                styles.checkInBtn
-              }
-              onPress={
-                handleCheckIn
-              }
-            >
-
-              <Ionicons
-                name="log-in-outline"
-                size={22}
-                color="#fff"
-              />
-
-              <Text
-                style={
-                  styles.actionText
-                }
-              >
-                Check In
-              </Text>
-
-            </TouchableOpacity>
-
-          )}
-
-        {/* CHECK OUT */}
+        {/* WORK NOTES (only when checked in and need to check out) */}
         {checkedIn && (
-
-          <TouchableOpacity
-            style={
-              styles.checkOutBtn
-            }
-            onPress={
-              handleCheckOut
-            }
-          >
-
-            <Ionicons
-              name="log-out-outline"
-              size={22}
-              color="#fff"
+          <>
+            <View style={styles.notesHeader}>
+              <Text style={[styles.section, { color: c.textMuted }]}>
+                WORK NOTES
+              </Text>
+              <TouchableOpacity
+                onPress={pullFromTasks}
+                disabled={pulling}
+                activeOpacity={0.7}
+              >
+                <Text
+                  style={{
+                    color: c.accent,
+                    fontSize: 12,
+                    fontWeight: "800" }}
+                >
+                  {pulling ? "…" : "Pull from tasks"}
+                </Text>
+              </TouchableOpacity>
+            </View>
+            <TextInput
+              style={[
+                styles.textArea,
+                {
+                  backgroundColor: c.surface,
+                  color: c.text,
+                  borderColor: c.surfaceBorder },
+              ]}
+              value={workNotes}
+              onChangeText={setWorkNotes}
+              placeholder="What did you work on today?"
+              placeholderTextColor={c.textFaint}
+              multiline
+              textAlignVertical="top"
             />
-
-            <Text
-              style={
-                styles.actionText
-              }
-            >
-              Check Out
-            </Text>
-
-          </TouchableOpacity>
-
+          </>
         )}
 
-        {/* COMPLETED */}
+        {/* COMPLETED CARD */}
         {completed && (
-
           <View
-            style={
-              styles.completedCard
-            }
+            style={[
+              styles.completedCard,
+              {
+                backgroundColor: c.surface,
+                borderColor: c.surfaceBorder,
+                shadowColor: c.shadow },
+            ]}
           >
-
-            <Ionicons
-              name="checkmark-circle"
-              size={32}
-              color="#22c55e"
-            />
-
-            <Text
-              style={
-                styles.completedText
-              }
+            <View
+              style={[
+                styles.completedIcon,
+                { backgroundColor: c.pastelMint },
+              ]}
             >
-              Attendance Completed
+              <Ionicons
+                name="checkmark-circle"
+                size={32}
+                color="#15803d"
+              />
+            </View>
+            <Text style={[styles.completedTitle, { color: c.text }]}>
+              Attendance recorded
             </Text>
-
+            <Text style={[styles.completedSub, { color: c.textMuted }]}>
+              {todayAtt?.hoursWorked
+                ? `${todayAtt.hoursWorked.toFixed(2)}h worked`
+                : "Day complete"}
+            </Text>
+            {!!todayAtt?.workNotes && (
+              <Text
+                style={[styles.completedNotes, { color: c.textMuted }]}
+              >
+                &quot;{todayAtt.workNotes}&quot;
+              </Text>
+            )}
           </View>
-
         )}
 
+        {/* CTA */}
+        {!completed && (
+          <TouchableOpacity
+            onPress={checkedIn ? onCheckOut : onCheckIn}
+            disabled={acting}
+            activeOpacity={0.85}
+            style={[
+              styles.cta,
+              {
+                backgroundColor: checkedIn ? c.dangerText : c.accent,
+                shadowColor: c.shadow,
+                opacity: acting ? 0.7 : 1 },
+            ]}
+          >
+            {acting ? (
+              <ActivityIndicator color="#fff" />
+            ) : (
+              <>
+                <Ionicons
+                  name={
+                    checkedIn ? "log-out-outline" : "log-in-outline"
+                  }
+                  size={20}
+                  color="#fff"
+                />
+                <Text style={styles.ctaText}>
+                  {checkedIn ? "Check out" : "Check in"}
+                </Text>
+              </>
+            )}
+          </TouchableOpacity>
+        )}
+
+        {/* QUICK LINK to history */}
+        <TouchableOpacity
+          onPress={() => router.push("/history")}
+          activeOpacity={0.85}
+          style={[
+            styles.historyLink,
+            {
+              backgroundColor: c.surface,
+              borderColor: c.surfaceBorder,
+              shadowColor: c.shadow },
+          ]}
+        >
+          <View style={{ flex: 1 }}>
+            <Text style={[styles.historyTitle, { color: c.text }]}>
+              Attendance history
+            </Text>
+            <Text style={[styles.historySub, { color: c.textMuted }]}>
+              See past months, request corrections
+            </Text>
+          </View>
+          <Ionicons
+            name="chevron-forward"
+            size={20}
+            color={c.textMuted}
+          />
+        </TouchableOpacity>
       </ScrollView>
 
-    </View>
+      <BottomTabBar user={me} />
+    </SafeAreaView>
   );
 }
 
-const styles = StyleSheet.create({
+const formatTime = (iso?: string | null): string => {
+  if (!iso) return "—";
+  try {
+    return new Date(iso).toLocaleTimeString([], {
+      hour: "numeric",
+      minute: "2-digit",
+      hour12: true });
+  } catch {
+    return "—";
+  }
+};
 
-  container: {
-    flex: 1,
-    backgroundColor: "#0b1220",
-  },
-
-  content: {
-    padding: 20,
-    paddingBottom: 50,
-  },
-
-  loader: {
-    flex: 1,
-    backgroundColor: "#0b1220",
-    justifyContent: "center",
-    alignItems: "center",
-  },
-
-  popup: {
-    position: "absolute",
-    top: 60,
-    left: 20,
-    right: 20,
-    padding: 16,
-    borderRadius: 14,
-    zIndex: 999,
-  },
-
-  successPopup: {
-    backgroundColor: "#16a34a",
-  },
-
-  errorPopup: {
-    backgroundColor: "#dc2626",
-  },
-
-  popupText: {
-    color: "#fff",
-    fontWeight: "700",
-    textAlign: "center",
-  },
-
-  header: {
-    marginTop: 60,
-    marginBottom: 24,
+const makeStyles = (c: any) => StyleSheet.create({
+  safe: { flex: 1 },
+  loader: { flex: 1, alignItems: "center", justifyContent: "center" },
+  headerRow: {
     flexDirection: "row",
     alignItems: "center",
-  },
-
-  backBtn: {
-    width: 46,
-    height: 46,
+    marginBottom: 18,
+    gap: 8 },
+  iconBtn: {
+    width: 42,
+    height: 42,
     borderRadius: 14,
-    backgroundColor: "#111827",
-    justifyContent: "center",
-    alignItems: "center",
-    marginRight: 14,
     borderWidth: 1,
-    borderColor: "#1f2937",
-  },
-
-  title: {
-    color: "#fff",
-    fontSize: 28,
-    fontWeight: "800",
-  },
-
-  subtitle: {
-    color: "#94a3b8",
-    marginTop: 4,
-  },
-
-  historyBtn: {
-    width: 48,
-    height: 48,
-    borderRadius: 14,
-    backgroundColor: "#2563eb",
-    justifyContent: "center",
     alignItems: "center",
-  },
+    justifyContent: "center" },
+  title: { fontSize: 26, fontWeight: "800" },
+  subtitle: { fontSize: 13, marginTop: 2 },
 
   statusCard: {
-    backgroundColor: "#111827",
-    borderRadius: 18,
-    padding: 20,
-    marginBottom: 24,
-    borderWidth: 1,
-    borderColor: "#1f2937",
-  },
-
-  statusRow: {
     flexDirection: "row",
-    justifyContent: "space-between",
-    marginBottom: 14,
-  },
-
+    alignItems: "center",
+    gap: 14,
+    padding: 18,
+    borderRadius: 20,
+    borderWidth: 1,
+    shadowOpacity: 1,
+    shadowRadius: 16,
+    shadowOffset: { width: 0, height: 6 },
+    elevation: 3 },
+  statusDot: {
+    width: 14,
+    height: 14,
+    borderRadius: 7 },
   statusLabel: {
-    color: "#94a3b8",
-    fontWeight: "600",
-  },
-
-  statusValue: {
-    color: "#fff",
-    fontWeight: "700",
-  },
+    fontSize: 11,
+    fontWeight: "800",
+    letterSpacing: 1.4,
+    marginBottom: 4 },
+  statusValue: { fontSize: 20, fontWeight: "800" },
+  statusMeta: { fontSize: 12, marginTop: 6 },
 
   section: {
-    marginBottom: 24,
-  },
-
-  sectionTitle: {
-    color: "#fff",
-    fontSize: 18,
-    fontWeight: "700",
-    marginBottom: 14,
-  },
-
-  typeGrid: {
-    flexDirection: "row",
-    flexWrap: "wrap",
-    justifyContent: "space-between",
-  },
-
-  typeBtn: {
-    width: "48%",
-    backgroundColor: "#111827",
-    padding: 16,
-    borderRadius: 14,
-    alignItems: "center",
-    borderWidth: 1,
-    borderColor: "#1f2937",
-    marginBottom: 12,
-  },
-
-  activeType: {
-    backgroundColor: "#2563eb",
-    borderColor: "#2563eb",
-  },
-
-  typeText: {
-    color: "#fff",
-    fontWeight: "700",
-  },
-
-  card: {
-    backgroundColor: "#111827",
-    borderRadius: 18,
-    padding: 18,
-    marginBottom: 24,
-    borderWidth: 1,
-    borderColor: "#1f2937",
-  },
-
-  label: {
-    color: "#94a3b8",
+    fontSize: 11,
+    fontWeight: "800",
+    letterSpacing: 1.4,
+    marginTop: 22,
     marginBottom: 10,
-    fontSize: 14,
-    fontWeight: "600",
-  },
+    marginLeft: 4 },
 
-  input: {
-    backgroundColor: "#0f172a",
-    borderRadius: 12,
+  typeGrid: { flexDirection: "row", flexWrap: "wrap", gap: 10 },
+  typeCard: {
+    width: "47%",
+    flexGrow: 1,
+    padding: 16,
+    borderRadius: 18,
+    borderWidth: 2,
+    alignItems: "center",
+    shadowOpacity: 1,
+    shadowRadius: 10,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 2 },
+  typeIcon: {
+    width: 48,
+    height: 48,
+    borderRadius: 16,
+    alignItems: "center",
+    justifyContent: "center",
+    marginBottom: 10 },
+  typeLabel: { fontSize: 13, fontWeight: "800", letterSpacing: 0.5 },
+
+  notesHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    marginRight: 4 },
+  textArea: {
+    minHeight: 110,
     padding: 14,
-    color: "#fff",
-    minHeight: 120,
-    textAlignVertical: "top",
+    borderRadius: 16,
     borderWidth: 1,
-    borderColor: "#1e293b",
-  },
+    fontSize: 14,
+    lineHeight: 20 },
 
-  checkInBtn: {
-    backgroundColor: "#16a34a",
-    padding: 18,
-    borderRadius: 16,
-    justifyContent: "center",
-    alignItems: "center",
+  cta: {
     flexDirection: "row",
-  },
-
-  checkOutBtn: {
-    backgroundColor: "#dc2626",
-    padding: 18,
-    borderRadius: 16,
-    justifyContent: "center",
     alignItems: "center",
-    flexDirection: "row",
-  },
-
-  actionText: {
-    color: "#fff",
-    fontWeight: "700",
-    marginLeft: 8,
+    justifyContent: "center",
+    gap: 8,
+    paddingVertical: 18,
+    borderRadius: 18,
+    marginTop: 22,
+    shadowOpacity: 0.25,
+    shadowRadius: 16,
+    shadowOffset: { width: 0, height: 8 },
+    elevation: 5 },
+  ctaText: {
+    color: c.text,
     fontSize: 16,
-  },
+    fontWeight: "800",
+    letterSpacing: 0.5 },
 
   completedCard: {
-    backgroundColor: "#111827",
-    borderRadius: 18,
-    padding: 30,
     alignItems: "center",
+    padding: 28,
+    borderRadius: 20,
     borderWidth: 1,
-    borderColor: "#22c55e",
-  },
+    marginTop: 16,
+    shadowOpacity: 1,
+    shadowRadius: 16,
+    shadowOffset: { width: 0, height: 6 },
+    elevation: 3 },
+  completedIcon: {
+    width: 64,
+    height: 64,
+    borderRadius: 32,
+    alignItems: "center",
+    justifyContent: "center",
+    marginBottom: 14 },
+  completedTitle: { fontSize: 18, fontWeight: "800" },
+  completedSub: { fontSize: 13, marginTop: 4 },
+  completedNotes: {
+    fontSize: 13,
+    marginTop: 14,
+    fontStyle: "italic",
+    textAlign: "center",
+    lineHeight: 19 },
 
-  completedText: {
-    color: "#22c55e",
-    fontSize: 18,
-    fontWeight: "700",
-    marginTop: 12,
-  },
-
-});
+  historyLink: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+    padding: 14,
+    borderRadius: 18,
+    borderWidth: 1,
+    marginTop: 16,
+    shadowOpacity: 1,
+    shadowRadius: 12,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 2 },
+  historyTitle: { fontSize: 15, fontWeight: "800" },
+  historySub: { fontSize: 12, marginTop: 2 } });

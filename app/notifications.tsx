@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useCallback } from "react";
+﻿import React, { useEffect, useMemo, useState, useCallback } from "react";
 
 import {
   View,
@@ -7,10 +7,9 @@ import {
   FlatList,
   TouchableOpacity,
   ActivityIndicator,
-  SafeAreaView,
   RefreshControl,
-  Alert,
-} from "react-native";
+  Alert } from "react-native";
+import { SafeAreaView } from "react-native-safe-area-context";
 
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useRouter } from "expo-router";
@@ -19,9 +18,10 @@ import { Ionicons } from "@expo/vector-icons";
 import {
   listNotifications,
   markRead,
-  markAllRead,
-} from "../src/services/inbox";
+  markAllRead } from "../src/services/inbox";
+import { openNotificationStream } from "../src/services/sse";
 import { NotificationItem } from "../src/types";
+import { useTheme } from "../src/theme/ThemeProvider";
 
 const iconForType = (
   type: string
@@ -68,6 +68,9 @@ const formatRelative = (iso: string): string => {
 
 export default function NotificationsScreen() {
   const router = useRouter();
+  const { theme } = useTheme();
+  const c = theme.colors;
+  const styles = useMemo(() => makeStyles(c), [c]);
   const [items, setItems] = useState<NotificationItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -83,7 +86,10 @@ export default function NotificationsScreen() {
       const data = await listNotifications(token, { limit: 100 });
       setItems(data || []);
     } catch (err: any) {
-      console.log("notifications load error", err);
+      Alert.alert(
+        "Couldn't load notifications",
+        err?.message || "Pull down to retry."
+      );
     } finally {
       setLoading(false);
       setRefreshing(false);
@@ -92,6 +98,40 @@ export default function NotificationsScreen() {
 
   useEffect(() => {
     load();
+  }, [load]);
+
+  // Re-render relative timestamps every minute so "just now" / "3m ago"
+  // don't get stuck while the screen is open.
+  const [, setTick] = useState(0);
+  useEffect(() => {
+    const id = setInterval(() => setTick((t) => t + 1), 60_000);
+    return () => clearInterval(id);
+  }, []);
+
+  // Live updates via SSE. New notifications get prepended (dedup by id);
+  // when the stream falls back to polling we just reload.
+  useEffect(() => {
+    let cleanup: (() => void) | null = null;
+    (async () => {
+      const token = await AsyncStorage.getItem("token");
+      if (!token) return;
+      cleanup = openNotificationStream(token, {
+        onNotification: (payload) => {
+          if (payload && payload.poll) {
+            load();
+            return;
+          }
+          if (!payload || !payload.id) return;
+          const incoming = payload as NotificationItem;
+          setItems((prev) => {
+            if (prev.some((x) => x.id === incoming.id)) return prev;
+            return [incoming, ...prev];
+          });
+        } });
+    })();
+    return () => {
+      if (cleanup) cleanup();
+    };
   }, [load]);
 
   const onRefresh = () => {
@@ -147,7 +187,7 @@ export default function NotificationsScreen() {
   if (loading) {
     return (
       <View style={styles.loader}>
-        <ActivityIndicator size="large" color="#3b82f6" />
+        <ActivityIndicator size="large" color={c.accent} />
       </View>
     );
   }
@@ -155,8 +195,8 @@ export default function NotificationsScreen() {
   return (
     <SafeAreaView style={styles.safe}>
       <View style={styles.header}>
-        <TouchableOpacity onPress={() => router.back()}>
-          <Ionicons name="arrow-back" size={24} color="#fff" />
+        <TouchableOpacity onPress={() => (router.canGoBack() ? router.back() : router.replace("/"))}>
+          <Ionicons name="arrow-back" size={24} color={c.text} />
         </TouchableOpacity>
         <Text style={styles.title}>Notifications</Text>
         {unreadCount > 0 ? (
@@ -186,8 +226,8 @@ export default function NotificationsScreen() {
           <RefreshControl
             refreshing={refreshing}
             onRefresh={onRefresh}
-            tintColor="#3b82f6"
-            colors={["#3b82f6"]}
+            tintColor={c.accent}
+            colors={[c.accent]}
           />
         }
         ListEmptyComponent={
@@ -195,7 +235,7 @@ export default function NotificationsScreen() {
             <Ionicons
               name="notifications-off-outline"
               size={42}
-              color="#475569"
+              color={c.textFaint}
             />
             <Text style={styles.emptyText}>No notifications yet</Text>
           </View>
@@ -240,31 +280,28 @@ export default function NotificationsScreen() {
   );
 }
 
-const styles = StyleSheet.create({
-  safe: { flex: 1, backgroundColor: "#0b1220" },
+const makeStyles = (c: any) => StyleSheet.create({
+  safe: { flex: 1, backgroundColor: c.bg },
   loader: {
     flex: 1,
-    backgroundColor: "#0b1220",
+    backgroundColor: c.bg,
     justifyContent: "center",
-    alignItems: "center",
-  },
+    alignItems: "center" },
   header: {
     flexDirection: "row",
     alignItems: "center",
     paddingHorizontal: 16,
     paddingVertical: 14,
     borderBottomWidth: 1,
-    borderBottomColor: "#1f2937",
-    gap: 12,
-  },
-  title: { color: "#fff", fontSize: 18, fontWeight: "800", flex: 1 },
+    borderBottomColor: c.surfaceBorder,
+    gap: 12 },
+  title: { color: c.text, fontSize: 18, fontWeight: "800", flex: 1 },
   markAll: {
     paddingHorizontal: 10,
     paddingVertical: 6,
     borderRadius: 8,
-    backgroundColor: "#1e293b",
-  },
-  markAllText: { color: "#fff", fontSize: 11, fontWeight: "700" },
+    backgroundColor: c.surfaceMuted },
+  markAllText: { color: c.text, fontSize: 11, fontWeight: "700" },
   row: {
     flexDirection: "row",
     alignItems: "center",
@@ -272,26 +309,23 @@ const styles = StyleSheet.create({
     paddingVertical: 12,
     gap: 12,
     borderBottomWidth: 1,
-    borderBottomColor: "#111827",
-  },
-  rowUnread: { backgroundColor: "#0f172a" },
+    borderBottomColor: c.surfaceBorder },
+  rowUnread: { backgroundColor: c.accentSoft },
   iconBox: {
     width: 36,
     height: 36,
     borderRadius: 10,
     alignItems: "center",
-    justifyContent: "center",
-  },
-  rowTitle: { color: "#fff", fontSize: 14, fontWeight: "700" },
-  rowBody: { color: "#94a3b8", fontSize: 12, marginTop: 2 },
-  rowTime: { color: "#64748b", fontSize: 10, marginTop: 4 },
+    justifyContent: "center" },
+  rowTitle: { color: c.text, fontSize: 14, fontWeight: "700" },
+  rowBody: { color: c.textMuted, fontSize: 12, marginTop: 2 },
+  rowTime: { color: c.textMuted, fontSize: 10, marginTop: 4 },
   dot: {
     width: 8,
     height: 8,
     borderRadius: 4,
-    backgroundColor: "#3b82f6",
-  },
+    backgroundColor: c.accent },
   emptyWrap: { flex: 1, justifyContent: "center" },
   empty: { alignItems: "center", gap: 10 },
-  emptyText: { color: "#475569", fontSize: 14 },
-});
+  emptyText: { color: c.textMuted, fontSize: 14 } });
+

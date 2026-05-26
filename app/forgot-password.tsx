@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+﻿import React, { useState, useMemo} from "react";
 
 import {
   View,
@@ -6,22 +6,28 @@ import {
   TextInput,
   TouchableOpacity,
   StyleSheet,
-  SafeAreaView,
   ActivityIndicator,
   KeyboardAvoidingView,
   Platform,
-  ScrollView,
-} from "react-native";
+  ScrollView } from "react-native";
+import { SafeAreaView } from "react-native-safe-area-context";
 
 import { useRouter } from "expo-router";
 
 import { Ionicons } from "@expo/vector-icons";
 
 import { requestPasswordReset } from "../src/services/api";
-
+
+import { useTheme } from "../src/theme/ThemeProvider";
 export default function ForgotPassword() {
 
   const router = useRouter();
+
+  const { theme } = useTheme();
+
+  const c = theme.colors;
+
+  const s = useMemo(() => makeStyles(c), [c]);
 
   const [email, setEmail] = useState("");
   const [submitting, setSubmitting] = useState(false);
@@ -62,12 +68,12 @@ export default function ForgotPassword() {
 
           <TouchableOpacity
             style={s.backBtn}
-            onPress={() => router.back()}
+            onPress={() => (router.canGoBack() ? router.back() : router.replace("/"))}
           >
             <Ionicons
               name="chevron-back"
               size={22}
-              color="#fff"
+              color={c.text}
             />
           </TouchableOpacity>
 
@@ -75,7 +81,7 @@ export default function ForgotPassword() {
             <Ionicons
               name="lock-closed-outline"
               size={48}
-              color="#2563eb"
+              color={c.accent}
             />
           </View>
 
@@ -97,7 +103,7 @@ export default function ForgotPassword() {
                   setError("");
                 }}
                 placeholder="you@company.com"
-                placeholderTextColor="#64748b"
+                placeholderTextColor={c.textFaint}
                 autoCapitalize="none"
                 keyboardType="email-address"
                 editable={!submitting}
@@ -154,20 +160,19 @@ export default function ForgotPassword() {
   );
 }
 
-const s = StyleSheet.create({
+const makeStyles = (c: any) => StyleSheet.create({
   safe: { flex: 1, backgroundColor: "#020617" },
   content: { padding: 24, paddingTop: 60, flexGrow: 1 },
   backBtn: {
     width: 42,
     height: 42,
     borderRadius: 12,
-    backgroundColor: "#111827",
+    backgroundColor: c.surface,
     justifyContent: "center",
     alignItems: "center",
     borderWidth: 1,
-    borderColor: "#1f2937",
-    marginBottom: 30,
-  },
+    borderColor: c.surfaceBorder,
+    marginBottom: 30 },
   iconWrap: {
     width: 80,
     height: 80,
@@ -175,63 +180,53 @@ const s = StyleSheet.create({
     backgroundColor: "rgba(37,99,235,0.12)",
     justifyContent: "center",
     alignItems: "center",
-    marginBottom: 18,
-  },
+    marginBottom: 18 },
   title: {
-    color: "#fff",
+    color: c.text,
     fontSize: 26,
     fontWeight: "800",
-    marginBottom: 10,
-  },
+    marginBottom: 10 },
   subtitle: {
-    color: "#94a3b8",
+    color: c.textMuted,
     fontSize: 14,
     lineHeight: 20,
-    marginBottom: 26,
-  },
+    marginBottom: 26 },
   label: {
-    color: "#cbd5e1",
+    color: c.text,
     fontSize: 13,
     fontWeight: "600",
     marginBottom: 8,
-    marginTop: 6,
-  },
+    marginTop: 6 },
   input: {
-    backgroundColor: "#0f172a",
-    color: "#fff",
+    backgroundColor: c.surfaceMuted,
+    color: c.text,
     paddingVertical: 14,
     paddingHorizontal: 16,
     borderRadius: 14,
     borderWidth: 1,
-    borderColor: "#1e293b",
-    fontSize: 15,
-  },
+    borderColor: c.surfaceBorder,
+    fontSize: 15 },
   err: {
     color: "#fca5a5",
     fontSize: 13,
-    marginTop: 8,
-  },
+    marginTop: 8 },
   primary: {
-    backgroundColor: "#2563eb",
+    backgroundColor: c.accent,
     paddingVertical: 15,
     borderRadius: 14,
     alignItems: "center",
-    marginTop: 24,
-  },
+    marginTop: 24 },
   primaryText: {
     color: "#fff",
     fontSize: 15,
-    fontWeight: "700",
-  },
+    fontWeight: "700" },
   secondary: {
     paddingVertical: 14,
     borderRadius: 14,
     alignItems: "center",
-    marginTop: 12,
-  },
+    marginTop: 12 },
   secondaryText: {
-    color: "#94a3b8",
+    color: c.textMuted,
     fontSize: 14,
-    fontWeight: "600",
-  },
-});
+    fontWeight: "600" } });
+

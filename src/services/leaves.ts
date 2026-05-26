@@ -73,6 +73,39 @@ export const hrDecideLeaveRequest = (
     { method: "POST", body: data, token }
   );
 
+// ===== HR — per-user balance allocation =====
+export interface LeaveBalanceUpsertPayload {
+  leaveTypeCode: string;
+  allocated: number;
+  year?: number;
+  used?: number;
+  pending?: number;
+  note?: string;
+}
+
+export const hrGetUserLeaveBalance = (
+  token: string,
+  userId: string,
+  year?: number
+) => {
+  const qs = year ? `?year=${year}` : "";
+  return apiCall<LeaveBalance[]>(
+    `/hr/users/${userId}/leave-balance${qs}`,
+    { token }
+  );
+};
+
+export const hrSetUserLeaveBalance = (
+  token: string,
+  userId: string,
+  data: LeaveBalanceUpsertPayload
+) =>
+  apiCall<LeaveBalance>(`/hr/users/${userId}/leave-balance`, {
+    method: "PUT",
+    body: data,
+    token,
+  });
+
 // ===== USER =====
 export const listLeaveTypes = (token: string) =>
   apiCall<LeaveType[]>("/leaves/types", { token });

@@ -10,7 +10,11 @@ const PUSH_TOKEN_KEY = "expo_push_token";
 if (!isWeb) {
   Notifications.setNotificationHandler({
     handleNotification: async () => ({
+      // shouldShowAlert was deprecated in SDK 51 in favour of these two
+      // explicit flags. Keep it set as well so older SDKs still respect it.
       shouldShowAlert: true,
+      shouldShowBanner: true,
+      shouldShowList: true,
       shouldPlaySound: true,
       shouldSetBadge: false,
     }),

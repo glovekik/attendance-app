@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useCallback } from "react";
+﻿import React, { useEffect, useState, useCallback, useMemo} from "react";
 
 import {
   View,
@@ -7,15 +7,14 @@ import {
   FlatList,
   TouchableOpacity,
   ActivityIndicator,
-  SafeAreaView,
   RefreshControl,
   Modal,
   TextInput,
   Alert,
   ScrollView,
   KeyboardAvoidingView,
-  Platform,
-} from "react-native";
+  Platform } from "react-native";
+import { SafeAreaView } from "react-native-safe-area-context";
 
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useRouter } from "expo-router";
@@ -25,27 +24,17 @@ import { FilePickButton } from "../src/components/FilePickButton";
 import {
   listCandidates,
   createCandidate,
-  moveCandidate,
-} from "../src/services/candidates";
+  moveCandidate } from "../src/services/candidates";
 import { listJobOpenings } from "../src/services/jobOpenings";
+import { useTheme } from "../src/theme/ThemeProvider";
+import { candidateStageColor } from "../src/theme/statusColors";
 import {
   CANDIDATE_SOURCES,
   CANDIDATE_STAGES,
   Candidate,
   CandidateSource,
   CandidateStage,
-  JobOpening,
-} from "../src/types";
-
-const STAGE_COLOR: Record<CandidateStage, string> = {
-  APPLIED: "#3b82f6",
-  SCREENING: "#f59e0b",
-  INTERVIEW: "#8b5cf6",
-  OFFER: "#ec4899",
-  HIRED: "#16a34a",
-  REJECTED: "#dc2626",
-  WITHDRAWN: "#64748b",
-};
+  JobOpening } from "../src/types";
 
 const STAGE_TABS: { key: "ALL" | CandidateStage; label: string }[] = [
   { key: "ALL", label: "All" },
@@ -59,6 +48,9 @@ const STAGE_TABS: { key: "ALL" | CandidateStage; label: string }[] = [
 
 export default function HrCandidates() {
   const router = useRouter();
+  const { theme } = useTheme();
+  const c = theme.colors;
+  const styles = useMemo(() => makeStyles(c), [c]);
   const [items, setItems] = useState<Candidate[]>([]);
   const [openings, setOpenings] = useState<JobOpening[]>([]);
   const [tab, setTab] = useState<"ALL" | CandidateStage>("ALL");
@@ -97,14 +89,16 @@ export default function HrCandidates() {
       }
       const [cands, jobs] = await Promise.all([
         listCandidates(token, {
-          stage: tab === "ALL" ? undefined : tab,
-        }),
+          stage: tab === "ALL" ? undefined : tab }),
         listJobOpenings(token).catch(() => [] as JobOpening[]),
       ]);
       setItems(cands || []);
       setOpenings(jobs || []);
     } catch (err: any) {
-      console.log("candidates load error", err);
+      Alert.alert(
+        "Couldn't load candidates",
+        err?.message || "Pull down to retry."
+      );
     } finally {
       setLoading(false);
       setRefreshing(false);
@@ -158,8 +152,7 @@ export default function HrCandidates() {
           ? parseFloat(cExpectedSal)
           : undefined,
         noticePeriodDays: cNotice ? parseInt(cNotice, 10) : undefined,
-        notes: cNotes.trim() || undefined,
-      });
+        notes: cNotes.trim() || undefined });
       setShowForm(false);
       resetForm();
       load();
@@ -203,12 +196,12 @@ export default function HrCandidates() {
   return (
     <SafeAreaView style={styles.safe}>
       <View style={styles.header}>
-        <TouchableOpacity onPress={() => router.back()}>
-          <Ionicons name="arrow-back" size={24} color="#fff" />
+        <TouchableOpacity onPress={() => (router.canGoBack() ? router.back() : router.replace("/"))}>
+          <Ionicons name="arrow-back" size={24} color={c.text} />
         </TouchableOpacity>
         <Text style={styles.title}>Candidates</Text>
         <TouchableOpacity onPress={() => setShowForm(true)}>
-          <Ionicons name="add-circle" size={28} color="#3b82f6" />
+          <Ionicons name="add-circle" size={28} color={c.accent} />
         </TouchableOpacity>
       </View>
 
@@ -218,40 +211,43 @@ export default function HrCandidates() {
         contentContainerStyle={{
           paddingHorizontal: 12,
           paddingVertical: 8,
-          gap: 6,
-        }}
+          gap: 6 }}
       >
-        {STAGE_TABS.map((t) => (
-          <TouchableOpacity
-            key={t.key}
-            style={[
-              styles.tab,
-              tab === t.key && styles.tabActive,
-              tab === t.key &&
-                t.key !== "ALL" && {
-                  backgroundColor: STAGE_COLOR[t.key as CandidateStage],
-                },
-            ]}
-            onPress={() => {
-              setTab(t.key);
-              setLoading(true);
-            }}
-          >
-            <Text
+        {STAGE_TABS.map((t) => {
+          const sc =
+            t.key !== "ALL"
+              ? candidateStageColor(t.key as CandidateStage, c)
+              : null;
+          return (
+            <TouchableOpacity
+              key={t.key}
               style={[
-                styles.tabText,
-                tab === t.key && styles.tabTextActive,
+                styles.tab,
+                tab === t.key && styles.tabActive,
+                tab === t.key && sc && { backgroundColor: sc.bg },
               ]}
+              onPress={() => {
+                setTab(t.key);
+                setLoading(true);
+              }}
             >
-              {t.label}
-            </Text>
-          </TouchableOpacity>
-        ))}
+              <Text
+                style={[
+                  styles.tabText,
+                  tab === t.key && styles.tabTextActive,
+                  tab === t.key && sc && { color: sc.fg },
+                ]}
+              >
+                {t.label}
+              </Text>
+            </TouchableOpacity>
+          );
+        })}
       </ScrollView>
 
       {loading ? (
         <View style={styles.loader}>
-          <ActivityIndicator size="large" color="#3b82f6" />
+          <ActivityIndicator size="large" color={c.accent} />
         </View>
       ) : (
         <FlatList
@@ -264,8 +260,8 @@ export default function HrCandidates() {
             <RefreshControl
               refreshing={refreshing}
               onRefresh={onRefresh}
-              tintColor="#3b82f6"
-              colors={["#3b82f6"]}
+              tintColor={c.accent}
+              colors={[c.accent]}
             />
           }
           ListEmptyComponent={
@@ -273,7 +269,7 @@ export default function HrCandidates() {
               <Ionicons
                 name="people-outline"
                 size={42}
-                color="#475569"
+                color={c.textFaint}
               />
               <Text style={styles.emptyText}>No candidates</Text>
             </View>
@@ -281,6 +277,7 @@ export default function HrCandidates() {
           renderItem={({ item }) => {
             const job =
               openings.find((j) => j.id === item.jobOpeningId)?.title;
+            const sc = candidateStageColor(item.stage, c);
             return (
               <View style={styles.card}>
                 <View style={styles.cardTop}>
@@ -299,10 +296,10 @@ export default function HrCandidates() {
                   <View
                     style={[
                       styles.stagePill,
-                      { backgroundColor: STAGE_COLOR[item.stage] },
+                      { backgroundColor: sc.bg },
                     ]}
                   >
-                    <Text style={styles.stageText}>{item.stage}</Text>
+                    <Text style={[styles.stageText, { color: sc.fg }]}>{item.stage}</Text>
                   </View>
                 </View>
                 <View style={styles.cardActions}>
@@ -344,7 +341,7 @@ export default function HrCandidates() {
             <View style={styles.modalHeader}>
               <Text style={styles.modalTitle}>New candidate</Text>
               <TouchableOpacity onPress={() => setShowForm(false)}>
-                <Ionicons name="close" size={24} color="#94a3b8" />
+                <Ionicons name="close" size={24} color={c.textMuted} />
               </TouchableOpacity>
             </View>
             <ScrollView style={{ maxHeight: 520 }}>
@@ -354,7 +351,7 @@ export default function HrCandidates() {
                 value={cName}
                 onChangeText={setCName}
                 placeholder="..."
-                placeholderTextColor="#475569"
+                placeholderTextColor={c.textFaint}
               />
               <Text style={styles.label}>Email *</Text>
               <TextInput
@@ -362,7 +359,7 @@ export default function HrCandidates() {
                 value={cEmail}
                 onChangeText={setCEmail}
                 placeholder="..."
-                placeholderTextColor="#475569"
+                placeholderTextColor={c.textFaint}
                 keyboardType="email-address"
                 autoCapitalize="none"
               />
@@ -372,7 +369,7 @@ export default function HrCandidates() {
                 value={cPhone}
                 onChangeText={setCPhone}
                 placeholder="+91..."
-                placeholderTextColor="#475569"
+                placeholderTextColor={c.textFaint}
                 keyboardType="phone-pad"
               />
 
@@ -433,8 +430,7 @@ export default function HrCandidates() {
                 style={{
                   flexDirection: "row",
                   gap: 8,
-                  alignItems: "center",
-                }}
+                  alignItems: "center" }}
               >
                 <FilePickButton
                   label="Pick resume"
@@ -451,7 +447,7 @@ export default function HrCandidates() {
                 value={cResume}
                 onChangeText={setCResume}
                 placeholder="or paste URL"
-                placeholderTextColor="#475569"
+                placeholderTextColor={c.textFaint}
                 autoCapitalize="none"
               />
 
@@ -460,7 +456,7 @@ export default function HrCandidates() {
                 style={styles.input}
                 value={cCurrentCo}
                 onChangeText={setCCurrentCo}
-                placeholderTextColor="#475569"
+                placeholderTextColor={c.textFaint}
               />
               <View style={{ flexDirection: "row", gap: 8 }}>
                 <View style={{ flex: 1 }}>
@@ -470,7 +466,7 @@ export default function HrCandidates() {
                     value={cCurrentSal}
                     onChangeText={setCCurrentSal}
                     keyboardType="decimal-pad"
-                    placeholderTextColor="#475569"
+                    placeholderTextColor={c.textFaint}
                   />
                 </View>
                 <View style={{ flex: 1 }}>
@@ -480,7 +476,7 @@ export default function HrCandidates() {
                     value={cExpectedSal}
                     onChangeText={setCExpectedSal}
                     keyboardType="decimal-pad"
-                    placeholderTextColor="#475569"
+                    placeholderTextColor={c.textFaint}
                   />
                 </View>
                 <View style={{ width: 110 }}>
@@ -490,7 +486,7 @@ export default function HrCandidates() {
                     value={cNotice}
                     onChangeText={setCNotice}
                     keyboardType="number-pad"
-                    placeholderTextColor="#475569"
+                    placeholderTextColor={c.textFaint}
                   />
                 </View>
               </View>
@@ -502,7 +498,7 @@ export default function HrCandidates() {
                 onChangeText={setCNotes}
                 multiline
                 textAlignVertical="top"
-                placeholderTextColor="#475569"
+                placeholderTextColor={c.textFaint}
               />
               <View style={{ height: 12 }} />
             </ScrollView>
@@ -544,7 +540,7 @@ export default function HrCandidates() {
             <View style={styles.modalHeader}>
               <Text style={styles.modalTitle}>Move candidate</Text>
               <TouchableOpacity onPress={() => setMoveTarget(null)}>
-                <Ionicons name="close" size={24} color="#94a3b8" />
+                <Ionicons name="close" size={24} color={c.textMuted} />
               </TouchableOpacity>
             </View>
 
@@ -559,28 +555,30 @@ export default function HrCandidates() {
 
                 <Text style={styles.label}>Move to</Text>
                 <View style={styles.chipRow}>
-                  {CANDIDATE_STAGES.map((s) => (
-                    <TouchableOpacity
-                      key={s}
-                      style={[
-                        styles.chip,
-                        moveStage === s && {
-                          backgroundColor: STAGE_COLOR[s],
-                          borderColor: STAGE_COLOR[s],
-                        },
-                      ]}
-                      onPress={() => setMoveStage(s)}
-                    >
-                      <Text
+                  {CANDIDATE_STAGES.map((s) => {
+                    const sc = candidateStageColor(s, c);
+                    return (
+                      <TouchableOpacity
+                        key={s}
                         style={[
-                          styles.chipText,
-                          moveStage === s && styles.chipTextActive,
+                          styles.chip,
+                          moveStage === s && {
+                            backgroundColor: sc.bg,
+                            borderColor: sc.solid },
                         ]}
+                        onPress={() => setMoveStage(s)}
                       >
-                        {s}
-                      </Text>
-                    </TouchableOpacity>
-                  ))}
+                        <Text
+                          style={[
+                            styles.chipText,
+                            moveStage === s && { color: sc.fg },
+                          ]}
+                        >
+                          {s}
+                        </Text>
+                      </TouchableOpacity>
+                    );
+                  })}
                 </View>
 
                 <Text style={styles.label}>Note (optional)</Text>
@@ -589,7 +587,7 @@ export default function HrCandidates() {
                   value={moveNote}
                   onChangeText={setMoveNote}
                   placeholder="Cleared technical round, moving to..."
-                  placeholderTextColor="#475569"
+                  placeholderTextColor={c.textFaint}
                   multiline
                   textAlignVertical="top"
                 />
@@ -621,155 +619,138 @@ export default function HrCandidates() {
   );
 }
 
-const styles = StyleSheet.create({
-  safe: { flex: 1, backgroundColor: "#0b1220" },
+const makeStyles = (c: any) => StyleSheet.create({
+  safe: { flex: 1, backgroundColor: c.bg },
   loader: {
     flex: 1,
-    backgroundColor: "#0b1220",
+    backgroundColor: c.bg,
     justifyContent: "center",
-    alignItems: "center",
-  },
+    alignItems: "center" },
   header: {
     flexDirection: "row",
     alignItems: "center",
     paddingHorizontal: 16,
     paddingVertical: 14,
     borderBottomWidth: 1,
-    borderBottomColor: "#1f2937",
-    gap: 12,
-  },
-  title: { color: "#fff", fontSize: 18, fontWeight: "800", flex: 1 },
+    borderBottomColor: c.surfaceBorder,
+    gap: 12 },
+  title: { color: c.text, fontSize: 18, fontWeight: "800", flex: 1 },
   tab: {
     paddingHorizontal: 14,
     paddingVertical: 7,
     borderRadius: 999,
-    backgroundColor: "#111827",
+    backgroundColor: c.surface,
     borderWidth: 1,
-    borderColor: "#1f2937",
-  },
-  tabActive: { backgroundColor: "#3b82f6", borderColor: "#3b82f6" },
-  tabText: { color: "#94a3b8", fontSize: 11, fontWeight: "700" },
-  tabTextActive: { color: "#fff" },
+    borderColor: c.surfaceBorder },
+  tabActive: { backgroundColor: c.accent, borderColor: c.accent },
+  tabText: { color: c.textMuted, fontSize: 11, fontWeight: "700" },
+  tabTextActive: { color: c.text },
   card: {
-    backgroundColor: "#111827",
+    backgroundColor: c.surface,
     padding: 14,
     borderRadius: 14,
     marginBottom: 8,
     borderWidth: 1,
-    borderColor: "#1f2937",
-  },
+    borderColor: c.surfaceBorder },
   cardTop: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 12,
-  },
+    gap: 12 },
   avatar: {
     width: 40,
     height: 40,
     borderRadius: 20,
-    backgroundColor: "#1e293b",
+    backgroundColor: c.surfaceMuted,
     alignItems: "center",
-    justifyContent: "center",
-  },
-  avatarText: { color: "#fff", fontSize: 14, fontWeight: "800" },
-  cardName: { color: "#fff", fontSize: 15, fontWeight: "700" },
-  cardSub: { color: "#94a3b8", fontSize: 12, marginTop: 2 },
+    justifyContent: "center" },
+  avatarText: { color: c.text, fontSize: 14, fontWeight: "800" },
+  cardName: { color: c.text, fontSize: 15, fontWeight: "700" },
+  cardSub: { color: c.textMuted, fontSize: 12, marginTop: 2 },
   cardJob: { color: "#0ea5e9", fontSize: 11, marginTop: 2 },
   stagePill: {
     paddingHorizontal: 8,
     paddingVertical: 3,
-    borderRadius: 6,
-  },
-  stageText: { color: "#fff", fontSize: 10, fontWeight: "800" },
+    borderRadius: 6 },
+  stageText: { color: c.text, fontSize: 10, fontWeight: "800" },
   cardActions: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
     marginTop: 10,
-    gap: 8,
-  },
+    gap: 8 },
   linkText: { color: "#3b82f6", fontSize: 11, flex: 1 },
   moveBtn: {
     flexDirection: "row",
     alignItems: "center",
-    backgroundColor: "#3b82f6",
+    backgroundColor: c.accent,
     paddingHorizontal: 10,
     paddingVertical: 6,
     borderRadius: 8,
-    gap: 4,
-  },
-  moveText: { color: "#fff", fontSize: 11, fontWeight: "800" },
+    gap: 4 },
+  moveText: { color: c.text, fontSize: 11, fontWeight: "800" },
   emptyWrap: { flex: 1, justifyContent: "center" },
   empty: { alignItems: "center", gap: 10 },
-  emptyText: { color: "#475569", fontSize: 14 },
+  emptyText: { color: c.textMuted, fontSize: 14 },
   modalWrap: {
     flex: 1,
     justifyContent: "flex-end",
-    backgroundColor: "rgba(0,0,0,0.5)",
-  },
+    backgroundColor: c.overlay },
   modal: {
-    backgroundColor: "#0f172a",
+    backgroundColor: c.surfaceMuted,
     padding: 20,
     borderTopLeftRadius: 18,
     borderTopRightRadius: 18,
     borderTopWidth: 1,
-    borderTopColor: "#1e293b",
-    maxHeight: "92%",
-  },
+    borderTopColor: c.surfaceBorder,
+    maxHeight: "92%" },
   modalHeader: {
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
-    marginBottom: 10,
-  },
-  modalTitle: { color: "#fff", fontSize: 17, fontWeight: "800" },
+    marginBottom: 10 },
+  modalTitle: { color: c.text, fontSize: 17, fontWeight: "800" },
   candidateName: {
-    color: "#fff",
+    color: c.text,
     fontSize: 16,
     fontWeight: "800",
-    marginBottom: 2,
-  },
+    marginBottom: 2 },
   label: {
-    color: "#94a3b8",
+    color: c.textMuted,
     fontSize: 11,
     letterSpacing: 1.2,
     fontWeight: "700",
     marginTop: 14,
-    marginBottom: 6,
-  },
+    marginBottom: 6 },
   input: {
-    backgroundColor: "#111827",
-    color: "#fff",
+    backgroundColor: c.surface,
+    color: c.text,
     paddingHorizontal: 12,
     paddingVertical: 10,
     borderRadius: 10,
     borderWidth: 1,
-    borderColor: "#1f2937",
-    minHeight: 42,
-  },
+    borderColor: c.surfaceBorder,
+    minHeight: 42 },
   chipRow: { flexDirection: "row", flexWrap: "wrap", gap: 6 },
   chip: {
     paddingHorizontal: 10,
     paddingVertical: 6,
     borderRadius: 999,
-    backgroundColor: "#111827",
+    backgroundColor: c.surface,
     borderWidth: 1,
-    borderColor: "#1f2937",
-  },
-  chipActive: { backgroundColor: "#3b82f6", borderColor: "#3b82f6" },
-  chipText: { color: "#94a3b8", fontSize: 11, fontWeight: "700" },
-  chipTextActive: { color: "#fff" },
-  hint: { color: "#64748b", fontSize: 11, fontStyle: "italic" },
+    borderColor: c.surfaceBorder },
+  chipActive: { backgroundColor: c.accent, borderColor: c.accent },
+  chipText: { color: c.textMuted, fontSize: 11, fontWeight: "700" },
+  chipTextActive: { color: c.text },
+  hint: { color: c.textMuted, fontSize: 11, fontStyle: "italic" },
   attachedText: { color: "#16a34a", fontSize: 12, fontWeight: "700" },
   actions: { flexDirection: "row", gap: 10, marginTop: 14 },
   btn: {
     flex: 1,
     paddingVertical: 14,
     borderRadius: 12,
-    alignItems: "center",
-  },
-  btnGhost: { backgroundColor: "#1e293b" },
-  btnGhostText: { color: "#94a3b8", fontWeight: "700" },
-  btnPrimary: { backgroundColor: "#3b82f6" },
-  btnPrimaryText: { color: "#fff", fontWeight: "800" },
-});
+    alignItems: "center" },
+  btnGhost: { backgroundColor: c.surfaceMuted },
+  btnGhostText: { color: c.textMuted, fontWeight: "700" },
+  btnPrimary: { backgroundColor: c.accent },
+  btnPrimaryText: { color: "#fff", fontWeight: "800" } });
+

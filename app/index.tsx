@@ -1,7 +1,4 @@
-import React, {
-  useEffect,
-  useState,
-} from "react";
+﻿import React, { useEffect, useState, useMemo} from "react";
 
 import {
   View,
@@ -11,9 +8,8 @@ import {
   TouchableOpacity,
   ActivityIndicator,
   Image,
-  SafeAreaView,
-  RefreshControl,
-} from "react-native";
+  RefreshControl } from "react-native";
+import { SafeAreaView } from "react-native-safe-area-context";
 
 import AsyncStorage from "@react-native-async-storage/async-storage";
 
@@ -22,134 +18,46 @@ import { useRouter, useFocusEffect } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 
 import { getMe, getToday } from "../src/services/api";
-
-import { unregisterPushToken } from "../src/services/notifications";
-
+import { getDashboardMe } from "../src/services/dashboard";
 import { getUnreadCount } from "../src/services/inbox";
-
+import { getChatUnreadCount } from "../src/services/chat";
 import { openNotificationStream } from "../src/services/sse";
 
 import { dateToYMD } from "../src/components/WebDateField";
 
-import { hasRole, isManager, User } from "../src/types";
+import { useTheme } from "../src/theme/ThemeProvider";
+import {
+  BottomTabBar,
+  BOTTOM_BAR_RESERVED_HEIGHT } from "../src/components/BottomTabBar";
 
-interface TileProps {
-  icon: keyof typeof Ionicons.glyphMap;
-  color: string;
-  title: string;
-  desc: string;
-  onPress: () => void;
-}
+import {
+  hasRole,
+  isManager,
+  isCEO,
+  User,
+  DashboardMe } from "../src/types";
 
-interface MiniTileProps {
-  icon: keyof typeof Ionicons.glyphMap;
-  color: string;
-  title: string;
-  onPress: () => void;
-}
-
-const MiniTile = ({ icon, color, title, onPress }: MiniTileProps) => (
-  <TouchableOpacity
-    style={styles.mini}
-    onPress={onPress}
-    activeOpacity={0.85}
-  >
-    <View style={[styles.miniIcon, { backgroundColor: color }]}>
-      <Ionicons name={icon} size={20} color="#fff" />
-    </View>
-    <Text style={styles.miniTitle} numberOfLines={1}>
-      {title}
-    </Text>
-  </TouchableOpacity>
-);
-
-const formatElapsed = (since: Date): string => {
-  const ms = Date.now() - since.getTime();
-  const mins = Math.floor(ms / 60000);
-  if (mins < 1) return "just now";
-  const h = Math.floor(mins / 60);
-  const m = mins % 60;
-  if (h === 0) return `${m}m`;
-  return `${h}h ${m}m`;
-};
-
-const todayStatusLabel = (today: any, _tick: number): string => {
-  if (!today || !today.id) return "Not checked in yet";
-  if (today.status === "CHECKED_IN") {
-    if (today.checkIn) {
-      return `Checked in · ${formatElapsed(new Date(today.checkIn))} elapsed`;
-    }
-    return "Checked in";
-  }
-  if (today.status === "COMPLETED") {
-    return "Day complete";
-  }
-  return "Not checked in yet";
-};
-
-const todaySubLabel = (today: any): string => {
-  if (!today || !today.id) return "Tap to check in";
-  if (today.attendanceType) {
-    if (today.checkIn && today.checkOut) {
-      const dur = Math.floor(
-        (new Date(today.checkOut).getTime() -
-          new Date(today.checkIn).getTime()) /
-          60000
-      );
-      const h = Math.floor(dur / 60);
-      const m = dur % 60;
-      return `${today.attendanceType} · ${h}h ${m}m worked`;
-    }
-    if (today.checkIn) {
-      const t = new Date(today.checkIn).toLocaleTimeString([], {
-        hour: "numeric",
-        minute: "2-digit",
-        hour12: true,
-      });
-      return `${today.attendanceType} · since ${t}`;
-    }
-    return today.attendanceType;
-  }
-  return "Tap to begin";
-};
-
-const Tile = ({ icon, color, title, desc, onPress }: TileProps) => (
-  <TouchableOpacity
-    style={styles.card}
-    onPress={onPress}
-    activeOpacity={0.85}
-  >
-    <View style={[styles.iconBox, { backgroundColor: color }]}>
-      <Ionicons name={icon} size={22} color="#fff" />
-    </View>
-    <View style={styles.cardBody}>
-      <Text style={styles.cardTitle}>{title}</Text>
-      <Text style={styles.cardDesc}>{desc}</Text>
-    </View>
-    <Ionicons
-      name="chevron-forward"
-      size={22}
-      color="#64748b"
-    />
-  </TouchableOpacity>
-);
-
-export default function Dashboard() {
-
+/**
+ * Home screen — Koru-style. Hello card with avatar, today's status,
+ * KPI strip, role hub callout, category tiles, recent activity.
+ * Bottom tab bar anchored.
+ */
+export default function Home() {
   const router = useRouter();
+  const { theme } = useTheme();
 
   const [user, setUser] = useState<User | null>(null);
   const [today, setToday] = useState<any>(null);
+  const [dash, setDash] = useState<DashboardMe | null>(null);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [tick, setTick] = useState(0);
   const [unreadCount, setUnreadCount] = useState(0);
+  const [chatUnread, setChatUnread] = useState(0);
 
-  const onRefresh = async () => {
-    setRefreshing(true);
-    await loadEverything(false);
-    setRefreshing(false);
-  };
+  const c = theme.colors;
+
+  const styles = useMemo(() => makeStyles(c), [c]);
 
   const loadEverything = async (showSpinner = true) => {
     try {
@@ -169,10 +77,7 @@ export default function Dashboard() {
       }
       setUser(meRes);
       try {
-        const todayRes = await getToday(
-          token,
-          dateToYMD(new Date())
-        );
+        const todayRes = await getToday(token, dateToYMD(new Date()));
         setToday(todayRes);
       } catch {
         setToday(null);
@@ -183,6 +88,18 @@ export default function Dashboard() {
       } catch {
         setUnreadCount(0);
       }
+      try {
+        const chat = await getChatUnreadCount(token);
+        setChatUnread(chat.count || 0);
+      } catch {
+        setChatUnread(0);
+      }
+      try {
+        const d = await getDashboardMe(token);
+        setDash(d);
+      } catch {
+        // KPI strip just won't render — non-fatal.
+      }
       setLoading(false);
     } catch (err) {
       console.log("DASHBOARD ERROR:", err);
@@ -192,18 +109,23 @@ export default function Dashboard() {
     }
   };
 
+  const onRefresh = async () => {
+    setRefreshing(true);
+    await loadEverything(false);
+    setRefreshing(false);
+  };
+
   useEffect(() => {
     loadEverything();
   }, []);
 
-  // tick every minute so elapsed time updates
+  // Update "5m ago" labels every minute.
   useEffect(() => {
     const id = setInterval(() => setTick((t) => t + 1), 60_000);
     return () => clearInterval(id);
   }, []);
 
-  // Live notification stream — bumps the bell badge as events arrive.
-  // Falls back to a 30s poll if SSE isn't available.
+  // Live notifications.
   useEffect(() => {
     let cleanup: (() => void) | null = null;
     (async () => {
@@ -212,16 +134,40 @@ export default function Dashboard() {
       cleanup = openNotificationStream(token, {
         onNotification: async (n) => {
           if (n && n.poll) {
-            // Polling tick — re-fetch count.
             try {
               const { count } = await getUnreadCount(token);
               setUnreadCount(count || 0);
             } catch {
               /* ignore */
             }
+            try {
+              const chat = await getChatUnreadCount(token);
+              setChatUnread(chat.count || 0);
+            } catch {
+              /* ignore */
+            }
+            try {
+              // Keep the tile counts (pending leaves/reimbursements/etc.)
+              // live too — the dashboard payload is small.
+              const d = await getDashboardMe(token);
+              setDash(d);
+            } catch {
+              /* ignore */
+            }
             return;
           }
-          // Real SSE event: optimistic bump, then reconcile with server.
+          // chat_message events don't create a bell notification row, so
+          // they shouldn't bump unread. Refresh the chat badge only and
+          // skip the rest.
+          if (n && n.type === "chat_message") {
+            try {
+              const chat = await getChatUnreadCount(token);
+              setChatUnread(chat.count || 0);
+            } catch {
+              /* ignore */
+            }
+            return;
+          }
           setUnreadCount((c) => c + 1);
           try {
             const { count } = await getUnreadCount(token);
@@ -229,708 +175,877 @@ export default function Dashboard() {
           } catch {
             /* ignore */
           }
-        },
-      });
+          try {
+            const chat = await getChatUnreadCount(token);
+            setChatUnread(chat.count || 0);
+          } catch {
+            /* ignore */
+          }
+          try {
+            // Refresh the tile counts so Leaves / Reimburse / etc. update
+            // live as bell-firing events happen across the app.
+            const d = await getDashboardMe(token);
+            setDash(d);
+          } catch {
+            /* ignore */
+          }
+        } });
     })();
     return () => {
       if (cleanup) cleanup();
     };
   }, []);
 
-  // refetch today when screen regains focus
   useFocusEffect(
     React.useCallback(() => {
       loadEverything(false);
     }, [])
   );
 
-  const ledTeamCount = user?.ledTeamIds?.length || 0;
-  const isHR = hasRole(user, "HR");
-  const isMgr = isManager(user);
-  const showTeams = isHR || ledTeamCount > 0;
-  const roleChipColor = isHR
-    ? "#db2777"
-    : isMgr
-    ? "#7c3aed"
-    : "#1e293b";
-
-  const logout = async () => {
-    try {
-      const token = await AsyncStorage.getItem("token");
-      if (token) {
-        await unregisterPushToken(token).catch(() => {});
-      }
-      await AsyncStorage.removeItem("token");
-      router.replace("/login");
-    } catch (err) {
-      console.log("LOGOUT ERROR:", err);
-    }
-  };
-
   if (loading) {
     return (
-      <View style={styles.loader}>
-        <ActivityIndicator size="large" color="#3b82f6" />
-        <Text style={styles.loadingText}>Loading workspace…</Text>
+      <View style={[styles.loader, { backgroundColor: c.bg }]}>
+        <ActivityIndicator size="large" color={c.accent} />
       </View>
     );
   }
 
   if (!user) {
     return (
-      <View style={styles.loader}>
-        <Text style={{ color: "#fff", fontSize: 16 }}>
+      <View style={[styles.loader, { backgroundColor: c.bg }]}>
+        <Text style={{ color: c.text, fontSize: 16 }}>
           Unable to load user
         </Text>
       </View>
     );
   }
 
-  return (
-    <SafeAreaView style={styles.safe}>
+  const isHR = hasRole(user, "HR");
+  const isMgr = isManager(user);
+  const isCeo = isCEO(user);
+  const ledTeamCount = user.ledTeamIds?.length || 0;
+  const showTeams = isHR || isCeo || ledTeamCount > 0;
 
+  const todayStatus = todayStatusInfo(today, tick, c);
+  const checkedIn = today?.status === "CHECKED_IN";
+
+  const greeting = (() => {
+    const h = new Date().getHours();
+    if (h < 12) return "Good morning";
+    if (h < 18) return "Good afternoon";
+    return "Good evening";
+  })();
+
+  return (
+    <SafeAreaView style={[styles.safe, { backgroundColor: c.bg }]}>
       <ScrollView
-        style={styles.container}
-        contentContainerStyle={styles.content}
+        contentContainerStyle={{
+          padding: 20,
+          paddingBottom: BOTTOM_BAR_RESERVED_HEIGHT + 24 }}
+        showsVerticalScrollIndicator={false}
         refreshControl={
           <RefreshControl
             refreshing={refreshing}
             onRefresh={onRefresh}
-            tintColor="#3b82f6"
-            colors={["#3b82f6"]}
+            tintColor={c.accent}
+            colors={[c.accent]}
           />
         }
       >
+        {/* ===== BRAND ===== */}
+        <Image
+          source={require("../assets/images/logo.jpg")}
+          style={styles.brandLogo}
+          resizeMode="contain"
+        />
 
-        {/* HERO */}
-        <View style={styles.hero}>
-          <View style={styles.heroTop}>
-            <View style={{ flex: 1 }}>
-              <Text style={styles.welcome}>Welcome back</Text>
-              <Text style={styles.name}>
-                {user.name || "Employee"}
-              </Text>
-              <View style={styles.heroChips}>
-                <View
+        {/* ===== HELLO ROW ===== */}
+        <View style={styles.helloRow}>
+          <View style={{ flex: 1 }}>
+            <Text style={[styles.helloLabel, { color: c.textMuted }]}>
+              {greeting}
+            </Text>
+            <Text style={[styles.helloName, { color: c.text }]}>
+              {user.name}
+            </Text>
+          </View>
+          <TouchableOpacity
+            onPress={() => router.push("/notifications" as any)}
+            style={[
+              styles.bell,
+              {
+                backgroundColor: c.surface,
+                borderColor: c.surfaceBorder },
+            ]}
+            activeOpacity={0.7}
+          >
+            <Ionicons name="notifications-outline" size={20} color={c.text} />
+            {unreadCount > 0 && (
+              <View
+                style={[
+                  styles.bellBadge,
+                  { backgroundColor: c.dangerText },
+                ]}
+              >
+                <Text style={styles.bellBadgeText}>
+                  {unreadCount > 9 ? "9+" : unreadCount}
+                </Text>
+              </View>
+            )}
+          </TouchableOpacity>
+          <TouchableOpacity
+            onPress={() => router.push("/profile")}
+            activeOpacity={0.8}
+            style={{ marginLeft: 8 }}
+          >
+            {user.profilePictureUrl ? (
+              <Image
+                source={{ uri: user.profilePictureUrl }}
+                style={styles.avatarSmall}
+              />
+            ) : (
+              <View
+                style={[
+                  styles.avatarSmallFallback,
+                  { backgroundColor: c.accentSoft },
+                ]}
+              >
+                <Text
                   style={[
-                    styles.heroChip,
-                    { backgroundColor: roleChipColor },
+                    styles.avatarSmallText,
+                    { color: c.accentText },
                   ]}
                 >
-                  <Text style={styles.heroChipText}>
-                    {user.role}
-                  </Text>
-                </View>
-                {user.tag && (
-                  <View
-                    style={[
-                      styles.heroChip,
-                      { backgroundColor: "#0ea5e9" },
-                    ]}
-                  >
-                    <Text style={styles.heroChipText}>
-                      {user.tag}
-                    </Text>
-                  </View>
-                )}
-                {ledTeamCount > 0 && (
-                  <View
-                    style={[
-                      styles.heroChip,
-                      { backgroundColor: "#7c3aed" },
-                    ]}
-                  >
-                    <Text style={styles.heroChipText}>
-                      TEAM LEAD
-                    </Text>
-                  </View>
-                )}
+                  {user.name.charAt(0).toUpperCase()}
+                </Text>
               </View>
-            </View>
-            <TouchableOpacity
-              style={styles.bellWrap}
-              onPress={() => router.push("/notifications" as any)}
-              activeOpacity={0.7}
-            >
-              <Ionicons
-                name="notifications-outline"
-                size={26}
-                color="#fff"
-              />
-              {unreadCount > 0 && (
-                <View style={styles.badge}>
-                  <Text style={styles.badgeText}>
-                    {unreadCount > 99 ? "99+" : unreadCount}
-                  </Text>
-                </View>
-              )}
-            </TouchableOpacity>
-          </View>
+            )}
+          </TouchableOpacity>
+        </View>
 
-          {/* TODAY'S STATUS */}
-          <TouchableOpacity
-            style={styles.statusRow}
-            onPress={() => router.push("/attendance")}
-            activeOpacity={0.85}
+        {/* ===== TODAY STATUS CARD ===== */}
+        <TouchableOpacity
+          onPress={() => router.push("/attendance")}
+          activeOpacity={0.9}
+          style={[
+            styles.statusCard,
+            {
+              backgroundColor: c.surface,
+              borderColor: c.surfaceBorder,
+              shadowColor: c.shadow },
+          ]}
+        >
+          <View style={{ flex: 1 }}>
+            <Text style={[styles.statusLabel, { color: c.textMuted }]}>
+              TODAY
+            </Text>
+            <Text style={[styles.statusTitle, { color: c.text }]}>
+              {todayStatus.title}
+            </Text>
+            <Text style={[styles.statusSub, { color: c.textMuted }]}>
+              {todayStatus.sub}
+            </Text>
+          </View>
+          <View
+            style={[
+              styles.statusAction,
+              {
+                backgroundColor: checkedIn ? c.dangerText : c.accent,
+                shadowColor: c.shadow },
+            ]}
           >
-            <View
-              style={[
-                styles.statusDot,
-                {
-                  backgroundColor:
-                    today?.status === "CHECKED_IN"
-                      ? "#16a34a"
-                      : today?.status === "COMPLETED"
-                      ? "#94a3b8"
-                      : "#f59e0b",
-                },
-              ]}
-            />
-            <View style={{ flex: 1 }}>
-              <Text style={styles.statusText}>
-                {todayStatusLabel(today, tick)}
-              </Text>
-              <Text style={styles.statusSub}>
-                {todaySubLabel(today)}
-              </Text>
-            </View>
             <Ionicons
-              name="chevron-forward"
-              size={18}
-              color="#64748b"
+              name={checkedIn ? "log-out-outline" : "log-in-outline"}
+              size={22}
+              color="#fff"
             />
-          </TouchableOpacity>
-
-          {/* QUICK ACTIONS */}
-          <View style={styles.quickRow}>
-            <TouchableOpacity
-              style={styles.quickBtn}
-              onPress={() => router.push("/attendance")}
-            >
-              <Ionicons
-                name={
-                  today?.status === "CHECKED_IN"
-                    ? "log-out-outline"
-                    : "log-in-outline"
-                }
-                size={16}
-                color="#fff"
-              />
-              <Text style={styles.quickText}>
-                {today?.status === "CHECKED_IN"
-                  ? "Check out"
-                  : today?.status === "COMPLETED"
-                  ? "View day"
-                  : "Check in"}
-              </Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={[
-                styles.quickBtn,
-                { backgroundColor: "#0d9488" },
-              ]}
-              onPress={() => router.push("/leaves")}
-            >
-              <Ionicons
-                name="airplane-outline"
-                size={16}
-                color="#fff"
-              />
-              <Text style={styles.quickText}>Apply leave</Text>
-            </TouchableOpacity>
           </View>
-        </View>
+        </TouchableOpacity>
 
-        {/* ROLE-SPECIFIC HUBS — pinned to top so HR/Manager land here first */}
+        {/* ===== ROLE HUB CALLOUTS ===== */}
         {isHR && (
-          <TouchableOpacity
-            style={styles.hrHub}
+          <RoleCallout
+            title="HR Admin Console"
+            sub="Employees · Approvals · Payroll · Reports"
+            tint={c.roleHrBg}
+            iconTint={c.roleHrText}
+            icon="briefcase"
             onPress={() => router.push("/hr-admin")}
-            activeOpacity={0.85}
-          >
-            <View style={styles.hrHubIcon}>
-              <Ionicons name="briefcase" size={26} color="#fff" />
-            </View>
-            <View style={{ flex: 1 }}>
-              <Text style={styles.hrHubTitle}>HR Admin Console</Text>
-              <Text style={styles.hrHubDesc}>
-                Users · Leaves · Payroll · Recruitment · Reports
-              </Text>
-            </View>
-            <Ionicons name="arrow-forward" size={22} color="#fff" />
-          </TouchableOpacity>
+            theme={theme}
+            styles={styles}
+          />
         )}
-        {isMgr && (
-          <TouchableOpacity
-            style={[styles.hrHub, { backgroundColor: "#0d9488" }]}
+        {isMgr && !isHR && (
+          <RoleCallout
+            title="Manager Approvals"
+            sub="Pending leaves, corrections, reimbursements"
+            tint={c.pastelMint}
+            iconTint="#0f766e"
+            icon="people"
             onPress={() => router.push("/manager" as any)}
-            activeOpacity={0.85}
-          >
-            <View style={styles.hrHubIcon}>
-              <Ionicons name="people" size={26} color="#fff" />
-            </View>
-            <View style={{ flex: 1 }}>
-              <Text style={styles.hrHubTitle}>Manager Approvals</Text>
-              <Text style={styles.hrHubDesc}>
-                Pending leaves · corrections · reimbursements · timesheets
-              </Text>
-            </View>
-            <Ionicons name="arrow-forward" size={22} color="#fff" />
-          </TouchableOpacity>
+            theme={theme}
+            styles={styles}
+          />
+        )}
+        {isCeo && (
+          <RoleCallout
+            title="CEO Console"
+            sub="Org-wide KPIs · headcount · payroll · attrition"
+            tint={c.roleCeoBg}
+            iconTint={c.roleCeoText}
+            icon="trending-up"
+            onPress={() => router.push("/ceo" as any)}
+            theme={theme}
+            styles={styles}
+          />
         )}
 
-        {/* DAILY */}
-        <Text style={styles.section}>DAILY</Text>
-        <View style={styles.grid}>
-          <MiniTile
-            icon="calendar-outline"
-            color="#0ea5e9"
-            title="Attendance"
-            onPress={() => router.push("/attendance")}
-          />
-          <MiniTile
-            icon="checkbox-outline"
-            color="#16a34a"
-            title="Assigned"
-            onPress={() => router.push("/tasks")}
-          />
-          <MiniTile
-            icon="list-outline"
-            color="#a855f7"
-            title="To-Do"
-            onPress={() => router.push("/todos" as any)}
-          />
-          <MiniTile
-            icon="time-outline"
-            color="#6366f1"
-            title="Timesheet"
-            onPress={() => router.push("/my-timesheet" as any)}
-          />
-          <MiniTile
-            icon="airplane-outline"
-            color="#0d9488"
-            title="Leaves"
-            onPress={() => router.push("/leaves")}
-          />
-          <MiniTile
-            icon="calendar-clear-outline"
-            color="#f97316"
-            title="Holidays"
-            onPress={() => router.push("/holidays")}
-          />
-        </View>
+        {/* ===== KPI STRIP ===== */}
+        {dash && (
+          <>
+            <Text style={[styles.section, { color: c.textMuted }]}>
+              MY KPIs
+            </Text>
+            <View style={styles.kpiGrid}>
+              <SimpleKpi
+                label="Attendance"
+                value={fmtPct(dash.attendanceRatePctMTD)}
+                sub="month-to-date"
+                icon="calendar-outline"
+                tint={c.pastelLavender}
+                iconColor="#6d28d9"
+                theme={theme}
+            styles={styles}
+              />
+              <SimpleKpi
+                label="On-time"
+                value={fmtPct(dash.onTimeCheckInRatePctMTD)}
+                sub="check-ins"
+                icon="time-outline"
+                tint={c.pastelMint}
+                iconColor="#15803d"
+                theme={theme}
+            styles={styles}
+              />
+              <SimpleKpi
+                label="This week"
+                value={`${dash.avgHoursPerDayThisWeek ?? "—"}h`}
+                sub="avg / day"
+                icon="stopwatch-outline"
+                tint={c.pastelPeach}
+                iconColor="#c2410c"
+                theme={theme}
+            styles={styles}
+              />
+              <SimpleKpi
+                label="Tasks done"
+                value={fmtPct(dash.myTaskCompletionRatePct30d)}
+                sub="last 30 days"
+                icon="checkmark-done-outline"
+                tint={c.pastelPink}
+                iconColor="#be185d"
+                theme={theme}
+            styles={styles}
+              />
+            </View>
+          </>
+        )}
 
-        {/* WORKPLACE */}
-        <Text style={styles.section}>WORKPLACE</Text>
-        <View style={styles.grid}>
-          <MiniTile
-            icon="card-outline"
-            color="#3b82f6"
-            title="Reimburse"
-            onPress={() => router.push("/reimbursements" as any)}
+        {/* ===== CATEGORY TILES ===== */}
+        <Text style={[styles.section, { color: c.textMuted }]}>
+          DAILY
+        </Text>
+        <View style={styles.tilesGrid}>
+          <CategoryTile
+            icon="calendar-outline"
+            label="Attendance"
+            tint={c.pastelLavender}
+            iconColor="#6d28d9"
+            onPress={() => router.push("/attendance")}
+            theme={theme}
+            styles={styles}
           />
-          <MiniTile
-            icon="chatbubbles-outline"
-            color="#0ea5e9"
-            title="Office Chat"
-            onPress={() => router.push("/chat/office")}
+          <CategoryTile
+            icon="checkbox-outline"
+            label="Tasks"
+            tint={c.pastelMint}
+            iconColor="#15803d"
+            onPress={() => router.push("/tasks")}
+            theme={theme}
+            styles={styles}
           />
-          {showTeams && (
-            <MiniTile
-              icon="people-outline"
-              color="#7c3aed"
-              title="Teams"
-              onPress={() => router.push("/teams")}
+          <CategoryTile
+            icon="list-outline"
+            label="To-Do"
+            tint={c.pastelPink}
+            iconColor="#be185d"
+            onPress={() => router.push("/todos" as any)}
+            theme={theme}
+            styles={styles}
+          />
+          <CategoryTile
+            icon="time-outline"
+            label="Timesheet"
+            tint={c.pastelSky}
+            iconColor="#0369a1"
+            onPress={() => router.push("/my-timesheet" as any)}
+            theme={theme}
+            styles={styles}
+          />
+          <CategoryTile
+            icon="airplane-outline"
+            label="Leaves"
+            tint={c.pastelPeach}
+            iconColor="#c2410c"
+            count={dash?.pendingLeaveRequests}
+            onPress={() => router.push("/leaves")}
+            theme={theme}
+            styles={styles}
+          />
+          {(isHR || isMgr || isCeo) && (
+            <CategoryTile
+              icon="calendar-clear-outline"
+              label="Holidays"
+              tint={c.pastelYellow}
+              iconColor="#a16207"
+              onPress={() => router.push("/holidays")}
+              theme={theme}
+            styles={styles}
             />
           )}
-          <MiniTile
-            icon="hardware-chip-outline"
-            color="#a855f7"
-            title="Assets"
-            onPress={() => router.push("/assets")}
-          />
         </View>
 
-        {/* PERFORMANCE */}
-        <Text style={styles.section}>PERFORMANCE</Text>
-        <View style={styles.grid}>
-          <MiniTile
-            icon="flag-outline"
-            color="#f59e0b"
-            title="Goals"
-            onPress={() => router.push("/my-goals" as any)}
+        <Text style={[styles.section, { color: c.textMuted }]}>
+          WORKPLACE
+        </Text>
+        <View style={styles.tilesGrid}>
+          <CategoryTile
+            icon="card-outline"
+            label="Reimburse"
+            tint={c.pastelSky}
+            iconColor="#0369a1"
+            count={dash?.pendingReimbursementRequests}
+            onPress={() => router.push("/reimbursements" as any)}
+            theme={theme}
+            styles={styles}
           />
-          <MiniTile
-            icon="star-outline"
-            color="#eab308"
-            title="Reviews"
-            onPress={() => router.push("/my-reviews" as any)}
-          />
-          <MiniTile
-            icon="chatbubble-ellipses-outline"
-            color="#a855f7"
-            title="Feedback"
-            onPress={() => router.push("/feedback" as any)}
-          />
-          <MiniTile
+          <CategoryTile
             icon="chatbubbles-outline"
-            color="#8b5cf6"
-            title="Interviews"
-            onPress={() => router.push("/my-interviews" as any)}
+            label="Chat"
+            tint={c.pastelLavender}
+            iconColor="#6d28d9"
+            count={chatUnread}
+            onPress={() => router.push("/chat/office")}
+            theme={theme}
+            styles={styles}
           />
-        </View>
-
-        {/* MY ACCOUNT */}
-        <Text style={styles.section}>MY ACCOUNT</Text>
-        <View style={styles.grid}>
-          <MiniTile
-            icon="person-outline"
-            color="#1d4ed8"
-            title="Profile"
-            onPress={() => router.push("/profile")}
+          {showTeams && (
+            <CategoryTile
+              icon="people-outline"
+              label="Teams"
+              tint={c.pastelMint}
+              iconColor="#15803d"
+              onPress={() => router.push("/teams")}
+              theme={theme}
+            styles={styles}
+            />
+          )}
+          <CategoryTile
+            icon="hardware-chip-outline"
+            label="Assets"
+            tint={c.pastelPink}
+            iconColor="#be185d"
+            onPress={() => router.push("/assets")}
+            theme={theme}
+            styles={styles}
           />
-          <MiniTile
-            icon="cash-outline"
-            color="#16a34a"
-            title="Payslips"
-            onPress={() => router.push("/my-payroll")}
+          <CategoryTile
+            icon="document-outline"
+            label="Policies"
+            tint={c.pastelPeach}
+            iconColor="#c2410c"
+            onPress={() => router.push("/policies" as any)}
+            theme={theme}
+            styles={styles}
           />
-          <MiniTile
+          <CategoryTile
             icon="folder-open-outline"
-            color="#06b6d4"
-            title="Documents"
+            label="Documents"
+            tint={c.pastelYellow}
+            iconColor="#a16207"
             onPress={() => router.push("/my-documents" as any)}
-          />
-          <MiniTile
-            icon="rocket-outline"
-            color="#06b6d4"
-            title="Onboarding"
-            onPress={() => router.push("/my-onboarding")}
-          />
-          <MiniTile
-            icon="exit-outline"
-            color="#64748b"
-            title="Exit"
-            onPress={() => router.push("/exit")}
+            theme={theme}
+            styles={styles}
           />
         </View>
 
-        <View style={{ height: 90 }} />
-
+        {/* ===== RECENT ACTIVITY ===== */}
+        {dash?.recentTasks && dash.recentTasks.length > 0 && (
+          <>
+            <Text style={[styles.section, { color: c.textMuted }]}>
+              RECENT TASKS
+            </Text>
+            <View
+              style={[
+                styles.listCard,
+                {
+                  backgroundColor: c.surface,
+                  borderColor: c.surfaceBorder,
+                  shadowColor: c.shadow },
+              ]}
+            >
+              {dash.recentTasks.slice(0, 3).map((t, idx) => (
+                <TouchableOpacity
+                  key={t.id}
+                  onPress={() => router.push(`/tasks/${t.id}` as any)}
+                  style={[
+                    styles.listRow,
+                    idx > 0 && {
+                      borderTopWidth: 1,
+                      borderTopColor: c.surfaceBorder },
+                  ]}
+                  activeOpacity={0.85}
+                >
+                  <View
+                    style={[
+                      styles.listIcon,
+                      {
+                        backgroundColor:
+                          t.status === "COMPLETED"
+                            ? c.pastelMint
+                            : c.pastelLavender },
+                    ]}
+                  >
+                    <Ionicons
+                      name={
+                        t.status === "COMPLETED"
+                          ? "checkmark"
+                          : "ellipse-outline"
+                      }
+                      size={16}
+                      color={
+                        t.status === "COMPLETED" ? "#15803d" : "#6d28d9"
+                      }
+                    />
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <Text
+                      style={[styles.listTitle, { color: c.text }]}
+                      numberOfLines={1}
+                    >
+                      {t.title}
+                    </Text>
+                    <Text
+                      style={[styles.listMeta, { color: c.textMuted }]}
+                    >
+                      {t.dueDate ? `Due ${t.dueDate}` : "No due date"}
+                      {t.priority ? `  ·  ${t.priority}` : ""}
+                    </Text>
+                  </View>
+                  <Ionicons
+                    name="chevron-forward"
+                    size={18}
+                    color={c.textMuted}
+                  />
+                </TouchableOpacity>
+              ))}
+            </View>
+          </>
+        )}
       </ScrollView>
 
-      {/* LOGOUT */}
-      <View style={styles.bottomBar}>
-        <TouchableOpacity
-          style={styles.logoutBtn}
-          onPress={logout}
-        >
-          <Text style={styles.logoutText}>Logout</Text>
-        </TouchableOpacity>
-      </View>
-
+      <BottomTabBar user={user} />
     </SafeAreaView>
   );
 }
 
-const styles = StyleSheet.create({
+// =============================================================
+// Helpers / sub-components
+// =============================================================
 
-  safe: {
-    flex: 1,
-    backgroundColor: "#0b1220",
-  },
+const fmtPct = (v: number | null | undefined): string => {
+  if (v === null || v === undefined || !Number.isFinite(v)) return "—";
+  return `${Math.round(v)}%`;
+};
 
-  container: {
-    flex: 1,
-  },
+const todayStatusInfo = (
+  today: any,
+  _tick: number,
+  c: any
+): { title: string; sub: string } => {
+  if (!today || !today.id) {
+    return { title: "Not checked in", sub: "Tap to start your day" };
+  }
+  if (today.status === "CHECKED_IN") {
+    const since = today.checkIn ? new Date(today.checkIn) : null;
+    const dur = since
+      ? Math.floor((Date.now() - since.getTime()) / 60000)
+      : 0;
+    const h = Math.floor(dur / 60);
+    const m = dur % 60;
+    const elapsed = h > 0 ? `${h}h ${m}m` : `${m}m`;
+    return {
+      title: `Checked in · ${elapsed}`,
+      sub: `${today.attendanceType || ""}`.trim() || "Tap to check out" };
+  }
+  if (today.status === "COMPLETED") {
+    if (today.checkIn && today.checkOut) {
+      const dur = Math.floor(
+        (new Date(today.checkOut).getTime() -
+          new Date(today.checkIn).getTime()) /
+          60000
+      );
+      const h = Math.floor(dur / 60);
+      const m = dur % 60;
+      return {
+        title: "Day complete",
+        sub: `${h}h ${m}m worked${
+          today.attendanceType ? ` · ${today.attendanceType}` : ""
+        }` };
+    }
+    return { title: "Day complete", sub: "View today's record" };
+  }
+  return { title: today.status || "Today", sub: "" };
+};
 
-  content: {
-    padding: 20,
-  },
+const RoleCallout = ({
+  title,
+  sub,
+  tint,
+  iconTint,
+  icon,
+  onPress,
+  theme,
+  styles }: {
+  title: string;
+  sub: string;
+  tint: string;
+  iconTint: string;
+  icon: keyof typeof Ionicons.glyphMap;
+  onPress: () => void;
+  theme: any;
+  styles: any;
+}) => (
+  <TouchableOpacity
+    onPress={onPress}
+    activeOpacity={0.85}
+    style={[
+      styles.roleCallout,
+      {
+        backgroundColor: theme.colors.surface,
+        borderColor: theme.colors.surfaceBorder,
+        shadowColor: theme.colors.shadow },
+    ]}
+  >
+    <View
+      style={[styles.roleCalloutIcon, { backgroundColor: tint }]}
+    >
+      <Ionicons name={icon} size={24} color={iconTint} />
+    </View>
+    <View style={{ flex: 1 }}>
+      <Text
+        style={[styles.roleCalloutTitle, { color: theme.colors.text }]}
+      >
+        {title}
+      </Text>
+      <Text
+        style={[styles.roleCalloutSub, { color: theme.colors.textMuted }]}
+      >
+        {sub}
+      </Text>
+    </View>
+    <Ionicons
+      name="chevron-forward"
+      size={20}
+      color={theme.colors.textMuted}
+    />
+  </TouchableOpacity>
+);
 
-  loader: {
-    flex: 1,
-    backgroundColor: "#0b1220",
-    justifyContent: "center",
-    alignItems: "center",
-  },
+const SimpleKpi = ({
+  label,
+  value,
+  sub,
+  icon,
+  tint,
+  iconColor,
+  theme,
+  styles }: {
+  label: string;
+  value: string;
+  sub: string;
+  icon: keyof typeof Ionicons.glyphMap;
+  tint: string;
+  iconColor: string;
+  theme: any;
+  styles: any;
+}) => (
+  <View
+    style={[
+      styles.kpiCell,
+      {
+        backgroundColor: theme.colors.surface,
+        borderColor: theme.colors.surfaceBorder,
+        shadowColor: theme.colors.shadow },
+    ]}
+  >
+    <View style={[styles.kpiIcon, { backgroundColor: tint }]}>
+      <Ionicons name={icon} size={16} color={iconColor} />
+    </View>
+    <Text style={[styles.kpiValue, { color: theme.colors.text }]}>
+      {value}
+    </Text>
+    <Text style={[styles.kpiLabel, { color: theme.colors.text }]}>
+      {label}
+    </Text>
+    <Text style={[styles.kpiSub, { color: theme.colors.textMuted }]}>
+      {sub}
+    </Text>
+  </View>
+);
 
-  loadingText: {
-    color: "#94a3b8",
-    marginTop: 10,
-  },
+const CategoryTile = ({
+  icon,
+  label,
+  tint,
+  iconColor,
+  onPress,
+  count,
+  theme,
+  styles }: {
+  icon: keyof typeof Ionicons.glyphMap;
+  label: string;
+  tint: string;
+  iconColor: string;
+  onPress: () => void;
+  count?: number;
+  theme: any;
+  styles: any;
+}) => (
+  <TouchableOpacity
+    onPress={onPress}
+    activeOpacity={0.85}
+    style={[
+      styles.tile,
+      {
+        backgroundColor: theme.colors.surface,
+        borderColor: theme.colors.surfaceBorder,
+        shadowColor: theme.colors.shadow },
+    ]}
+  >
+    <View style={[styles.tileIcon, { backgroundColor: tint }]}>
+      <Ionicons name={icon} size={22} color={iconColor} />
+    </View>
+    <Text style={[styles.tileLabel, { color: theme.colors.text }]}>
+      {label}
+    </Text>
+    {typeof count === "number" && count > 0 && (
+      <View
+        style={[
+          styles.tileCountBadge,
+          { backgroundColor: theme.colors.dangerText },
+        ]}
+      >
+        <Text style={styles.tileCountText}>{count > 9 ? "9+" : count}</Text>
+      </View>
+    )}
+  </TouchableOpacity>
+);
 
-  hero: {
-    backgroundColor: "#0f172a",
-    padding: 18,
-    borderRadius: 18,
-    marginBottom: 22,
-    borderWidth: 1,
-    borderColor: "#1e293b",
-  },
+// =============================================================
+// Styles
+// =============================================================
 
-  heroTop: {
+const makeStyles = (c: any) => StyleSheet.create({
+  safe: { flex: 1 },
+  loader: { flex: 1, alignItems: "center", justifyContent: "center" },
+
+  brandLogo: {
+    width: 140,
+    height: 38,
+    marginBottom: 16,
+    alignSelf: "flex-start" },
+
+  helloRow: {
     flexDirection: "row",
-    justifyContent: "space-between",
     alignItems: "center",
-  },
+    marginBottom: 18 },
+  helloLabel: { fontSize: 13, marginBottom: 2 },
+  helloName: { fontSize: 28, fontWeight: "800" },
 
-  logo: {
-    width: 60,
-    height: 60,
-  },
-
-  bellWrap: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-    backgroundColor: "rgba(255,255,255,0.08)",
+  bell: {
+    width: 42,
+    height: 42,
+    borderRadius: 14,
+    borderWidth: 1,
     alignItems: "center",
     justifyContent: "center",
-    position: "relative",
-  },
-
-  badge: {
+    position: "relative" },
+  bellBadge: {
     position: "absolute",
     top: -2,
     right: -2,
-    backgroundColor: "#ef4444",
+    minWidth: 18,
+    height: 18,
+    borderRadius: 9,
+    paddingHorizontal: 4,
+    alignItems: "center",
+    justifyContent: "center" },
+  bellBadgeText: { color: c.text, fontSize: 10, fontWeight: "800" },
+
+  avatarSmall: { width: 42, height: 42, borderRadius: 21 },
+  avatarSmallFallback: {
+    width: 42,
+    height: 42,
+    borderRadius: 21,
+    alignItems: "center",
+    justifyContent: "center" },
+  avatarSmallText: { fontSize: 16, fontWeight: "800" },
+
+  statusCard: {
+    flexDirection: "row",
+    alignItems: "center",
+    padding: 18,
+    borderRadius: 20,
+    borderWidth: 1,
+    gap: 14,
+    shadowOpacity: 1,
+    shadowRadius: 16,
+    shadowOffset: { width: 0, height: 6 },
+    elevation: 3 },
+  statusLabel: {
+    fontSize: 11,
+    fontWeight: "800",
+    letterSpacing: 1.4,
+    marginBottom: 4 },
+  statusTitle: { fontSize: 18, fontWeight: "800" },
+  statusSub: { fontSize: 13, marginTop: 4 },
+  statusAction: {
+    width: 52,
+    height: 52,
+    borderRadius: 26,
+    alignItems: "center",
+    justifyContent: "center",
+    shadowOpacity: 0.25,
+    shadowRadius: 12,
+    shadowOffset: { width: 0, height: 6 },
+    elevation: 4 },
+
+  section: {
+    fontSize: 11,
+    fontWeight: "800",
+    letterSpacing: 1.4,
+    marginTop: 24,
+    marginBottom: 10,
+    marginLeft: 4 },
+
+  roleCallout: {
+    flexDirection: "row",
+    alignItems: "center",
+    padding: 16,
+    borderRadius: 20,
+    borderWidth: 1,
+    gap: 14,
+    marginTop: 14,
+    shadowOpacity: 1,
+    shadowRadius: 16,
+    shadowOffset: { width: 0, height: 6 },
+    elevation: 3 },
+  roleCalloutIcon: {
+    width: 50,
+    height: 50,
+    borderRadius: 14,
+    alignItems: "center",
+    justifyContent: "center" },
+  roleCalloutTitle: { fontSize: 16, fontWeight: "800" },
+  roleCalloutSub: { fontSize: 12, marginTop: 3, lineHeight: 17 },
+
+  kpiGrid: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 10 },
+  kpiCell: {
+    width: "47%",
+    flexGrow: 1,
+    padding: 14,
+    borderRadius: 18,
+    borderWidth: 1,
+    shadowOpacity: 1,
+    shadowRadius: 12,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 2 },
+  kpiIcon: {
+    width: 30,
+    height: 30,
+    borderRadius: 10,
+    alignItems: "center",
+    justifyContent: "center",
+    marginBottom: 8 },
+  kpiValue: { fontSize: 22, fontWeight: "800", marginBottom: 4 },
+  kpiLabel: { fontSize: 13, fontWeight: "700" },
+  kpiSub: { fontSize: 11, marginTop: 2 },
+
+  // 3-up grid. flexGrow stays 0 so tiles in a partial last row (e.g. 5
+  // items in a section) don't stretch to fill the leftover space — that
+  // was the "large button in between" problem.
+  tilesGrid: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    justifyContent: "flex-start",
+    columnGap: 10,
+    rowGap: 10 },
+  tile: {
+    flexBasis: "31.5%",
+    flexGrow: 0,
+    flexShrink: 0,
+    aspectRatio: 1,
+    padding: 12,
+    borderRadius: 18,
+    borderWidth: 1,
+    alignItems: "center",
+    justifyContent: "center",
+    shadowOpacity: 1,
+    shadowRadius: 12,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 2,
+    position: "relative" },
+  tileIcon: {
+    width: 48,
+    height: 48,
+    borderRadius: 16,
+    alignItems: "center",
+    justifyContent: "center",
+    marginBottom: 8 },
+  tileLabel: { fontSize: 12, fontWeight: "700", textAlign: "center" },
+  tileCountBadge: {
+    position: "absolute",
+    top: 8,
+    right: 8,
     minWidth: 20,
     height: 20,
     borderRadius: 10,
     paddingHorizontal: 5,
     alignItems: "center",
-    justifyContent: "center",
-    borderWidth: 2,
-    borderColor: "#0f172a",
-  },
+    justifyContent: "center" },
+  tileCountText: { color: c.text, fontSize: 10, fontWeight: "800" },
 
-  badgeText: {
-    color: "#fff",
-    fontSize: 10,
-    fontWeight: "800",
-  },
-
-  welcome: {
-    color: "#94a3b8",
-    fontSize: 13,
-  },
-
-  name: {
-    color: "#fff",
-    fontSize: 26,
-    fontWeight: "800",
-    marginTop: 4,
-  },
-
-  heroChips: {
-    flexDirection: "row",
-    flexWrap: "wrap",
-    gap: 6,
-    marginTop: 10,
-  },
-
-  heroChip: {
-    backgroundColor: "#1e293b",
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-    borderRadius: 999,
-  },
-
-  heroChipText: {
-    color: "#fff",
-    fontSize: 10,
-    fontWeight: "800",
-    letterSpacing: 0.5,
-  },
-
-  statusRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    backgroundColor: "rgba(255,255,255,0.04)",
-    borderRadius: 12,
-    padding: 12,
-    marginTop: 16,
-    gap: 10,
-    borderWidth: 1,
-    borderColor: "#1e293b",
-  },
-
-  statusDot: {
-    width: 10,
-    height: 10,
-    borderRadius: 5,
-  },
-
-  statusText: {
-    color: "#fff",
-    fontSize: 14,
-    fontWeight: "700",
-  },
-
-  statusSub: {
-    color: "#94a3b8",
-    fontSize: 11,
-    marginTop: 2,
-  },
-
-  quickRow: {
-    flexDirection: "row",
-    gap: 8,
-    marginTop: 10,
-  },
-
-  quickBtn: {
-    flex: 1,
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    backgroundColor: "#2563eb",
-    paddingVertical: 10,
-    borderRadius: 10,
-    gap: 6,
-  },
-
-  quickText: {
-    color: "#fff",
-    fontSize: 12,
-    fontWeight: "700",
-  },
-
-  section: {
-    color: "#64748b",
-    fontSize: 11,
-    letterSpacing: 2,
-    fontWeight: "700",
-    marginTop: 18,
-    marginBottom: 10,
-  },
-
-  grid: {
-    flexDirection: "row",
-    flexWrap: "wrap",
-    gap: 8,
-  },
-
-  mini: {
-    width: "48%",
-    backgroundColor: "#111827",
-    paddingVertical: 14,
-    paddingHorizontal: 12,
-    borderRadius: 14,
-    borderWidth: 1,
-    borderColor: "#1f2937",
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 10,
-  },
-
-  miniIcon: {
-    width: 34,
-    height: 34,
-    borderRadius: 10,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-
-  miniTitle: {
-    color: "#fff",
-    fontSize: 13,
-    fontWeight: "700",
-    flex: 1,
-  },
-
-  card: {
-    flexDirection: "row",
-    alignItems: "center",
-    backgroundColor: "#111827",
-    padding: 14,
-    borderRadius: 14,
-    marginBottom: 8,
-    borderWidth: 1,
-    borderColor: "#1f2937",
-  },
-
-  iconBox: {
-    width: 40,
-    height: 40,
-    borderRadius: 12,
-    backgroundColor: "#0ea5e9",
-    justifyContent: "center",
-    alignItems: "center",
-    marginRight: 12,
-  },
-
-  cardBody: {
-    flex: 1,
-  },
-
-  cardTitle: {
-    color: "#fff",
-    fontSize: 15,
-    fontWeight: "700",
-  },
-
-  cardDesc: {
-    color: "#94a3b8",
-    fontSize: 12,
-    marginTop: 3,
-  },
-
-  hrHub: {
-    flexDirection: "row",
-    alignItems: "center",
-    backgroundColor: "#7c3aed",
-    padding: 18,
+  listCard: {
     borderRadius: 18,
-    gap: 14,
-    shadowColor: "#7c3aed",
-    shadowOpacity: 0.4,
-    shadowRadius: 14,
-    shadowOffset: { width: 0, height: 6 },
-    elevation: 6,
-  },
-
-  hrHubIcon: {
-    width: 50,
-    height: 50,
-    borderRadius: 14,
-    backgroundColor: "rgba(255,255,255,0.18)",
-    justifyContent: "center",
+    borderWidth: 1,
+    shadowOpacity: 1,
+    shadowRadius: 12,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 2 },
+  listRow: {
+    flexDirection: "row",
     alignItems: "center",
-  },
-
-  hrHubTitle: {
-    color: "#fff",
-    fontSize: 17,
-    fontWeight: "800",
-  },
-
-  hrHubDesc: {
-    color: "rgba(255,255,255,0.85)",
-    fontSize: 12,
-    marginTop: 4,
-    lineHeight: 17,
-  },
-
-  bottomBar: {
-    padding: 16,
-    borderTopWidth: 1,
-    borderTopColor: "#1f2937",
-    backgroundColor: "#0b1220",
-  },
-
-  logoutBtn: {
-    backgroundColor: "#dc2626",
     padding: 14,
-    borderRadius: 14,
+    gap: 12 },
+  listIcon: {
+    width: 32,
+    height: 32,
+    borderRadius: 10,
     alignItems: "center",
-  },
-
-  logoutText: {
-    color: "#fff",
-    fontSize: 15,
-    fontWeight: "700",
-  },
-
-});
+    justifyContent: "center" },
+  listTitle: { fontSize: 14, fontWeight: "700" },
+  listMeta: { fontSize: 12, marginTop: 2 } });

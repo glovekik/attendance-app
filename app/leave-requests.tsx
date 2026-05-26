@@ -1,7 +1,6 @@
-import React, {
+﻿import React, {
   useEffect,
-  useState,
-} from "react";
+  useState, useMemo} from "react";
 
 import {
   View,
@@ -12,10 +11,9 @@ import {
   TextInput,
   ActivityIndicator,
   Modal,
-  SafeAreaView,
   Platform,
-  Alert,
-} from "react-native";
+  Alert } from "react-native";
+import { SafeAreaView } from "react-native-safe-area-context";
 
 import AsyncStorage from "@react-native-async-storage/async-storage";
 
@@ -25,14 +23,20 @@ import { Ionicons } from "@expo/vector-icons";
 
 import {
   hrListLeaveRequests,
-  hrDecideLeaveRequest,
-} from "../src/services/leaves";
+  hrDecideLeaveRequest } from "../src/services/leaves";
 
 import { LeaveRequest } from "../src/types";
-
+
+import { useTheme } from "../src/theme/ThemeProvider";
 export default function LeaveRequests() {
 
   const router = useRouter();
+
+  const { theme } = useTheme();
+
+  const c = theme.colors;
+
+  const styles = useMemo(() => makeStyles(c), [c]);
 
   const [items, setItems] = useState<LeaveRequest[]>([]);
   const [loading, setLoading] = useState(true);
@@ -46,8 +50,7 @@ export default function LeaveRequests() {
   const [popup, setPopup] = useState({
     visible: false,
     type: "success" as "success" | "error",
-    message: "",
-  });
+    message: "" });
 
   const showPopup = (
     msg: string,
@@ -112,8 +115,7 @@ export default function LeaveRequests() {
       const token = await AsyncStorage.getItem("token");
       if (!token) return;
       await hrDecideLeaveRequest(token, r.id, {
-        action: "APPROVE",
-      });
+        action: "APPROVE" });
       showPopup("Approved");
       await load();
     } catch (err: any) {
@@ -137,8 +139,7 @@ export default function LeaveRequests() {
       if (!token) return;
       await hrDecideLeaveRequest(token, rejectTarget.id, {
         action: "REJECT",
-        note: rejectNote.trim() || undefined,
-      });
+        note: rejectNote.trim() || undefined });
       showPopup("Rejected");
       setRejectVisible(false);
       await load();
@@ -152,7 +153,7 @@ export default function LeaveRequests() {
   if (loading) {
     return (
       <View style={styles.loader}>
-        <ActivityIndicator size="large" color="#2563eb" />
+        <ActivityIndicator size="large" color={c.accent} />
       </View>
     );
   }
@@ -181,9 +182,9 @@ export default function LeaveRequests() {
         <View style={styles.header}>
           <TouchableOpacity
             style={styles.backBtn}
-            onPress={() => router.back()}
+            onPress={() => (router.canGoBack() ? router.back() : router.replace("/"))}
           >
-            <Ionicons name="chevron-back" size={22} color="#fff" />
+            <Ionicons name="chevron-back" size={22} color={c.text} />
           </TouchableOpacity>
 
           <View style={{ flex: 1 }}>
@@ -199,7 +200,7 @@ export default function LeaveRequests() {
             <Ionicons
               name="checkmark-done-outline"
               size={48}
-              color="#475569"
+              color={c.textFaint}
             />
             <Text style={styles.emptyTitle}>All clear</Text>
             <Text style={styles.emptySub}>
@@ -279,7 +280,7 @@ export default function LeaveRequests() {
                 <Ionicons
                   name="close-outline"
                   size={18}
-                  color="#fff"
+                  color={c.text}
                 />
                 <Text style={styles.actionText}>Reject</Text>
               </TouchableOpacity>
@@ -333,7 +334,7 @@ export default function LeaveRequests() {
               value={rejectNote}
               onChangeText={setRejectNote}
               placeholder="Optional"
-              placeholderTextColor="#64748b"
+              placeholderTextColor={c.textFaint}
               multiline
             />
 
@@ -356,7 +357,7 @@ export default function LeaveRequests() {
                 {busyId ? (
                   <ActivityIndicator color="#fff" />
                 ) : (
-                  <Text style={styles.modalBtnText}>Reject</Text>
+                  <Text style={[styles.modalBtnText, { color: "#fff" }]}>Reject</Text>
                 )}
               </TouchableOpacity>
             </View>
@@ -369,16 +370,15 @@ export default function LeaveRequests() {
   );
 }
 
-const styles = StyleSheet.create({
-  safe: { flex: 1, backgroundColor: "#0b1220" },
+const makeStyles = (c: any) => StyleSheet.create({
+  safe: { flex: 1, backgroundColor: c.bg },
   container: { flex: 1 },
   content: { padding: 20, paddingBottom: 60 },
   loader: {
     flex: 1,
-    backgroundColor: "#0b1220",
+    backgroundColor: c.bg,
     justifyContent: "center",
-    alignItems: "center",
-  },
+    alignItems: "center" },
 
   popup: {
     position: "absolute",
@@ -387,140 +387,121 @@ const styles = StyleSheet.create({
     right: 20,
     padding: 14,
     borderRadius: 14,
-    zIndex: 999,
-  },
+    zIndex: 999 },
   successPopup: { backgroundColor: "#16a34a" },
   errorPopup: { backgroundColor: "#dc2626" },
-  popupText: { color: "#fff", fontWeight: "700", textAlign: "center" },
+  popupText: { color: c.text, fontWeight: "700", textAlign: "center" },
 
   header: {
     flexDirection: "row",
     alignItems: "center",
     marginBottom: 18,
     marginTop: 10,
-    gap: 12,
-  },
+    gap: 12 },
   backBtn: {
     width: 42,
     height: 42,
     borderRadius: 12,
-    backgroundColor: "#111827",
+    backgroundColor: c.surface,
     justifyContent: "center",
     alignItems: "center",
     borderWidth: 1,
-    borderColor: "#1f2937",
-  },
-  title: { color: "#fff", fontSize: 24, fontWeight: "800" },
-  subtitle: { color: "#94a3b8", fontSize: 13, marginTop: 3 },
+    borderColor: c.surfaceBorder },
+  title: { color: c.text, fontSize: 24, fontWeight: "800" },
+  subtitle: { color: c.textMuted, fontSize: 13, marginTop: 3 },
 
   emptyBox: {
     alignItems: "center",
     padding: 40,
-    backgroundColor: "#111827",
+    backgroundColor: c.surface,
     borderRadius: 18,
     borderWidth: 1,
-    borderColor: "#1f2937",
-    marginTop: 20,
-  },
+    borderColor: c.surfaceBorder,
+    marginTop: 20 },
   emptyTitle: {
-    color: "#fff",
+    color: c.text,
     fontSize: 17,
     fontWeight: "700",
-    marginTop: 14,
-  },
+    marginTop: 14 },
   emptySub: {
-    color: "#94a3b8",
+    color: c.textMuted,
     fontSize: 13,
     marginTop: 6,
-    textAlign: "center",
-  },
+    textAlign: "center" },
 
   card: {
-    backgroundColor: "#111827",
+    backgroundColor: c.surface,
     borderRadius: 16,
     padding: 14,
     marginBottom: 12,
     borderWidth: 1,
-    borderColor: "#1f2937",
-  },
+    borderColor: c.surfaceBorder },
   cardHead: {
     flexDirection: "row",
     alignItems: "center",
     gap: 12,
-    marginBottom: 12,
-  },
+    marginBottom: 12 },
   avatar: {
     width: 40,
     height: 40,
     borderRadius: 20,
-    backgroundColor: "#2563eb",
+    backgroundColor: c.accent,
     justifyContent: "center",
-    alignItems: "center",
-  },
+    alignItems: "center" },
   avatarText: { color: "#fff", fontWeight: "800", fontSize: 15 },
-  cardName: { color: "#fff", fontSize: 15, fontWeight: "700" },
-  cardEmail: { color: "#94a3b8", fontSize: 12, marginTop: 2 },
+  cardName: { color: c.text, fontSize: 15, fontWeight: "700" },
+  cardEmail: { color: c.textMuted, fontSize: 12, marginTop: 2 },
   daysChip: {
-    backgroundColor: "#2563eb",
+    backgroundColor: c.accent,
     paddingHorizontal: 12,
     paddingVertical: 6,
-    borderRadius: 999,
-  },
+    borderRadius: 999 },
   daysChipText: {
     color: "#fff",
     fontSize: 13,
-    fontWeight: "800",
-  },
+    fontWeight: "800" },
 
   timeBox: {
-    backgroundColor: "#0f172a",
+    backgroundColor: c.surfaceMuted,
     borderRadius: 12,
     padding: 12,
     borderWidth: 1,
-    borderColor: "#1e293b",
-    marginBottom: 12,
-  },
+    borderColor: c.surfaceBorder,
+    marginBottom: 12 },
   timeRow: {
     flexDirection: "row",
     justifyContent: "space-between",
     paddingVertical: 4,
-    gap: 12,
-  },
+    gap: 12 },
   timeLabel: {
-    color: "#94a3b8",
+    color: c.textMuted,
     fontSize: 12,
-    fontWeight: "600",
-  },
+    fontWeight: "600" },
   timeValue: {
-    color: "#fff",
+    color: c.text,
     fontSize: 13,
     fontWeight: "700",
     flexShrink: 1,
-    textAlign: "right",
-  },
+    textAlign: "right" },
 
   reasonLabel: {
-    color: "#94a3b8",
+    color: c.textMuted,
     fontSize: 12,
     fontWeight: "600",
-    marginBottom: 6,
-  },
+    marginBottom: 6 },
   reasonText: {
-    color: "#e2e8f0",
+    color: c.text,
     fontSize: 14,
-    lineHeight: 20,
-  },
+    lineHeight: 20 },
   attachmentLink: {
     color: "#60a5fa",
     fontSize: 12,
-    marginTop: 8,
-  },
+    marginTop: 8 },
 
   actions: {
     flexDirection: "row",
     gap: 10,
-    marginTop: 14,
-  },
+    marginTop: 14 },
   rejectBtn: {
     flex: 1,
     flexDirection: "row",
@@ -529,8 +510,7 @@ const styles = StyleSheet.create({
     backgroundColor: "#dc2626",
     paddingVertical: 11,
     borderRadius: 10,
-    gap: 5,
-  },
+    gap: 5 },
   approveBtn: {
     flex: 1,
     flexDirection: "row",
@@ -539,66 +519,56 @@ const styles = StyleSheet.create({
     backgroundColor: "#16a34a",
     paddingVertical: 11,
     borderRadius: 10,
-    gap: 5,
-  },
+    gap: 5 },
   actionText: {
-    color: "#fff",
+    color: c.text,
     fontWeight: "700",
-    fontSize: 14,
-  },
+    fontSize: 14 },
 
   modalOverlay: {
     flex: 1,
-    backgroundColor: "rgba(0,0,0,0.7)",
+    backgroundColor: c.overlay,
     justifyContent: "center",
-    padding: 20,
-  },
+    padding: 20 },
   modalCard: {
-    backgroundColor: "#111827",
+    backgroundColor: c.surface,
     borderRadius: 18,
-    padding: 20,
-  },
+    padding: 20 },
   modalTitle: {
-    color: "#fff",
+    color: c.text,
     fontSize: 20,
     fontWeight: "800",
-    marginBottom: 16,
-  },
+    marginBottom: 16 },
   label: {
-    color: "#94a3b8",
+    color: c.textMuted,
     fontSize: 13,
     fontWeight: "600",
-    marginBottom: 6,
-  },
+    marginBottom: 6 },
   input: {
-    backgroundColor: "#0f172a",
-    color: "#fff",
+    backgroundColor: c.surfaceMuted,
+    color: c.text,
     borderRadius: 12,
     padding: 13,
     minHeight: 80,
     textAlignVertical: "top",
     borderWidth: 1,
-    borderColor: "#1e293b",
-    fontSize: 14,
-  },
+    borderColor: c.surfaceBorder,
+    fontSize: 14 },
   modalActions: {
     flexDirection: "row",
     gap: 10,
-    marginTop: 18,
-  },
+    marginTop: 18 },
   cancelBtn: {
     flex: 1,
-    backgroundColor: "#374151",
+    backgroundColor: c.surfaceMuted,
     padding: 13,
     borderRadius: 11,
-    alignItems: "center",
-  },
+    alignItems: "center" },
   rejectConfirm: {
     flex: 1,
     backgroundColor: "#dc2626",
     padding: 13,
     borderRadius: 11,
-    alignItems: "center",
-  },
-  modalBtnText: { color: "#fff", fontWeight: "700" },
-});
+    alignItems: "center" },
+  modalBtnText: { color: c.text, fontWeight: "700" } });
+

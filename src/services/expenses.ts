@@ -12,11 +12,20 @@ export interface ExpensePayload {
   paymentMethod?: string;
 }
 
+export type ExpenseSortColumn =
+  | "date"
+  | "amount"
+  | "category"
+  | "title"
+  | "vendor";
+
 interface ListFilters {
   from?: string;
   to?: string;
   category?: string;
   search?: string;
+  sort?: ExpenseSortColumn;
+  order?: "asc" | "desc";
 }
 
 const buildQs = (f?: ListFilters) => {
@@ -28,6 +37,8 @@ const buildQs = (f?: ListFilters) => {
     parts.push(`category=${encodeURIComponent(f.category)}`);
   if (f.search)
     parts.push(`search=${encodeURIComponent(f.search)}`);
+  if (f.sort) parts.push(`sort=${f.sort}`);
+  if (f.order) parts.push(`order=${f.order}`);
   return parts.length ? `?${parts.join("&")}` : "";
 };
 

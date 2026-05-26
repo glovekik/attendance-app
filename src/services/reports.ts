@@ -1,6 +1,5 @@
 import { API_URL } from "../config";
-import { ApiError } from "./http";
-import { apiCall } from "./http";
+import { ApiError, apiCall } from "./http";
 import {
   AttendanceReportRow,
   AttritionRow,

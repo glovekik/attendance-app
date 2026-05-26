@@ -90,6 +90,8 @@ export class ErrorBoundary extends React.Component<Props, State> {
   }
 }
 
+// Class component — can't use hooks. Use neutral dark fallback styling
+// so the error UI is consistent regardless of the user's theme.
 const styles = StyleSheet.create({
   container: {
     flex: 1,

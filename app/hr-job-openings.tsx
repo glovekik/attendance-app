@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useCallback } from "react";
+﻿import React, { useEffect, useState, useCallback, useMemo} from "react";
 
 import {
   View,
@@ -7,15 +7,14 @@ import {
   FlatList,
   TouchableOpacity,
   ActivityIndicator,
-  SafeAreaView,
   RefreshControl,
   Modal,
   TextInput,
   Alert,
   ScrollView,
   KeyboardAvoidingView,
-  Platform,
-} from "react-native";
+  Platform } from "react-native";
+import { SafeAreaView } from "react-native-safe-area-context";
 
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useRouter } from "expo-router";
@@ -25,26 +24,23 @@ import {
   listJobOpenings,
   createJobOpening,
   updateJobOpening,
-  deleteJobOpening,
-} from "../src/services/jobOpenings";
+  deleteJobOpening } from "../src/services/jobOpenings";
 import { listDepartments } from "../src/services/departments";
+import { useTheme } from "../src/theme/ThemeProvider";
+import { jobOpeningStatusColor } from "../src/theme/statusColors";
 import {
   Department,
   EMPLOYMENT_TYPES,
   EmploymentType,
   JOB_OPENING_STATUSES,
   JobOpening,
-  JobOpeningStatus,
-} from "../src/types";
-
-const STATUS_COLOR: Record<JobOpeningStatus, string> = {
-  Open: "#16a34a",
-  OnHold: "#f59e0b",
-  Closed: "#64748b",
-};
+  JobOpeningStatus } from "../src/types";
 
 export default function HrJobOpenings() {
   const router = useRouter();
+  const { theme } = useTheme();
+  const c = theme.colors;
+  const styles = useMemo(() => makeStyles(c), [c]);
   const [items, setItems] = useState<JobOpening[]>([]);
   const [departments, setDepartments] = useState<Department[]>([]);
   const [loading, setLoading] = useState(true);
@@ -81,7 +77,10 @@ export default function HrJobOpenings() {
       setItems(jobs || []);
       setDepartments(depts || []);
     } catch (err: any) {
-      console.log("job-openings load error", err);
+      Alert.alert(
+        "Couldn't load job openings",
+        err?.message || "Pull down to retry."
+      );
     } finally {
       setLoading(false);
       setRefreshing(false);
@@ -156,8 +155,7 @@ export default function HrJobOpenings() {
         salaryMin: salaryMin ? parseFloat(salaryMin) : undefined,
         salaryMax: salaryMax ? parseFloat(salaryMax) : undefined,
         openings: openings ? parseInt(openings, 10) : 1,
-        status,
-      };
+        status };
       if (editingId) {
         await updateJobOpening(token, editingId, payload);
       } else {
@@ -186,15 +184,14 @@ export default function HrJobOpenings() {
           } catch (err: any) {
             Alert.alert("Delete failed", err?.message || "");
           }
-        },
-      },
+        } },
     ]);
   };
 
   if (loading) {
     return (
       <View style={styles.loader}>
-        <ActivityIndicator size="large" color="#3b82f6" />
+        <ActivityIndicator size="large" color={c.accent} />
       </View>
     );
   }
@@ -202,12 +199,12 @@ export default function HrJobOpenings() {
   return (
     <SafeAreaView style={styles.safe}>
       <View style={styles.header}>
-        <TouchableOpacity onPress={() => router.back()}>
-          <Ionicons name="arrow-back" size={24} color="#fff" />
+        <TouchableOpacity onPress={() => (router.canGoBack() ? router.back() : router.replace("/"))}>
+          <Ionicons name="arrow-back" size={24} color={c.text} />
         </TouchableOpacity>
         <Text style={styles.title}>Job Openings</Text>
         <TouchableOpacity onPress={openCreate}>
-          <Ionicons name="add-circle" size={28} color="#3b82f6" />
+          <Ionicons name="add-circle" size={28} color={c.accent} />
         </TouchableOpacity>
       </View>
 
@@ -221,8 +218,8 @@ export default function HrJobOpenings() {
           <RefreshControl
             refreshing={refreshing}
             onRefresh={onRefresh}
-            tintColor="#3b82f6"
-            colors={["#3b82f6"]}
+            tintColor={c.accent}
+            colors={[c.accent]}
           />
         }
         ListEmptyComponent={
@@ -230,7 +227,7 @@ export default function HrJobOpenings() {
             <Ionicons
               name="briefcase-outline"
               size={42}
-              color="#475569"
+              color={c.textFaint}
             />
             <Text style={styles.emptyText}>No openings yet</Text>
             <TouchableOpacity
@@ -244,6 +241,7 @@ export default function HrJobOpenings() {
         renderItem={({ item }) => {
           const dept =
             departments.find((d) => d.id === item.departmentId)?.name;
+          const sc = jobOpeningStatusColor(item.status, c);
           return (
             <TouchableOpacity
               style={styles.card}
@@ -257,10 +255,10 @@ export default function HrJobOpenings() {
                 <View
                   style={[
                     styles.statusPill,
-                    { backgroundColor: STATUS_COLOR[item.status] },
+                    { backgroundColor: sc.bg },
                   ]}
                 >
-                  <Text style={styles.statusText}>{item.status}</Text>
+                  <Text style={[styles.statusText, { color: sc.fg }]}>{item.status}</Text>
                 </View>
               </View>
               <Text style={styles.row}>
@@ -279,7 +277,7 @@ export default function HrJobOpenings() {
                   <Ionicons
                     name="trash-outline"
                     size={16}
-                    color="#94a3b8"
+                    color={c.textMuted}
                   />
                 </TouchableOpacity>
               </View>
@@ -304,7 +302,7 @@ export default function HrJobOpenings() {
                 {editingId ? "Edit opening" : "New opening"}
               </Text>
               <TouchableOpacity onPress={closeForm}>
-                <Ionicons name="close" size={24} color="#94a3b8" />
+                <Ionicons name="close" size={24} color={c.textMuted} />
               </TouchableOpacity>
             </View>
 
@@ -315,7 +313,7 @@ export default function HrJobOpenings() {
                 value={title}
                 onChangeText={setTitle}
                 placeholder="Senior Backend Engineer"
-                placeholderTextColor="#475569"
+                placeholderTextColor={c.textFaint}
               />
 
               <Text style={styles.label}>Department</Text>
@@ -357,7 +355,7 @@ export default function HrJobOpenings() {
                 value={location}
                 onChangeText={setLocation}
                 placeholder="Bangalore / Remote"
-                placeholderTextColor="#475569"
+                placeholderTextColor={c.textFaint}
               />
 
               <Text style={styles.label}>Employment Type</Text>
@@ -389,7 +387,7 @@ export default function HrJobOpenings() {
                 value={description}
                 onChangeText={setDescription}
                 placeholder="What the role is about"
-                placeholderTextColor="#475569"
+                placeholderTextColor={c.textFaint}
                 multiline
                 textAlignVertical="top"
               />
@@ -400,7 +398,7 @@ export default function HrJobOpenings() {
                 value={requirements}
                 onChangeText={setRequirements}
                 placeholder="Skills, experience, etc."
-                placeholderTextColor="#475569"
+                placeholderTextColor={c.textFaint}
                 multiline
                 textAlignVertical="top"
               />
@@ -413,7 +411,7 @@ export default function HrJobOpenings() {
                     value={salaryMin}
                     onChangeText={setSalaryMin}
                     placeholder="1500000"
-                    placeholderTextColor="#475569"
+                    placeholderTextColor={c.textFaint}
                     keyboardType="decimal-pad"
                   />
                 </View>
@@ -424,7 +422,7 @@ export default function HrJobOpenings() {
                     value={salaryMax}
                     onChangeText={setSalaryMax}
                     placeholder="2500000"
-                    placeholderTextColor="#475569"
+                    placeholderTextColor={c.textFaint}
                     keyboardType="decimal-pad"
                   />
                 </View>
@@ -435,7 +433,7 @@ export default function HrJobOpenings() {
                     value={openings}
                     onChangeText={setOpenings}
                     placeholder="1"
-                    placeholderTextColor="#475569"
+                    placeholderTextColor={c.textFaint}
                     keyboardType="number-pad"
                   />
                 </View>
@@ -443,28 +441,30 @@ export default function HrJobOpenings() {
 
               <Text style={styles.label}>Status</Text>
               <View style={styles.chipRow}>
-                {JOB_OPENING_STATUSES.map((s) => (
-                  <TouchableOpacity
-                    key={s}
-                    style={[
-                      styles.chip,
-                      status === s && {
-                        backgroundColor: STATUS_COLOR[s],
-                        borderColor: STATUS_COLOR[s],
-                      },
-                    ]}
-                    onPress={() => setStatus(s)}
-                  >
-                    <Text
+                {JOB_OPENING_STATUSES.map((s) => {
+                  const sc = jobOpeningStatusColor(s, c);
+                  return (
+                    <TouchableOpacity
+                      key={s}
                       style={[
-                        styles.chipText,
-                        status === s && styles.chipTextActive,
+                        styles.chip,
+                        status === s && {
+                          backgroundColor: sc.bg,
+                          borderColor: sc.solid },
                       ]}
+                      onPress={() => setStatus(s)}
                     >
-                      {s}
-                    </Text>
-                  </TouchableOpacity>
-                ))}
+                      <Text
+                        style={[
+                          styles.chipText,
+                          status === s && { color: sc.fg },
+                        ]}
+                      >
+                        {s}
+                      </Text>
+                    </TouchableOpacity>
+                  );
+                })}
               </View>
 
               <View style={{ height: 12 }} />
@@ -495,131 +495,116 @@ export default function HrJobOpenings() {
   );
 }
 
-const styles = StyleSheet.create({
-  safe: { flex: 1, backgroundColor: "#0b1220" },
+const makeStyles = (c: any) => StyleSheet.create({
+  safe: { flex: 1, backgroundColor: c.bg },
   loader: {
     flex: 1,
-    backgroundColor: "#0b1220",
+    backgroundColor: c.bg,
     justifyContent: "center",
-    alignItems: "center",
-  },
+    alignItems: "center" },
   header: {
     flexDirection: "row",
     alignItems: "center",
     paddingHorizontal: 16,
     paddingVertical: 14,
     borderBottomWidth: 1,
-    borderBottomColor: "#1f2937",
-    gap: 12,
-  },
-  title: { color: "#fff", fontSize: 18, fontWeight: "800", flex: 1 },
+    borderBottomColor: c.surfaceBorder,
+    gap: 12 },
+  title: { color: c.text, fontSize: 18, fontWeight: "800", flex: 1 },
   card: {
-    backgroundColor: "#111827",
+    backgroundColor: c.surface,
     padding: 14,
     borderRadius: 14,
     marginBottom: 8,
     borderWidth: 1,
-    borderColor: "#1f2937",
-  },
+    borderColor: c.surfaceBorder },
   cardTop: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    gap: 8,
-  },
+    gap: 8 },
   cardTitle: {
-    color: "#fff",
+    color: c.text,
     fontSize: 15,
     fontWeight: "700",
-    flex: 1,
-  },
+    flex: 1 },
   statusPill: {
     paddingHorizontal: 8,
     paddingVertical: 3,
-    borderRadius: 6,
-  },
-  statusText: { color: "#fff", fontSize: 10, fontWeight: "800" },
-  row: { color: "#94a3b8", fontSize: 12, marginTop: 6 },
+    borderRadius: 6 },
+  statusText: { color: c.text, fontSize: 10, fontWeight: "800" },
+  row: { color: c.textMuted, fontSize: 12, marginTop: 6 },
   cardFooter: {
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
-    marginTop: 8,
-  },
-  meta: { color: "#64748b", fontSize: 11 },
+    marginTop: 8 },
+  meta: { color: c.textMuted, fontSize: 11 },
   deleteBtn: { padding: 4 },
   emptyWrap: { flex: 1, justifyContent: "center" },
   empty: { alignItems: "center", gap: 10, padding: 30 },
-  emptyText: { color: "#475569", fontSize: 14 },
+  emptyText: { color: c.textMuted, fontSize: 14 },
   emptyBtn: {
-    backgroundColor: "#3b82f6",
+    backgroundColor: c.accent,
     paddingHorizontal: 18,
     paddingVertical: 10,
     borderRadius: 10,
-    marginTop: 6,
-  },
+    marginTop: 6 },
   emptyBtnText: { color: "#fff", fontWeight: "700" },
   modalWrap: {
     flex: 1,
     justifyContent: "flex-end",
-    backgroundColor: "rgba(0,0,0,0.5)",
-  },
+    backgroundColor: c.overlay },
   modal: {
-    backgroundColor: "#0f172a",
+    backgroundColor: c.surfaceMuted,
     padding: 20,
     borderTopLeftRadius: 18,
     borderTopRightRadius: 18,
     borderTopWidth: 1,
-    borderTopColor: "#1e293b",
-    maxHeight: "92%",
-  },
+    borderTopColor: c.surfaceBorder,
+    maxHeight: "92%" },
   modalHeader: {
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
-    marginBottom: 10,
-  },
-  modalTitle: { color: "#fff", fontSize: 17, fontWeight: "800" },
+    marginBottom: 10 },
+  modalTitle: { color: c.text, fontSize: 17, fontWeight: "800" },
   label: {
-    color: "#94a3b8",
+    color: c.textMuted,
     fontSize: 11,
     letterSpacing: 1.2,
     fontWeight: "700",
     marginTop: 14,
-    marginBottom: 6,
-  },
+    marginBottom: 6 },
   input: {
-    backgroundColor: "#111827",
-    color: "#fff",
+    backgroundColor: c.surface,
+    color: c.text,
     paddingHorizontal: 12,
     paddingVertical: 10,
     borderRadius: 10,
     borderWidth: 1,
-    borderColor: "#1f2937",
-    minHeight: 42,
-  },
+    borderColor: c.surfaceBorder,
+    minHeight: 42 },
   chipRow: { flexDirection: "row", flexWrap: "wrap", gap: 6 },
   chip: {
     paddingHorizontal: 12,
     paddingVertical: 7,
     borderRadius: 999,
-    backgroundColor: "#111827",
+    backgroundColor: c.surface,
     borderWidth: 1,
-    borderColor: "#1f2937",
-  },
-  chipActive: { backgroundColor: "#3b82f6", borderColor: "#3b82f6" },
-  chipText: { color: "#94a3b8", fontSize: 11, fontWeight: "700" },
-  chipTextActive: { color: "#fff" },
-  hint: { color: "#64748b", fontSize: 11, fontStyle: "italic" },
+    borderColor: c.surfaceBorder },
+  chipActive: { backgroundColor: c.accent, borderColor: c.accent },
+  chipText: { color: c.textMuted, fontSize: 11, fontWeight: "700" },
+  chipTextActive: { color: c.text },
+  hint: { color: c.textMuted, fontSize: 11, fontStyle: "italic" },
   actions: { flexDirection: "row", gap: 10, marginTop: 14 },
   btn: {
     flex: 1,
     paddingVertical: 14,
     borderRadius: 12,
-    alignItems: "center",
-  },
-  btnGhost: { backgroundColor: "#1e293b" },
-  btnGhostText: { color: "#94a3b8", fontWeight: "700" },
-  btnPrimary: { backgroundColor: "#3b82f6" },
-  btnPrimaryText: { color: "#fff", fontWeight: "800" },
-});
+    alignItems: "center" },
+  btnGhost: { backgroundColor: c.surfaceMuted },
+  btnGhostText: { color: c.textMuted, fontWeight: "700" },
+  btnPrimary: { backgroundColor: c.accent },
+  btnPrimaryText: { color: "#fff", fontWeight: "800" } });
+

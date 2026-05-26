@@ -75,11 +75,14 @@ export const hrDeleteOnboarding = (
 export const getMyOnboarding = (token: string) =>
   apiCall<Onboarding | null>("/onboarding/mine", { token });
 
+// Both of these mutation endpoints reply with just { message } — they do
+// NOT echo back the updated Onboarding. Callers must re-fetch via
+// getMyOnboarding() to refresh the screen.
 export const uploadOnboardingDocument = (
   token: string,
   data: { documentId: string; fileUrl: string }
 ) =>
-  apiCall<Onboarding>("/onboarding/document-upload", {
+  apiCall<{ message: string }>("/onboarding/document-upload", {
     method: "POST",
     body: data,
     token,
@@ -89,7 +92,7 @@ export const setMyTaskStatus = (
   token: string,
   data: { taskId: string; status: string; note?: string }
 ) =>
-  apiCall<Onboarding>("/onboarding/employee-task-status", {
+  apiCall<{ message: string }>("/onboarding/employee-task-status", {
     method: "PUT",
     body: data,
     token,

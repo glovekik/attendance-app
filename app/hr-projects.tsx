@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useCallback } from "react";
+﻿import React, { useEffect, useState, useCallback, useMemo} from "react";
 
 import {
   View,
@@ -7,7 +7,6 @@ import {
   FlatList,
   TouchableOpacity,
   ActivityIndicator,
-  SafeAreaView,
   RefreshControl,
   Modal,
   TextInput,
@@ -15,8 +14,8 @@ import {
   Switch,
   ScrollView,
   KeyboardAvoidingView,
-  Platform,
-} from "react-native";
+  Platform } from "react-native";
+import { SafeAreaView } from "react-native-safe-area-context";
 
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useRouter } from "expo-router";
@@ -26,27 +25,25 @@ import {
   listProjects,
   createProject,
   updateProject,
-  deleteProject,
-} from "../src/services/projects";
+  deleteProject } from "../src/services/projects";
 import { listDepartments } from "../src/services/departments";
 import { listUsers } from "../src/services/users";
+import { DatePickerField } from "../src/components/DatePickerField";
+import { useTheme } from "../src/theme/ThemeProvider";
+import { projectStatusColor } from "../src/theme/statusColors";
 import {
   Department,
   Project,
   ProjectStatus,
-  User,
-} from "../src/types";
+  User } from "../src/types";
 
 const STATUSES: ProjectStatus[] = ["Active", "OnHold", "Completed"];
 
-const STATUS_COLOR: Record<ProjectStatus, string> = {
-  Active: "#16a34a",
-  OnHold: "#f59e0b",
-  Completed: "#64748b",
-};
-
 export default function HrProjects() {
   const router = useRouter();
+  const { theme } = useTheme();
+  const c = theme.colors;
+  const styles = useMemo(() => makeStyles(c), [c]);
   const [items, setItems] = useState<Project[]>([]);
   const [departments, setDepartments] = useState<Department[]>([]);
   const [users, setUsers] = useState<User[]>([]);
@@ -90,7 +87,10 @@ export default function HrProjects() {
       setDepartments(depts || []);
       setUsers(allUsers || []);
     } catch (err: any) {
-      console.log("projects load error", err);
+      Alert.alert(
+        "Couldn't load projects",
+        err?.message || "Pull down to retry."
+      );
     } finally {
       setLoading(false);
       setRefreshing(false);
@@ -165,8 +165,7 @@ export default function HrProjects() {
         status,
         startDate: startDate.trim() || undefined,
         endDate: endDate.trim() || undefined,
-        billable,
-      };
+        billable };
       if (editingId) {
         await updateProject(token, editingId, payload);
       } else {
@@ -195,8 +194,7 @@ export default function HrProjects() {
           } catch (err: any) {
             Alert.alert("Delete failed", err?.message || "");
           }
-        },
-      },
+        } },
     ]);
   };
 
@@ -228,7 +226,7 @@ export default function HrProjects() {
   if (loading) {
     return (
       <View style={styles.loader}>
-        <ActivityIndicator size="large" color="#3b82f6" />
+        <ActivityIndicator size="large" color={c.accent} />
       </View>
     );
   }
@@ -236,12 +234,12 @@ export default function HrProjects() {
   return (
     <SafeAreaView style={styles.safe}>
       <View style={styles.header}>
-        <TouchableOpacity onPress={() => router.back()}>
-          <Ionicons name="arrow-back" size={24} color="#fff" />
+        <TouchableOpacity onPress={() => (router.canGoBack() ? router.back() : router.replace("/"))}>
+          <Ionicons name="arrow-back" size={24} color={c.text} />
         </TouchableOpacity>
         <Text style={styles.title}>Projects</Text>
         <TouchableOpacity onPress={openCreate}>
-          <Ionicons name="add-circle" size={28} color="#3b82f6" />
+          <Ionicons name="add-circle" size={28} color={c.accent} />
         </TouchableOpacity>
       </View>
 
@@ -255,8 +253,8 @@ export default function HrProjects() {
           <RefreshControl
             refreshing={refreshing}
             onRefresh={onRefresh}
-            tintColor="#3b82f6"
-            colors={["#3b82f6"]}
+            tintColor={c.accent}
+            colors={[c.accent]}
           />
         }
         ListEmptyComponent={
@@ -264,7 +262,7 @@ export default function HrProjects() {
             <Ionicons
               name="folder-outline"
               size={42}
-              color="#475569"
+              color={c.textFaint}
             />
             <Text style={styles.emptyText}>No projects yet</Text>
             <TouchableOpacity
@@ -280,6 +278,7 @@ export default function HrProjects() {
         renderItem={({ item }) => {
           const dept =
             departments.find((d) => d.id === item.departmentId)?.name;
+          const sc = projectStatusColor(item.status, c);
           return (
             <TouchableOpacity
               style={styles.card}
@@ -299,10 +298,10 @@ export default function HrProjects() {
                 <View
                   style={[
                     styles.statusPill,
-                    { backgroundColor: STATUS_COLOR[item.status] },
+                    { backgroundColor: sc.bg },
                   ]}
                 >
-                  <Text style={styles.statusText}>{item.status}</Text>
+                  <Text style={[styles.statusText, { color: sc.fg }]}>{item.status}</Text>
                 </View>
               </View>
               <View style={styles.cardFooter}>
@@ -317,7 +316,7 @@ export default function HrProjects() {
                   <Ionicons
                     name="trash-outline"
                     size={16}
-                    color="#94a3b8"
+                    color={c.textMuted}
                   />
                 </TouchableOpacity>
               </View>
@@ -343,7 +342,7 @@ export default function HrProjects() {
                 {editingId ? "Edit project" : "New project"}
               </Text>
               <TouchableOpacity onPress={closeForm}>
-                <Ionicons name="close" size={24} color="#94a3b8" />
+                <Ionicons name="close" size={24} color={c.textMuted} />
               </TouchableOpacity>
             </View>
 
@@ -354,7 +353,7 @@ export default function HrProjects() {
                 value={name}
                 onChangeText={setName}
                 placeholder="Project Alpha"
-                placeholderTextColor="#475569"
+                placeholderTextColor={c.textFaint}
               />
 
               <Text style={styles.label}>Code * (unique)</Text>
@@ -363,13 +362,13 @@ export default function HrProjects() {
                 value={code}
                 onChangeText={setCode}
                 placeholder="ALPHA"
-                placeholderTextColor="#475569"
+                placeholderTextColor={c.textFaint}
                 autoCapitalize="characters"
                 editable={!editingId}
               />
               {editingId && (
                 <Text style={styles.hint}>
-                  Code can't be changed
+                  Code can&apos;t be changed
                 </Text>
               )}
 
@@ -379,7 +378,7 @@ export default function HrProjects() {
                 value={description}
                 onChangeText={setDescription}
                 placeholder="Optional"
-                placeholderTextColor="#475569"
+                placeholderTextColor={c.textFaint}
                 multiline
                 textAlignVertical="top"
               />
@@ -427,7 +426,7 @@ export default function HrProjects() {
                   setPickerSearch("");
                 }}
               >
-                <Text style={{ color: "#cbd5e1" }}>
+                <Text style={{ color: c.text }}>
                   {pmIds.length > 0
                     ? pmIds
                         .map(
@@ -450,7 +449,7 @@ export default function HrProjects() {
                   setPickerSearch("");
                 }}
               >
-                <Text style={{ color: "#cbd5e1" }}>
+                <Text style={{ color: c.text }}>
                   {memberIds.length > 0
                     ? memberIds
                         .map(
@@ -465,51 +464,46 @@ export default function HrProjects() {
 
               <Text style={styles.label}>Status</Text>
               <View style={styles.chipRow}>
-                {STATUSES.map((s) => (
-                  <TouchableOpacity
-                    key={s}
-                    style={[
-                      styles.chip,
-                      status === s && {
-                        backgroundColor: STATUS_COLOR[s],
-                        borderColor: STATUS_COLOR[s],
-                      },
-                    ]}
-                    onPress={() => setStatus(s)}
-                  >
-                    <Text
+                {STATUSES.map((s) => {
+                  const sc = projectStatusColor(s, c);
+                  return (
+                    <TouchableOpacity
+                      key={s}
                       style={[
-                        styles.chipText,
-                        status === s && styles.chipTextActive,
+                        styles.chip,
+                        status === s && {
+                          backgroundColor: sc.bg,
+                          borderColor: sc.solid },
                       ]}
+                      onPress={() => setStatus(s)}
                     >
-                      {s}
-                    </Text>
-                  </TouchableOpacity>
-                ))}
+                      <Text
+                        style={[
+                          styles.chipText,
+                          status === s && { color: sc.fg },
+                        ]}
+                      >
+                        {s}
+                      </Text>
+                    </TouchableOpacity>
+                  );
+                })}
               </View>
 
               <View style={{ flexDirection: "row", gap: 8 }}>
                 <View style={{ flex: 1 }}>
                   <Text style={styles.label}>Start date</Text>
-                  <TextInput
-                    style={styles.input}
+                  <DatePickerField
                     value={startDate}
-                    onChangeText={setStartDate}
-                    placeholder="YYYY-MM-DD"
-                    placeholderTextColor="#475569"
-                    autoCapitalize="none"
+                    onChange={setStartDate}
                   />
                 </View>
                 <View style={{ flex: 1 }}>
                   <Text style={styles.label}>End date</Text>
-                  <TextInput
-                    style={styles.input}
+                  <DatePickerField
                     value={endDate}
-                    onChangeText={setEndDate}
-                    placeholder="YYYY-MM-DD"
-                    placeholderTextColor="#475569"
-                    autoCapitalize="none"
+                    onChange={setEndDate}
+                    min={startDate || undefined}
                   />
                 </View>
               </View>
@@ -519,7 +513,7 @@ export default function HrProjects() {
                 <Switch
                   value={billable}
                   onValueChange={setBillable}
-                  trackColor={{ false: "#1e293b", true: "#3b82f6" }}
+                  trackColor={{ false: "#1f2937", true: "#3b82f6" }}
                 />
               </View>
 
@@ -567,18 +561,18 @@ export default function HrProjects() {
                 <Ionicons
                   name="checkmark-done"
                   size={24}
-                  color="#3b82f6"
+                  color={c.accent}
                 />
               </TouchableOpacity>
             </View>
             <View style={styles.searchBox}>
-              <Ionicons name="search" size={16} color="#64748b" />
+              <Ionicons name="search" size={16} color={c.textMuted} />
               <TextInput
                 style={styles.searchInput}
                 value={pickerSearch}
                 onChangeText={setPickerSearch}
                 placeholder="Search..."
-                placeholderTextColor="#475569"
+                placeholderTextColor={c.textFaint}
                 autoCapitalize="none"
               />
             </View>
@@ -630,159 +624,141 @@ export default function HrProjects() {
   );
 }
 
-const styles = StyleSheet.create({
-  safe: { flex: 1, backgroundColor: "#0b1220" },
+const makeStyles = (c: any) => StyleSheet.create({
+  safe: { flex: 1, backgroundColor: c.bg },
   loader: {
     flex: 1,
-    backgroundColor: "#0b1220",
+    backgroundColor: c.bg,
     justifyContent: "center",
-    alignItems: "center",
-  },
+    alignItems: "center" },
   header: {
     flexDirection: "row",
     alignItems: "center",
     paddingHorizontal: 16,
     paddingVertical: 14,
     borderBottomWidth: 1,
-    borderBottomColor: "#1f2937",
-    gap: 12,
-  },
-  title: { color: "#fff", fontSize: 18, fontWeight: "800", flex: 1 },
+    borderBottomColor: c.surfaceBorder,
+    gap: 12 },
+  title: { color: c.text, fontSize: 18, fontWeight: "800", flex: 1 },
   card: {
-    backgroundColor: "#111827",
+    backgroundColor: c.surface,
     padding: 14,
     borderRadius: 14,
     marginBottom: 8,
     borderWidth: 1,
-    borderColor: "#1f2937",
-  },
+    borderColor: c.surfaceBorder },
   cardTop: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 10,
-  },
-  cardTitle: { color: "#fff", fontSize: 15, fontWeight: "700" },
-  codeChip: { color: "#94a3b8", fontSize: 11, fontWeight: "600" },
-  cardDesc: { color: "#94a3b8", fontSize: 12, marginTop: 3 },
+    gap: 10 },
+  cardTitle: { color: c.text, fontSize: 15, fontWeight: "700" },
+  codeChip: { color: c.textMuted, fontSize: 11, fontWeight: "600" },
+  cardDesc: { color: c.textMuted, fontSize: 12, marginTop: 3 },
   statusPill: {
     paddingHorizontal: 8,
     paddingVertical: 3,
-    borderRadius: 6,
-  },
-  statusText: { color: "#fff", fontSize: 10, fontWeight: "800" },
+    borderRadius: 6 },
+  statusText: { color: c.text, fontSize: 10, fontWeight: "800" },
   cardFooter: {
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
-    marginTop: 10,
-  },
-  meta: { color: "#64748b", fontSize: 11 },
+    marginTop: 10 },
+  meta: { color: c.textMuted, fontSize: 11 },
   deleteBtn: { padding: 4 },
   emptyWrap: { flex: 1, justifyContent: "center" },
   empty: { alignItems: "center", gap: 10, padding: 30 },
-  emptyText: { color: "#475569", fontSize: 14 },
+  emptyText: { color: c.textMuted, fontSize: 14 },
   emptyBtn: {
-    backgroundColor: "#3b82f6",
+    backgroundColor: c.accent,
     paddingHorizontal: 18,
     paddingVertical: 10,
     borderRadius: 10,
-    marginTop: 6,
-  },
+    marginTop: 6 },
   emptyBtnText: { color: "#fff", fontWeight: "700" },
   modalWrap: {
     flex: 1,
     justifyContent: "flex-end",
-    backgroundColor: "rgba(0,0,0,0.5)",
-  },
+    backgroundColor: c.overlay },
   modal: {
-    backgroundColor: "#0f172a",
+    backgroundColor: c.surfaceMuted,
     padding: 20,
     borderTopLeftRadius: 18,
     borderTopRightRadius: 18,
     borderTopWidth: 1,
-    borderTopColor: "#1e293b",
-    maxHeight: "92%",
-  },
+    borderTopColor: c.surfaceBorder,
+    maxHeight: "92%" },
   pickerModal: {
-    backgroundColor: "#0f172a",
+    backgroundColor: c.surfaceMuted,
     padding: 16,
     borderTopLeftRadius: 18,
     borderTopRightRadius: 18,
     borderTopWidth: 1,
-    borderTopColor: "#1e293b",
-    maxHeight: "90%",
-  },
+    borderTopColor: c.surfaceBorder,
+    maxHeight: "90%" },
   modalHeader: {
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
-    marginBottom: 10,
-  },
-  modalTitle: { color: "#fff", fontSize: 17, fontWeight: "800" },
+    marginBottom: 10 },
+  modalTitle: { color: c.text, fontSize: 17, fontWeight: "800" },
   label: {
-    color: "#94a3b8",
+    color: c.textMuted,
     fontSize: 11,
     letterSpacing: 1.2,
     fontWeight: "700",
     marginTop: 14,
-    marginBottom: 6,
-  },
+    marginBottom: 6 },
   input: {
-    backgroundColor: "#111827",
-    color: "#fff",
+    backgroundColor: c.surface,
+    color: c.text,
     paddingHorizontal: 12,
     paddingVertical: 10,
     borderRadius: 10,
     borderWidth: 1,
-    borderColor: "#1f2937",
-    minHeight: 42,
-  },
-  hint: { color: "#64748b", fontSize: 11, fontStyle: "italic" },
+    borderColor: c.surfaceBorder,
+    minHeight: 42 },
+  hint: { color: c.textMuted, fontSize: 11, fontStyle: "italic" },
   row: {
     flexDirection: "row",
     alignItems: "center",
-    justifyContent: "space-between",
-  },
+    justifyContent: "space-between" },
   chipRow: { flexDirection: "row", flexWrap: "wrap", gap: 6 },
   chip: {
     paddingHorizontal: 12,
     paddingVertical: 7,
     borderRadius: 999,
-    backgroundColor: "#111827",
+    backgroundColor: c.surface,
     borderWidth: 1,
-    borderColor: "#1f2937",
-  },
-  chipActive: { backgroundColor: "#3b82f6", borderColor: "#3b82f6" },
-  chipText: { color: "#94a3b8", fontSize: 11, fontWeight: "700" },
-  chipTextActive: { color: "#fff" },
+    borderColor: c.surfaceBorder },
+  chipActive: { backgroundColor: c.accent, borderColor: c.accent },
+  chipText: { color: c.textMuted, fontSize: 11, fontWeight: "700" },
+  chipTextActive: { color: c.text },
   actions: { flexDirection: "row", gap: 10, marginTop: 14 },
   btn: {
     flex: 1,
     paddingVertical: 14,
     borderRadius: 12,
-    alignItems: "center",
-  },
-  btnGhost: { backgroundColor: "#1e293b" },
-  btnGhostText: { color: "#94a3b8", fontWeight: "700" },
-  btnPrimary: { backgroundColor: "#3b82f6" },
+    alignItems: "center" },
+  btnGhost: { backgroundColor: c.surfaceMuted },
+  btnGhostText: { color: c.textMuted, fontWeight: "700" },
+  btnPrimary: { backgroundColor: c.accent },
   btnPrimaryText: { color: "#fff", fontWeight: "800" },
   searchBox: {
     flexDirection: "row",
     alignItems: "center",
-    backgroundColor: "#111827",
+    backgroundColor: c.surface,
     borderRadius: 10,
     paddingHorizontal: 10,
     gap: 6,
     marginBottom: 10,
     borderWidth: 1,
-    borderColor: "#1f2937",
-  },
+    borderColor: c.surfaceBorder },
   searchInput: {
     flex: 1,
-    color: "#fff",
+    color: c.text,
     paddingVertical: 8,
-    fontSize: 13,
-  },
+    fontSize: 13 },
   pickerRow: {
     flexDirection: "row",
     alignItems: "center",
@@ -790,17 +766,15 @@ const styles = StyleSheet.create({
     paddingHorizontal: 4,
     gap: 10,
     borderBottomWidth: 1,
-    borderBottomColor: "#111827",
-  },
+    borderBottomColor: c.surfaceBorder },
   avatar: {
     width: 36,
     height: 36,
     borderRadius: 18,
-    backgroundColor: "#1e293b",
+    backgroundColor: c.surfaceMuted,
     alignItems: "center",
-    justifyContent: "center",
-  },
-  avatarText: { color: "#fff", fontWeight: "700" },
-  pickerName: { color: "#fff", fontSize: 14, fontWeight: "700" },
-  pickerSub: { color: "#94a3b8", fontSize: 11, marginTop: 2 },
-});
+    justifyContent: "center" },
+  avatarText: { color: c.text, fontWeight: "700" },
+  pickerName: { color: c.text, fontSize: 14, fontWeight: "700" },
+  pickerSub: { color: c.textMuted, fontSize: 11, marginTop: 2 } });
+

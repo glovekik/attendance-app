@@ -1,10 +1,19 @@
 import { Platform } from "react-native";
 
-export const downloadPdfWithAuth = async (
+interface DownloadOptions {
+  mimeType?: string;
+  uti?: string;
+}
+
+const downloadWithAuth = async (
   url: string,
   token: string,
-  filename: string
+  filename: string,
+  opts: DownloadOptions = {}
 ): Promise<void> => {
+
+  const mimeType = opts.mimeType || "application/pdf";
+  const uti = opts.uti || "com.adobe.pdf";
 
   if (Platform.OS === "web") {
 
@@ -45,9 +54,25 @@ export const downloadPdfWithAuth = async (
   const canShare = await Sharing.isAvailableAsync();
   if (canShare) {
     await Sharing.shareAsync(result.uri, {
-      mimeType: "application/pdf",
+      mimeType,
       dialogTitle: filename,
-      UTI: "com.adobe.pdf",
+      UTI: uti,
     });
   }
 };
+
+export const downloadPdfWithAuth = (
+  url: string,
+  token: string,
+  filename: string,
+): Promise<void> => downloadWithAuth(url, token, filename);
+
+export const downloadXlsxWithAuth = (
+  url: string,
+  token: string,
+  filename: string,
+): Promise<void> => downloadWithAuth(url, token, filename, {
+  mimeType:
+    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+  uti: "org.openxmlformats.spreadsheetml.sheet",
+});

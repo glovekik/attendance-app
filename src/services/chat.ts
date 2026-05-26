@@ -28,11 +28,12 @@ export const listTeamMessages = (
 export const sendTeamMessage = (
   token: string,
   teamId: string,
-  text: string
+  text: string,
+  mentions?: string[]
 ) =>
   apiCall<ChatMessage>(`/teams/${teamId}/messages`, {
     method: "POST",
-    body: { text },
+    body: mentions && mentions.length ? { text, mentions } : { text },
     token,
   });
 
@@ -58,11 +59,12 @@ export const listOfficeMessages = (
 
 export const sendOfficeMessage = (
   token: string,
-  text: string
+  text: string,
+  mentions?: string[]
 ) =>
   apiCall<ChatMessage>(`/office/messages`, {
     method: "POST",
-    body: { text },
+    body: mentions && mentions.length ? { text, mentions } : { text },
     token,
   });
 
@@ -74,3 +76,17 @@ export const deleteOfficeMessage = (
     `/office/messages/${messageId}`,
     { method: "DELETE", token }
   );
+
+// ===== UNREAD (team chat) =====
+// Count of team-chat messages posted since the user last opened a team
+// chat — drives the badge on the dashboard Chat tile.
+export const getChatUnreadCount = (
+  token: string
+): Promise<{ count: number }> =>
+  apiCall(`/me/chat-unread`, { token });
+
+// Clears the unread badge — called when a team chat is opened.
+export const markChatRead = (
+  token: string
+): Promise<{ ok: boolean }> =>
+  apiCall(`/me/chat-read`, { method: "POST", token });

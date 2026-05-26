@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useCallback } from "react";
+﻿import React, { useEffect, useState, useCallback, useMemo} from "react";
 
 import {
   View,
@@ -7,14 +7,13 @@ import {
   FlatList,
   TouchableOpacity,
   ActivityIndicator,
-  SafeAreaView,
   RefreshControl,
   Modal,
   TextInput,
   Alert,
   KeyboardAvoidingView,
-  Platform,
-} from "react-native";
+  Platform } from "react-native";
+import { SafeAreaView } from "react-native-safe-area-context";
 
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useRouter } from "expo-router";
@@ -24,13 +23,16 @@ import {
   listDepartments,
   createDepartment,
   updateDepartment,
-  deleteDepartment,
-} from "../src/services/departments";
+  deleteDepartment } from "../src/services/departments";
 import { listUsers } from "../src/services/users";
 import { Department, User } from "../src/types";
-
+
+import { useTheme } from "../src/theme/ThemeProvider";
 export default function HrDepartments() {
   const router = useRouter();
+  const { theme } = useTheme();
+  const c = theme.colors;
+  const styles = useMemo(() => makeStyles(c), [c]);
   const [items, setItems] = useState<Department[]>([]);
   const [users, setUsers] = useState<User[]>([]);
   const [loading, setLoading] = useState(true);
@@ -62,7 +64,10 @@ export default function HrDepartments() {
       setItems(depts || []);
       setUsers(allUsers || []);
     } catch (err: any) {
-      console.log("departments load error", err);
+      Alert.alert(
+        "Couldn't load departments",
+        err?.message || "Pull down to retry."
+      );
     } finally {
       setLoading(false);
       setRefreshing(false);
@@ -112,8 +117,7 @@ export default function HrDepartments() {
       const payload = {
         name: name.trim(),
         description: description.trim() || undefined,
-        headUserId: headUserId || undefined,
-      };
+        headUserId: headUserId || undefined };
       if (editingId) {
         await updateDepartment(token, editingId, payload);
       } else {
@@ -128,6 +132,38 @@ export default function HrDepartments() {
   };
 
   const onDelete = (d: Department) => {
+    const doDelete = async () => {
+      try {
+        const token = await AsyncStorage.getItem("token");
+        if (!token) return;
+        await deleteDepartment(token, d.id);
+        setItems((prev) => prev.filter((x) => x.id !== d.id));
+      } catch (err: any) {
+        // Backend refuses delete when users still belong — surface
+        // that message instead of a silent "Delete failed".
+        const msg =
+          err?.message ||
+          "Could not delete this department. Move any users to " +
+            "another department first, then try again.";
+        if (Platform.OS === "web") {
+          if (typeof window !== "undefined") window.alert(`Delete failed: ${msg}`);
+        } else {
+          Alert.alert("Delete failed", msg);
+        }
+      }
+    };
+
+    // Alert.alert is a no-op on RN-Web; use window.confirm instead.
+    if (Platform.OS === "web") {
+      const ok =
+        typeof window !== "undefined" &&
+        window.confirm(
+          `Delete department "${d.name}"? This will fail if any user still belongs to it.`
+        );
+      if (ok) doDelete();
+      return;
+    }
+
     Alert.alert(
       "Delete department?",
       `${d.name} — this will fail if any user still belongs to it.`,
@@ -136,17 +172,7 @@ export default function HrDepartments() {
         {
           text: "Delete",
           style: "destructive",
-          onPress: async () => {
-            try {
-              const token = await AsyncStorage.getItem("token");
-              if (!token) return;
-              await deleteDepartment(token, d.id);
-              setItems((prev) => prev.filter((x) => x.id !== d.id));
-            } catch (err: any) {
-              Alert.alert("Delete failed", err?.message || "");
-            }
-          },
-        },
+          onPress: doDelete },
       ]
     );
   };
@@ -154,19 +180,22 @@ export default function HrDepartments() {
   const headUserName =
     users.find((u) => u.id === headUserId)?.name || "";
 
-  const filteredUsers = users.filter((u) => {
-    const q = headSearch.trim().toLowerCase();
-    if (!q) return true;
-    return (
-      u.name.toLowerCase().includes(q) ||
-      u.email.toLowerCase().includes(q)
-    );
-  });
+  const filteredUsers = users
+    // Terminated users can't lead a department.
+    .filter((u) => u.status !== "Terminated")
+    .filter((u) => {
+      const q = headSearch.trim().toLowerCase();
+      if (!q) return true;
+      return (
+        u.name.toLowerCase().includes(q) ||
+        u.email.toLowerCase().includes(q)
+      );
+    });
 
   if (loading) {
     return (
       <View style={styles.loader}>
-        <ActivityIndicator size="large" color="#3b82f6" />
+        <ActivityIndicator size="large" color={c.accent} />
       </View>
     );
   }
@@ -174,12 +203,12 @@ export default function HrDepartments() {
   return (
     <SafeAreaView style={styles.safe}>
       <View style={styles.header}>
-        <TouchableOpacity onPress={() => router.back()}>
-          <Ionicons name="arrow-back" size={24} color="#fff" />
+        <TouchableOpacity onPress={() => (router.canGoBack() ? router.back() : router.replace("/"))}>
+          <Ionicons name="arrow-back" size={24} color={c.text} />
         </TouchableOpacity>
         <Text style={styles.title}>Departments</Text>
         <TouchableOpacity onPress={openCreate}>
-          <Ionicons name="add-circle" size={28} color="#3b82f6" />
+          <Ionicons name="add-circle" size={28} color={c.accent} />
         </TouchableOpacity>
       </View>
 
@@ -193,8 +222,8 @@ export default function HrDepartments() {
           <RefreshControl
             refreshing={refreshing}
             onRefresh={onRefresh}
-            tintColor="#3b82f6"
-            colors={["#3b82f6"]}
+            tintColor={c.accent}
+            colors={[c.accent]}
           />
         }
         ListEmptyComponent={
@@ -202,7 +231,7 @@ export default function HrDepartments() {
             <Ionicons
               name="business-outline"
               size={42}
-              color="#475569"
+              color={c.textFaint}
             />
             <Text style={styles.emptyText}>
               No departments yet
@@ -221,40 +250,45 @@ export default function HrDepartments() {
           const head =
             users.find((u) => u.id === item.headUserId)?.name;
           return (
-            <TouchableOpacity
-              style={styles.card}
-              onPress={() => openEdit(item)}
-              activeOpacity={0.8}
-            >
-              <View style={styles.iconBox}>
-                <Ionicons
-                  name="business-outline"
-                  size={22}
-                  color="#fff"
-                />
-              </View>
-              <View style={{ flex: 1 }}>
-                <Text style={styles.cardTitle}>{item.name}</Text>
-                {!!item.description && (
-                  <Text style={styles.cardDesc} numberOfLines={1}>
-                    {item.description}
-                  </Text>
-                )}
-                {!!head && (
-                  <Text style={styles.head}>Head: {head}</Text>
-                )}
-              </View>
+            // View-as-row instead of nested TouchableOpacity so the
+            // delete tap doesn't bubble up and open the edit modal.
+            <View style={styles.card}>
+              <TouchableOpacity
+                style={styles.cardBody}
+                onPress={() => openEdit(item)}
+                activeOpacity={0.8}
+              >
+                <View style={styles.iconBox}>
+                  <Ionicons
+                    name="business-outline"
+                    size={22}
+                    color="#fff"
+                  />
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.cardTitle}>{item.name}</Text>
+                  {!!item.description && (
+                    <Text style={styles.cardDesc} numberOfLines={1}>
+                      {item.description}
+                    </Text>
+                  )}
+                  {!!head && (
+                    <Text style={styles.head}>Head: {head}</Text>
+                  )}
+                </View>
+              </TouchableOpacity>
               <TouchableOpacity
                 onPress={() => onDelete(item)}
                 style={styles.deleteBtn}
+                hitSlop={10}
               >
                 <Ionicons
                   name="trash-outline"
-                  size={18}
-                  color="#94a3b8"
+                  size={20}
+                  color="#ef4444"
                 />
               </TouchableOpacity>
-            </TouchableOpacity>
+            </View>
           );
         }}
       />
@@ -276,7 +310,7 @@ export default function HrDepartments() {
                 {editingId ? "Edit department" : "New department"}
               </Text>
               <TouchableOpacity onPress={closeForm}>
-                <Ionicons name="close" size={24} color="#94a3b8" />
+                <Ionicons name="close" size={24} color={c.textMuted} />
               </TouchableOpacity>
             </View>
 
@@ -286,7 +320,7 @@ export default function HrDepartments() {
               value={name}
               onChangeText={setName}
               placeholder="Engineering"
-              placeholderTextColor="#475569"
+              placeholderTextColor={c.textFaint}
             />
 
             <Text style={styles.label}>Description</Text>
@@ -295,7 +329,7 @@ export default function HrDepartments() {
               value={description}
               onChangeText={setDescription}
               placeholder="Optional"
-              placeholderTextColor="#475569"
+              placeholderTextColor={c.textFaint}
               multiline
               textAlignVertical="top"
             />
@@ -307,8 +341,7 @@ export default function HrDepartments() {
             >
               <Text
                 style={{
-                  color: headUserId ? "#fff" : "#475569",
-                }}
+                  color: headUserId ? "#fff" : "#475569" }}
               >
                 {headUserName || "Tap to choose..."}
               </Text>
@@ -356,17 +389,17 @@ export default function HrDepartments() {
             <View style={styles.modalHeader}>
               <Text style={styles.modalTitle}>Choose head</Text>
               <TouchableOpacity onPress={() => setShowHeadPicker(false)}>
-                <Ionicons name="close" size={24} color="#94a3b8" />
+                <Ionicons name="close" size={24} color={c.textMuted} />
               </TouchableOpacity>
             </View>
             <View style={styles.searchBox}>
-              <Ionicons name="search" size={16} color="#64748b" />
+              <Ionicons name="search" size={16} color={c.textMuted} />
               <TextInput
                 style={styles.searchInput}
                 value={headSearch}
                 onChangeText={setHeadSearch}
                 placeholder="Search by name or email"
-                placeholderTextColor="#475569"
+                placeholderTextColor={c.textFaint}
                 autoCapitalize="none"
               />
             </View>
@@ -403,134 +436,126 @@ export default function HrDepartments() {
   );
 }
 
-const styles = StyleSheet.create({
-  safe: { flex: 1, backgroundColor: "#0b1220" },
+const makeStyles = (c: any) => StyleSheet.create({
+  safe: { flex: 1, backgroundColor: c.bg },
   loader: {
     flex: 1,
-    backgroundColor: "#0b1220",
+    backgroundColor: c.bg,
     justifyContent: "center",
-    alignItems: "center",
-  },
+    alignItems: "center" },
   header: {
     flexDirection: "row",
     alignItems: "center",
     paddingHorizontal: 16,
     paddingVertical: 14,
     borderBottomWidth: 1,
-    borderBottomColor: "#1f2937",
-    gap: 12,
-  },
-  title: { color: "#fff", fontSize: 18, fontWeight: "800", flex: 1 },
+    borderBottomColor: c.surfaceBorder,
+    gap: 12 },
+  title: { color: c.text, fontSize: 18, fontWeight: "800", flex: 1 },
   card: {
     flexDirection: "row",
     alignItems: "center",
-    backgroundColor: "#111827",
-    padding: 14,
+    backgroundColor: c.surface,
+    paddingRight: 14,
     borderRadius: 14,
     marginBottom: 8,
     borderWidth: 1,
-    borderColor: "#1f2937",
-    gap: 12,
-  },
+    borderColor: c.surfaceBorder,
+    gap: 12 },
+  cardBody: {
+    flex: 1,
+    flexDirection: "row",
+    alignItems: "center",
+    padding: 14,
+    gap: 12 },
   iconBox: {
     width: 40,
     height: 40,
     borderRadius: 12,
     backgroundColor: "#0ea5e9",
     alignItems: "center",
-    justifyContent: "center",
-  },
-  cardTitle: { color: "#fff", fontSize: 15, fontWeight: "700" },
-  cardDesc: { color: "#94a3b8", fontSize: 12, marginTop: 3 },
-  head: { color: "#64748b", fontSize: 11, marginTop: 4 },
+    justifyContent: "center" },
+  cardTitle: { color: c.text, fontSize: 15, fontWeight: "700" },
+  cardDesc: { color: c.textMuted, fontSize: 12, marginTop: 3 },
+  head: { color: c.textMuted, fontSize: 11, marginTop: 4 },
   deleteBtn: { padding: 6 },
   emptyWrap: { flex: 1, justifyContent: "center" },
   empty: { alignItems: "center", gap: 10, padding: 30 },
-  emptyText: { color: "#475569", fontSize: 14 },
+  emptyText: { color: c.textMuted, fontSize: 14 },
   emptyBtn: {
-    backgroundColor: "#3b82f6",
+    backgroundColor: c.accent,
     paddingHorizontal: 18,
     paddingVertical: 10,
     borderRadius: 10,
-    marginTop: 6,
-  },
+    marginTop: 6 },
   emptyBtnText: { color: "#fff", fontWeight: "700" },
   modalWrap: {
     flex: 1,
     justifyContent: "flex-end",
-    backgroundColor: "rgba(0,0,0,0.5)",
-  },
+    backgroundColor: c.overlay },
   modal: {
-    backgroundColor: "#0f172a",
+    backgroundColor: c.surfaceMuted,
     padding: 20,
     borderTopLeftRadius: 18,
     borderTopRightRadius: 18,
     borderTopWidth: 1,
-    borderTopColor: "#1e293b",
-  },
+    borderTopColor: c.surfaceBorder },
   pickerModal: {
-    backgroundColor: "#0f172a",
+    backgroundColor: c.surfaceMuted,
     padding: 16,
     borderTopLeftRadius: 18,
     borderTopRightRadius: 18,
     borderTopWidth: 1,
-    borderTopColor: "#1e293b",
-    maxHeight: "85%",
-  },
+    borderTopColor: c.surfaceBorder,
+    maxHeight: "85%" },
   modalHeader: {
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
-    marginBottom: 10,
-  },
-  modalTitle: { color: "#fff", fontSize: 17, fontWeight: "800" },
+    marginBottom: 10 },
+  modalTitle: { color: c.text, fontSize: 17, fontWeight: "800" },
   label: {
-    color: "#94a3b8",
+    color: c.textMuted,
     fontSize: 11,
     letterSpacing: 1.2,
     fontWeight: "700",
     marginTop: 14,
-    marginBottom: 6,
-  },
+    marginBottom: 6 },
   input: {
-    backgroundColor: "#111827",
-    color: "#fff",
+    backgroundColor: c.surface,
+    color: c.text,
     paddingHorizontal: 12,
     paddingVertical: 10,
     borderRadius: 10,
     borderWidth: 1,
-    borderColor: "#1f2937",
-    minHeight: 42,
-  },
+    borderColor: c.surfaceBorder,
+    minHeight: 42 },
   linkClear: { color: "#ef4444", fontSize: 11, fontWeight: "700" },
   actions: { flexDirection: "row", gap: 10, marginTop: 18 },
   btn: {
     flex: 1,
     paddingVertical: 14,
     borderRadius: 12,
-    alignItems: "center",
-  },
-  btnGhost: { backgroundColor: "#1e293b" },
-  btnGhostText: { color: "#94a3b8", fontWeight: "700" },
-  btnPrimary: { backgroundColor: "#3b82f6" },
+    alignItems: "center" },
+  btnGhost: { backgroundColor: c.surfaceMuted },
+  btnGhostText: { color: c.textMuted, fontWeight: "700" },
+  btnPrimary: { backgroundColor: c.accent },
   btnPrimaryText: { color: "#fff", fontWeight: "800" },
   searchBox: {
     flexDirection: "row",
     alignItems: "center",
-    backgroundColor: "#111827",
+    backgroundColor: c.surface,
     borderRadius: 10,
     paddingHorizontal: 10,
     gap: 6,
     marginBottom: 10,
     borderWidth: 1,
-    borderColor: "#1f2937",
-  },
+    borderColor: c.surfaceBorder },
   searchInput: {
     flex: 1,
-    color: "#fff",
+    color: c.text,
     paddingVertical: 8,
-    fontSize: 13,
-  },
+    fontSize: 13 },
   pickerRow: {
     flexDirection: "row",
     alignItems: "center",
@@ -538,17 +563,15 @@ const styles = StyleSheet.create({
     paddingHorizontal: 4,
     gap: 12,
     borderBottomWidth: 1,
-    borderBottomColor: "#111827",
-  },
+    borderBottomColor: c.surfaceBorder },
   avatar: {
     width: 36,
     height: 36,
     borderRadius: 18,
-    backgroundColor: "#1e293b",
+    backgroundColor: c.surfaceMuted,
     alignItems: "center",
-    justifyContent: "center",
-  },
-  avatarText: { color: "#fff", fontWeight: "700" },
-  pickerName: { color: "#fff", fontSize: 14, fontWeight: "700" },
-  pickerSub: { color: "#94a3b8", fontSize: 11, marginTop: 2 },
-});
+    justifyContent: "center" },
+  avatarText: { color: c.text, fontWeight: "700" },
+  pickerName: { color: c.text, fontSize: 14, fontWeight: "700" },
+  pickerSub: { color: c.textMuted, fontSize: 11, marginTop: 2 } });
+

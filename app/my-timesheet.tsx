@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useCallback } from "react";
+﻿import React, { useEffect, useMemo, useState, useCallback } from "react";
 
 import {
   View,
@@ -7,13 +7,12 @@ import {
   ScrollView,
   TouchableOpacity,
   ActivityIndicator,
-  SafeAreaView,
   RefreshControl,
   TextInput,
   Alert,
   KeyboardAvoidingView,
-  Platform,
-} from "react-native";
+  Platform } from "react-native";
+import { SafeAreaView } from "react-native-safe-area-context";
 
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useRouter } from "expo-router";
@@ -21,13 +20,15 @@ import { Ionicons } from "@expo/vector-icons";
 
 import {
   getMyTimesheet,
-  submitTimesheet,
-} from "../src/services/timesheets";
+  submitTimesheet } from "../src/services/timesheets";
 import {
   Timesheet,
   TimesheetEntry,
-  TimesheetStatus,
-} from "../src/types";
+  TimesheetStatus } from "../src/types";
+import { useTheme } from "../src/theme/ThemeProvider";
+import {
+  timesheetStatusColor,
+  timesheetStatusLabel } from "../src/theme/statusColors";
 
 // Helpers
 const ymd = (d: Date) => {
@@ -53,20 +54,6 @@ const addDays = (d: Date, n: number) => {
   return x;
 };
 
-const STATUS_COLOR: Record<TimesheetStatus, string> = {
-  DRAFT: "#64748b",
-  PENDING: "#f59e0b",
-  APPROVED: "#16a34a",
-  REJECTED: "#dc2626",
-};
-
-const STATUS_LABEL: Record<TimesheetStatus, string> = {
-  DRAFT: "Draft (not submitted)",
-  PENDING: "Awaiting manager",
-  APPROVED: "Approved",
-  REJECTED: "Rejected — fix & resubmit",
-};
-
 const WEEKDAYS = [
   "Mon",
   "Tue",
@@ -79,6 +66,9 @@ const WEEKDAYS = [
 
 export default function MyTimesheet() {
   const router = useRouter();
+  const { theme } = useTheme();
+  const c = theme.colors;
+  const styles = useMemo(() => makeStyles(c), [c]);
   const [weekStart, setWeekStart] = useState<Date>(mondayOf(new Date()));
   const [timesheet, setTimesheet] = useState<Timesheet | null>(null);
   const [entries, setEntries] = useState<TimesheetEntry[]>([]);
@@ -110,14 +100,16 @@ export default function MyTimesheet() {
             hours: 0,
             projectId: null,
             notes: "",
-            billable: false,
-          }
+            billable: false }
         );
       }
       setEntries(seven);
       setNote(data.note || "");
     } catch (err: any) {
-      console.log("timesheet load error", err);
+      Alert.alert(
+        "Couldn't load timesheet",
+        err?.message || "Pull down to retry."
+      );
     } finally {
       setLoading(false);
       setRefreshing(false);
@@ -176,9 +168,7 @@ export default function MyTimesheet() {
           hours: Number(e.hours) || 0,
           projectId: e.projectId || undefined,
           notes: e.notes || undefined,
-          billable: !!e.billable,
-        })),
-      };
+          billable: !!e.billable })) };
       const saved = await submitTimesheet(token, payload);
       setTimesheet(saved);
       Alert.alert("Submitted", "Your timesheet is awaiting approval.");
@@ -192,7 +182,7 @@ export default function MyTimesheet() {
   if (loading) {
     return (
       <View style={styles.loader}>
-        <ActivityIndicator size="large" color="#3b82f6" />
+        <ActivityIndicator size="large" color={c.accent} />
       </View>
     );
   }
@@ -200,8 +190,8 @@ export default function MyTimesheet() {
   return (
     <SafeAreaView style={styles.safe}>
       <View style={styles.header}>
-        <TouchableOpacity onPress={() => router.back()}>
-          <Ionicons name="arrow-back" size={24} color="#fff" />
+        <TouchableOpacity onPress={() => (router.canGoBack() ? router.back() : router.replace("/"))}>
+          <Ionicons name="arrow-back" size={24} color={c.text} />
         </TouchableOpacity>
         <Text style={styles.title}>My Timesheet</Text>
         <View style={{ width: 24 }} />
@@ -217,8 +207,8 @@ export default function MyTimesheet() {
             <RefreshControl
               refreshing={refreshing}
               onRefresh={onRefresh}
-              tintColor="#3b82f6"
-              colors={["#3b82f6"]}
+              tintColor={c.accent}
+              colors={[c.accent]}
             />
           }
         >
@@ -228,7 +218,7 @@ export default function MyTimesheet() {
               <Ionicons
                 name="chevron-back"
                 size={20}
-                color="#fff"
+                color={c.text}
               />
             </TouchableOpacity>
             <View style={{ flex: 1, alignItems: "center" }}>
@@ -243,23 +233,30 @@ export default function MyTimesheet() {
               <Ionicons
                 name="chevron-forward"
                 size={20}
-                color="#fff"
+                color={c.text}
               />
             </TouchableOpacity>
           </View>
 
           {/* Status */}
-          <View
-            style={[
-              styles.statusBar,
-              { backgroundColor: STATUS_COLOR[status] },
-            ]}
-          >
-            <Text style={styles.statusText}>{STATUS_LABEL[status]}</Text>
-            <Text style={styles.totalText}>
-              {totalHours.toFixed(1)} h
-            </Text>
-          </View>
+          {(() => {
+            const sc = timesheetStatusColor(status, c);
+            return (
+              <View
+                style={[
+                  styles.statusBar,
+                  { backgroundColor: sc.bg, borderColor: sc.solid, borderWidth: 1 },
+                ]}
+              >
+                <Text style={[styles.statusText, { color: sc.fg }]}>
+                  {timesheetStatusLabel(status)}
+                </Text>
+                <Text style={[styles.totalText, { color: sc.fg }]}>
+                  {totalHours.toFixed(1)} h
+                </Text>
+              </View>
+            );
+          })()}
 
           {status === "REJECTED" && !!timesheet?.decisionNote && (
             <View style={styles.rejectBox}>
@@ -272,7 +269,6 @@ export default function MyTimesheet() {
 
           {/* Entries */}
           {entries.map((e, i) => {
-            const date = new Date(`${e.date}T00:00:00`);
             return (
               <View key={e.date} style={styles.row}>
                 <View style={styles.dayHeader}>
@@ -292,11 +288,10 @@ export default function MyTimesheet() {
                       value={String(e.hours)}
                       onChangeText={(v) =>
                         updateEntry(i, {
-                          hours: parseFloat(v) || 0,
-                        })
+                          hours: parseFloat(v) || 0 })
                       }
                       placeholder="0"
-                      placeholderTextColor="#475569"
+                      placeholderTextColor={c.textFaint}
                       keyboardType="decimal-pad"
                       editable={editable}
                     />
@@ -310,7 +305,7 @@ export default function MyTimesheet() {
                     updateEntry(i, { projectId: v || null })
                   }
                   placeholder="Project (optional)"
-                  placeholderTextColor="#475569"
+                  placeholderTextColor={c.textFaint}
                   editable={editable}
                 />
                 <View style={styles.subRow}>
@@ -319,7 +314,7 @@ export default function MyTimesheet() {
                     value={e.notes || ""}
                     onChangeText={(v) => updateEntry(i, { notes: v })}
                     placeholder="Notes (optional)"
-                    placeholderTextColor="#475569"
+                    placeholderTextColor={c.textFaint}
                     editable={editable}
                   />
                   <TouchableOpacity
@@ -354,7 +349,7 @@ export default function MyTimesheet() {
             value={note}
             onChangeText={setNote}
             placeholder="Anything you want manager to know..."
-            placeholderTextColor="#475569"
+            placeholderTextColor={c.textFaint}
             multiline
             editable={editable}
           />
@@ -385,44 +380,40 @@ export default function MyTimesheet() {
   );
 }
 
-const styles = StyleSheet.create({
-  safe: { flex: 1, backgroundColor: "#0b1220" },
+const makeStyles = (c: any) => StyleSheet.create({
+  safe: { flex: 1, backgroundColor: c.bg },
   loader: {
     flex: 1,
-    backgroundColor: "#0b1220",
+    backgroundColor: c.bg,
     justifyContent: "center",
-    alignItems: "center",
-  },
+    alignItems: "center" },
   header: {
     flexDirection: "row",
     alignItems: "center",
     paddingHorizontal: 16,
     paddingVertical: 14,
     borderBottomWidth: 1,
-    borderBottomColor: "#1f2937",
-    gap: 12,
-  },
-  title: { color: "#fff", fontSize: 18, fontWeight: "800", flex: 1 },
+    borderBottomColor: c.surfaceBorder,
+    gap: 12 },
+  title: { color: c.text, fontSize: 18, fontWeight: "800", flex: 1 },
   weekNav: {
     flexDirection: "row",
     alignItems: "center",
-    backgroundColor: "#0f172a",
+    backgroundColor: c.surface,
     padding: 10,
     borderRadius: 12,
     marginBottom: 12,
     borderWidth: 1,
-    borderColor: "#1e293b",
-  },
+    borderColor: c.surfaceBorder },
   navBtn: {
     width: 36,
     height: 36,
     borderRadius: 18,
-    backgroundColor: "#1e293b",
+    backgroundColor: c.surfaceMuted,
     alignItems: "center",
-    justifyContent: "center",
-  },
-  weekLabel: { color: "#fff", fontSize: 14, fontWeight: "700" },
-  currentLink: { color: "#3b82f6", fontSize: 11, marginTop: 2 },
+    justifyContent: "center" },
+  weekLabel: { color: c.text, fontSize: 14, fontWeight: "700" },
+  currentLink: { color: c.accent, fontSize: 11, marginTop: 2 },
   statusBar: {
     flexDirection: "row",
     justifyContent: "space-between",
@@ -430,108 +421,94 @@ const styles = StyleSheet.create({
     paddingHorizontal: 14,
     paddingVertical: 10,
     borderRadius: 10,
-    marginBottom: 12,
-  },
-  statusText: { color: "#fff", fontSize: 12, fontWeight: "700" },
-  totalText: { color: "#fff", fontSize: 16, fontWeight: "800" },
+    marginBottom: 12 },
+  statusText: { color: c.text, fontSize: 12, fontWeight: "700" },
+  totalText: { color: c.text, fontSize: 16, fontWeight: "800" },
   rejectBox: {
-    backgroundColor: "#3a1212",
-    borderColor: "#7f1d1d",
+    backgroundColor: c.dangerBg,
+    borderColor: c.dangerText,
     borderWidth: 1,
     padding: 12,
     borderRadius: 10,
-    marginBottom: 12,
-  },
+    marginBottom: 12 },
   rejectTitle: {
-    color: "#fca5a5",
+    color: c.dangerText,
     fontSize: 11,
     letterSpacing: 1.2,
-    fontWeight: "800",
-  },
-  rejectBody: { color: "#fecaca", fontSize: 13, marginTop: 4 },
+    fontWeight: "800" },
+  rejectBody: { color: c.dangerText, fontSize: 13, marginTop: 4 },
   row: {
-    backgroundColor: "#111827",
+    backgroundColor: c.surface,
     padding: 12,
     borderRadius: 12,
     marginBottom: 8,
     borderWidth: 1,
-    borderColor: "#1f2937",
-  },
+    borderColor: c.surfaceBorder },
   dayHeader: {
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
-    marginBottom: 8,
-  },
-  dayName: { color: "#fff", fontSize: 14, fontWeight: "700" },
-  attLabel: { color: "#94a3b8", fontSize: 10, marginTop: 2 },
+    marginBottom: 8 },
+  dayName: { color: c.text, fontSize: 14, fontWeight: "700" },
+  attLabel: { color: c.textMuted, fontSize: 10, marginTop: 2 },
   hoursWrap: {
     flexDirection: "row",
     alignItems: "center",
-    backgroundColor: "#0f172a",
+    backgroundColor: c.surfaceMuted,
     borderRadius: 8,
     paddingHorizontal: 10,
-    gap: 6,
-  },
+    gap: 6 },
   hoursInput: {
-    color: "#fff",
+    color: c.text,
     fontSize: 16,
     fontWeight: "800",
     minWidth: 50,
     textAlign: "right",
-    paddingVertical: 6,
-  },
-  hoursLabel: { color: "#94a3b8", fontSize: 12 },
+    paddingVertical: 6 },
+  hoursLabel: { color: c.textMuted, fontSize: 12 },
   subInput: {
-    backgroundColor: "#0f172a",
-    color: "#fff",
+    backgroundColor: c.surfaceMuted,
+    color: c.text,
     fontSize: 12,
     paddingHorizontal: 10,
     paddingVertical: 8,
     borderRadius: 8,
     marginTop: 6,
     borderWidth: 1,
-    borderColor: "#1f2937",
-  },
+    borderColor: c.surfaceBorder },
   subRow: {
     flexDirection: "row",
     alignItems: "center",
     gap: 6,
-    marginTop: 6,
-  },
+    marginTop: 6 },
   billBtn: {
     paddingHorizontal: 10,
     paddingVertical: 8,
     borderRadius: 8,
-    backgroundColor: "#0f172a",
+    backgroundColor: c.surfaceMuted,
     borderWidth: 1,
-    borderColor: "#1f2937",
-  },
+    borderColor: c.surfaceBorder },
   billBtnActive: {
-    backgroundColor: "#16a34a",
-    borderColor: "#16a34a",
-  },
-  billText: { color: "#64748b", fontSize: 10, fontWeight: "800" },
-  billTextActive: { color: "#fff" },
+    backgroundColor: c.successText,
+    borderColor: c.successText },
+  billText: { color: c.textMuted, fontSize: 10, fontWeight: "800" },
+  billTextActive: { color: c.text },
   label: {
-    color: "#94a3b8",
+    color: c.textMuted,
     fontSize: 11,
     letterSpacing: 1.2,
     fontWeight: "700",
     marginTop: 14,
-    marginBottom: 6,
-  },
+    marginBottom: 6 },
   bottomBar: {
     padding: 14,
     borderTopWidth: 1,
-    borderTopColor: "#1f2937",
-    backgroundColor: "#0b1220",
-  },
+    borderTopColor: c.surfaceBorder,
+    backgroundColor: c.bg },
   submitBtn: {
-    backgroundColor: "#3b82f6",
+    backgroundColor: c.accent,
     paddingVertical: 14,
     borderRadius: 12,
-    alignItems: "center",
-  },
-  submitText: { color: "#fff", fontSize: 15, fontWeight: "800" },
-});
+    alignItems: "center" },
+  submitText: { color: c.text, fontSize: 15, fontWeight: "800" } });
+

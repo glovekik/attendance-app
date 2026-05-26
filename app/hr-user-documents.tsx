@@ -1,13 +1,11 @@
-import React, { useEffect, useState, useCallback } from "react";
+﻿import React, { useEffect, useState, useCallback, useMemo } from "react";
 
 import {
   View,
   Text,
   StyleSheet,
-  FlatList,
   TouchableOpacity,
   ActivityIndicator,
-  SafeAreaView,
   RefreshControl,
   Modal,
   TextInput,
@@ -15,7 +13,8 @@ import {
   ScrollView,
   KeyboardAvoidingView,
   Platform,
-} from "react-native";
+  Linking } from "react-native";
+import { SafeAreaView } from "react-native-safe-area-context";
 
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useRouter, useLocalSearchParams } from "expo-router";
@@ -26,9 +25,13 @@ import {
   listUserDocuments,
   addUserDocument,
   deleteUserDocument,
-} from "../src/services/documents";
+  listUserRequiredDocuments,
+  RequiredDocument,
+  verifyUserRequiredDocument } from "../src/services/documents";
 import { getUser } from "../src/services/users";
 import { EmployeeDocument } from "../src/types";
+
+import { useTheme } from "../src/theme/ThemeProvider";
 
 const COMMON_CATEGORIES = [
   "PAN",
@@ -44,29 +47,35 @@ const COMMON_CATEGORIES = [
   "Passport",
   "Salary Slip",
   "Certification",
-  "Other",
 ];
 
 export default function HrUserDocuments() {
   const router = useRouter();
+  const { theme } = useTheme();
+  const c = theme.colors;
+  const styles = useMemo(() => makeStyles(c), [c]);
   const { id } = useLocalSearchParams<{ id: string }>();
+
   const [items, setItems] = useState<EmployeeDocument[]>([]);
+  const [required, setRequired] = useState<RequiredDocument[]>([]);
   const [userName, setUserName] = useState<string>("");
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
-  const [filter, setFilter] = useState("");
 
-  const [showForm, setShowForm] = useState(false);
-  const [saving, setSaving] = useState(false);
-  const [category, setCategory] = useState("PAN");
-  const [fileName, setFileName] = useState("");
-  const [fileUrl, setFileUrl] = useState("");
-  const [notes, setNotes] = useState("");
-  const [expiresOn, setExpiresOn] = useState("");
+  // Local-only note buffer per category, attached on next HR upload.
+  const [pendingNotes, setPendingNotes] = useState<Record<string, string>>({});
+  const [noteFor, setNoteFor] = useState<string | null>(null);
+  const [noteDraft, setNoteDraft] = useState("");
+
+  // Extra slots HR added on the fly for this employee.
+  const [showAddCat, setShowAddCat] = useState(false);
+  const [customCat, setCustomCat] = useState("");
+  const [extraCats, setExtraCats] = useState<string[]>([]);
 
   const load = useCallback(async () => {
     if (!id) {
-      router.back();
+      if (router.canGoBack()) router.back();
+      else router.replace("/");
       return;
     }
     try {
@@ -75,21 +84,26 @@ export default function HrUserDocuments() {
         router.replace("/login");
         return;
       }
-      const [docs, u] = await Promise.all([
-        listUserDocuments(token, id, filter || undefined),
+      const [docs, req, u] = await Promise.all([
+        listUserDocuments(token, id),
+        listUserRequiredDocuments(token, id).catch(() => []),
         userName
           ? Promise.resolve(null)
           : getUser(token, id).catch(() => null),
       ]);
       setItems(docs || []);
+      setRequired(req || []);
       if (u && !userName) setUserName(u.name);
     } catch (err: any) {
-      console.log("hr-user-documents load error", err);
+      Alert.alert(
+        "Couldn't load documents",
+        err?.message || "Pull down to retry."
+      );
     } finally {
       setLoading(false);
       setRefreshing(false);
     }
-  }, [id, router, filter, userName]);
+  }, [id, router, userName]);
 
   useEffect(() => {
     load();
@@ -100,33 +114,67 @@ export default function HrUserDocuments() {
     load();
   };
 
-  const onSave = async () => {
-    if (!id) return;
-    if (!fileUrl.trim()) return Alert.alert("Pick or paste a file URL");
-    if (!fileName.trim()) return Alert.alert("File name required");
-    setSaving(true);
-    try {
-      const token = await AsyncStorage.getItem("token");
-      if (!token) return;
-      await addUserDocument(token, id, {
-        category,
-        fileName: fileName.trim(),
-        fileUrl: fileUrl.trim(),
-        notes: notes.trim() || undefined,
-        expiresOn: expiresOn.trim() || undefined,
-      });
-      setShowForm(false);
-      setFileName("");
-      setFileUrl("");
-      setNotes("");
-      setExpiresOn("");
-      load();
-    } catch (err: any) {
-      Alert.alert("Save failed", err?.message || "");
-    } finally {
-      setSaving(false);
+  const latestByCategory = useMemo(() => {
+    const map = new Map<string, EmployeeDocument>();
+    for (const d of items) {
+      if (!map.has(d.category)) map.set(d.category, d);
     }
-  };
+    return map;
+  }, [items]);
+
+  const categories = useMemo(() => {
+    const set = new Set<string>(COMMON_CATEGORIES);
+    for (const r of required) set.add(r.category);
+    for (const d of items) set.add(d.category);
+    for (const c of extraCats) set.add(c);
+    return Array.from(set);
+  }, [required, items, extraCats]);
+
+  const requiredByCategory = useMemo(() => {
+    const map = new Map<string, RequiredDocument>();
+    for (const r of required) map.set(r.category, r);
+    return map;
+  }, [required]);
+
+  const onUploaded = useCallback(
+    async (category: string, url: string, fileName: string) => {
+      if (!id) return;
+      try {
+        const token = await AsyncStorage.getItem("token");
+        if (!token) return;
+
+        // Replace flow — HR deletes any prior doc for the same
+        // category before uploading the new one. HR is unrestricted
+        // (delete works on both employee- and HR-uploaded rows).
+        const prior = latestByCategory.get(category);
+        if (prior) {
+          try {
+            await deleteUserDocument(token, id, prior.id);
+          } catch {
+            // Continue regardless — new upload still wins.
+          }
+        }
+
+        const note = pendingNotes[category]?.trim();
+        await addUserDocument(token, id, {
+          category,
+          fileName,
+          fileUrl: url,
+          notes: note || undefined });
+        if (note) {
+          setPendingNotes((prev) => {
+            const next = { ...prev };
+            delete next[category];
+            return next;
+          });
+        }
+        load();
+      } catch (err: any) {
+        Alert.alert("Upload failed", err?.message || "");
+      }
+    },
+    [id, latestByCategory, pendingNotes, load]
+  );
 
   const onDelete = (d: EmployeeDocument) => {
     if (!id) return;
@@ -144,239 +192,356 @@ export default function HrUserDocuments() {
           } catch (err: any) {
             Alert.alert("Delete failed", err?.message || "");
           }
-        },
-      },
+        } },
     ]);
+  };
+
+  const onVerify = async (category: string) => {
+    if (!id) return;
+    try {
+      const token = await AsyncStorage.getItem("token");
+      if (!token) return;
+      await verifyUserRequiredDocument(token, id, category);
+      load();
+    } catch (err: any) {
+      Alert.alert("Verify failed", err?.message || "");
+    }
+  };
+
+  const openNoteFor = (category: string) => {
+    setNoteFor(category);
+    setNoteDraft(pendingNotes[category] || "");
+  };
+
+  const saveNote = () => {
+    if (!noteFor) return;
+    const trimmed = noteDraft.trim();
+    setPendingNotes((prev) => {
+      const next = { ...prev };
+      if (trimmed) next[noteFor] = trimmed;
+      else delete next[noteFor];
+      return next;
+    });
+    setNoteFor(null);
+    setNoteDraft("");
+  };
+
+  const addCustomCategory = () => {
+    const name = customCat.trim();
+    if (!name) return;
+    setExtraCats((prev) => (prev.includes(name) ? prev : [...prev, name]));
+    setShowAddCat(false);
+    setCustomCat("");
   };
 
   return (
     <SafeAreaView style={styles.safe}>
       <View style={styles.header}>
-        <TouchableOpacity onPress={() => router.back()}>
-          <Ionicons name="arrow-back" size={24} color="#fff" />
+        <TouchableOpacity onPress={() => (router.canGoBack() ? router.back() : router.replace("/"))}>
+          <Ionicons name="arrow-back" size={24} color={c.text} />
         </TouchableOpacity>
         <View style={{ flex: 1 }}>
           <Text style={styles.title}>Documents</Text>
-          {!!userName && (
-            <Text style={styles.subtitle}>{userName}</Text>
-          )}
+          {!!userName && <Text style={styles.subtitle}>{userName}</Text>}
         </View>
-        <TouchableOpacity onPress={() => setShowForm(true)}>
-          <Ionicons name="add-circle" size={28} color="#3b82f6" />
+        <TouchableOpacity
+          style={styles.addBtn}
+          onPress={() => setShowAddCat(true)}
+        >
+          <Ionicons name="add" size={20} color="#fff" />
         </TouchableOpacity>
       </View>
 
-      <ScrollView
-        horizontal
-        showsHorizontalScrollIndicator={false}
-        contentContainerStyle={{
-          paddingHorizontal: 12,
-          paddingVertical: 8,
-          gap: 6,
-        }}
-      >
-        <TouchableOpacity
-          style={[styles.chip, !filter && styles.chipActive]}
-          onPress={() => setFilter("")}
-        >
-          <Text
-            style={[styles.chipText, !filter && styles.chipTextActive]}
-          >
-            All
-          </Text>
-        </TouchableOpacity>
-        {COMMON_CATEGORIES.map((c) => (
-          <TouchableOpacity
-            key={c}
-            style={[styles.chip, filter === c && styles.chipActive]}
-            onPress={() => setFilter(c)}
-          >
-            <Text
-              style={[
-                styles.chipText,
-                filter === c && styles.chipTextActive,
-              ]}
-            >
-              {c}
-            </Text>
-          </TouchableOpacity>
-        ))}
-      </ScrollView>
+      <View style={styles.infoBanner}>
+        <Ionicons name="information-circle-outline" size={16} color="#60a5fa" />
+        <Text style={styles.infoBannerText}>
+          One slot per category. Upload to attach a file, Replace to swap it,
+          Verify to confirm an employee-supplied document. HR uploads are
+          locked from the employee&apos;s side.
+        </Text>
+      </View>
 
       {loading ? (
         <View style={styles.loader}>
-          <ActivityIndicator size="large" color="#3b82f6" />
+          <ActivityIndicator size="large" color={c.accent} />
         </View>
       ) : (
-        <FlatList
-          data={items}
-          keyExtractor={(d) => d.id}
-          contentContainerStyle={
-            items.length === 0 ? styles.emptyWrap : { padding: 12 }
-          }
+        <ScrollView
+          contentContainerStyle={styles.listWrap}
           refreshControl={
             <RefreshControl
               refreshing={refreshing}
               onRefresh={onRefresh}
-              tintColor="#3b82f6"
-              colors={["#3b82f6"]}
+              tintColor={c.accent}
+              colors={[c.accent]}
             />
           }
-          ListEmptyComponent={
-            <View style={styles.empty}>
-              <Ionicons
-                name="folder-open-outline"
-                size={42}
-                color="#475569"
-              />
-              <Text style={styles.emptyText}>No documents yet</Text>
-            </View>
-          }
-          renderItem={({ item }) => (
-            <View style={styles.card}>
-              <View style={styles.iconBox}>
-                <Ionicons
-                  name="document-text-outline"
-                  size={20}
-                  color="#fff"
-                />
-              </View>
-              <View style={{ flex: 1 }}>
-                <Text style={styles.cardName} numberOfLines={1}>
-                  {item.fileName}
-                </Text>
-                <Text style={styles.cardCat}>{item.category}</Text>
-                {!!item.expiresOn && (
-                  <Text style={styles.expiry}>
-                    Expires {item.expiresOn}
-                  </Text>
+        >
+          {categories.map((cat) => {
+            const doc = latestByCategory.get(cat);
+            const req = requiredByCategory.get(cat);
+            const note = pendingNotes[cat];
+            const byHR = doc?.uploadedByRole === "HR";
+
+            const status: "VERIFIED" | "IN_REVIEW" | "REQUIRED" | "OPTIONAL" =
+              req?.status === "VERIFIED"
+                ? "VERIFIED"
+                : doc
+                ? "IN_REVIEW"
+                : req
+                ? "REQUIRED"
+                : "OPTIONAL";
+
+            const tone =
+              status === "VERIFIED"
+                ? { bg: "rgba(22,163,74,0.12)", fg: "#16a34a" }
+                : status === "IN_REVIEW"
+                ? { bg: "rgba(96,165,250,0.12)", fg: "#60a5fa" }
+                : status === "REQUIRED"
+                ? { bg: "rgba(245,158,11,0.12)", fg: "#f59e0b" }
+                : { bg: c.surfaceMuted, fg: c.textMuted };
+
+            const statusLabel =
+              status === "VERIFIED"
+                ? "Verified"
+                : status === "IN_REVIEW"
+                ? byHR
+                  ? "Uploaded by HR"
+                  : "Awaiting verify"
+                : status === "REQUIRED"
+                ? "Required"
+                : "Optional";
+
+            // Can verify only when employee has uploaded and HR has marked
+            // this category as required (and it isn't already verified).
+            const canVerify =
+              !!doc &&
+              !byHR &&
+              !!req &&
+              req.status === "UPLOADED";
+
+            return (
+              <View key={cat} style={styles.catCard}>
+                <View style={styles.catHeader}>
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.catName}>{cat}</Text>
+                    {!!req?.note && (
+                      <Text style={styles.catReqNote} numberOfLines={2}>
+                        HR note: {req.note}
+                      </Text>
+                    )}
+                  </View>
+                  <View style={[styles.statusPill, { backgroundColor: tone.bg }]}>
+                    <Text style={[styles.statusPillText, { color: tone.fg }]}>
+                      {statusLabel}
+                    </Text>
+                  </View>
+                  {doc && (
+                    <TouchableOpacity
+                      style={styles.cornerDelete}
+                      onPress={() => onDelete(doc)}
+                    >
+                      <Ionicons
+                        name="trash-outline"
+                        size={15}
+                        color={c.dangerText}
+                      />
+                    </TouchableOpacity>
+                  )}
+                </View>
+
+                {doc ? (
+                  <View style={styles.fileBlock}>
+                    <Ionicons
+                      name="document-text-outline"
+                      size={18}
+                      color={c.textMuted}
+                    />
+                    <View style={{ flex: 1 }}>
+                      <Text style={styles.fileName} numberOfLines={1}>
+                        {doc.fileName}
+                      </Text>
+                      <Text style={styles.fileMeta}>
+                        {doc.uploadedAt
+                          ? `Uploaded ${String(doc.uploadedAt).slice(0, 10)}`
+                          : "Uploaded"}
+                        {" · "}
+                        {byHR ? "by HR" : "by employee"}
+                      </Text>
+                      {!!doc.notes && (
+                        <Text style={styles.fileNote} numberOfLines={2}>
+                          Note: {doc.notes}
+                        </Text>
+                      )}
+                    </View>
+                  </View>
+                ) : (
+                  <View style={styles.emptyBlock}>
+                    <Ionicons
+                      name="cloud-upload-outline"
+                      size={18}
+                      color={c.textFaint}
+                    />
+                    <Text style={styles.emptyBlockText}>
+                      No file from {userName || "employee"} yet
+                    </Text>
+                  </View>
                 )}
-                {!!item.notes && (
-                  <Text style={styles.notes} numberOfLines={1}>
-                    {item.notes}
-                  </Text>
+
+                {!!note && !doc && (
+                  <View style={styles.pendingNote}>
+                    <Ionicons
+                      name="chatbubble-ellipses-outline"
+                      size={13}
+                      color="#60a5fa"
+                    />
+                    <Text style={styles.pendingNoteText} numberOfLines={2}>
+                      Note saved (will attach with next upload): {note}
+                    </Text>
+                  </View>
                 )}
+
+                {/* ACTION ROW — two buttons, state-dependent. */}
+                <View style={styles.actionRow}>
+                  {doc ? (
+                    <>
+                      <TouchableOpacity
+                        style={[styles.actionBtn, styles.actionBtnGhost]}
+                        onPress={() =>
+                          doc.fileUrl
+                            ? Linking.openURL(doc.fileUrl).catch(() => {})
+                            : Alert.alert("No file URL on record")
+                        }
+                      >
+                        <Ionicons name="eye-outline" size={16} color={c.text} />
+                        <Text style={styles.actionBtnGhostText}>View</Text>
+                      </TouchableOpacity>
+                      {canVerify ? (
+                        <TouchableOpacity
+                          style={[styles.actionBtn, styles.actionBtnVerify]}
+                          onPress={() => onVerify(cat)}
+                        >
+                          <Ionicons
+                            name="checkmark-circle-outline"
+                            size={16}
+                            color="#fff"
+                          />
+                          <Text style={styles.actionBtnVerifyText}>Verify</Text>
+                        </TouchableOpacity>
+                      ) : (
+                        <FilePickButton
+                          label="Replace"
+                          style={styles.actionBtnPrimary}
+                          onUploaded={(url, name) => onUploaded(cat, url, name)}
+                        />
+                      )}
+                    </>
+                  ) : (
+                    <>
+                      <FilePickButton
+                        label="Upload"
+                        style={styles.actionBtnPrimary}
+                        onUploaded={(url, name) => onUploaded(cat, url, name)}
+                      />
+                      <TouchableOpacity
+                        style={[styles.actionBtn, styles.actionBtnGhost]}
+                        onPress={() => openNoteFor(cat)}
+                      >
+                        <Ionicons
+                          name="create-outline"
+                          size={16}
+                          color={c.text}
+                        />
+                        <Text style={styles.actionBtnGhostText}>
+                          {note ? "Edit note" : "Note"}
+                        </Text>
+                      </TouchableOpacity>
+                    </>
+                  )}
+                </View>
               </View>
-              <TouchableOpacity
-                onPress={() => onDelete(item)}
-                style={styles.deleteBtn}
-              >
-                <Ionicons
-                  name="trash-outline"
-                  size={18}
-                  color="#94a3b8"
-                />
-              </TouchableOpacity>
-            </View>
-          )}
-        />
+            );
+          })}
+          <View style={{ height: 24 }} />
+        </ScrollView>
       )}
 
       <Modal
-        visible={showForm}
-        animationType="slide"
+        visible={!!noteFor}
+        animationType="fade"
         transparent
-        onRequestClose={() => setShowForm(false)}
+        onRequestClose={() => setNoteFor(null)}
       >
         <KeyboardAvoidingView
           behavior={Platform.OS === "ios" ? "padding" : undefined}
           style={styles.modalWrap}
         >
-          <View style={styles.modal}>
-            <View style={styles.modalHeader}>
-              <Text style={styles.modalTitle}>Upload document</Text>
-              <TouchableOpacity onPress={() => setShowForm(false)}>
-                <Ionicons name="close" size={24} color="#94a3b8" />
-              </TouchableOpacity>
-            </View>
-
-            <ScrollView style={{ maxHeight: 520 }}>
-              <Text style={styles.label}>Category *</Text>
-              <View style={styles.chipRow}>
-                {COMMON_CATEGORIES.map((c) => (
-                  <TouchableOpacity
-                    key={c}
-                    style={[
-                      styles.chip,
-                      category === c && styles.chipActive,
-                    ]}
-                    onPress={() => setCategory(c)}
-                  >
-                    <Text
-                      style={[
-                        styles.chipText,
-                        category === c && styles.chipTextActive,
-                      ]}
-                    >
-                      {c}
-                    </Text>
-                  </TouchableOpacity>
-                ))}
-              </View>
-
-              <Text style={styles.label}>File</Text>
-              <FilePickButton
-                label="Pick file"
-                onUploaded={(url, name) => {
-                  setFileUrl(url);
-                  if (!fileName) setFileName(name);
-                }}
-              />
-              <TextInput
-                style={[styles.input, { marginTop: 8 }]}
-                value={fileUrl}
-                onChangeText={setFileUrl}
-                placeholder="or paste URL"
-                placeholderTextColor="#475569"
-                autoCapitalize="none"
-              />
-
-              <Text style={styles.label}>File name *</Text>
-              <TextInput
-                style={styles.input}
-                value={fileName}
-                onChangeText={setFileName}
-                placeholderTextColor="#475569"
-              />
-
-              <Text style={styles.label}>Notes</Text>
-              <TextInput
-                style={[styles.input, { minHeight: 60 }]}
-                value={notes}
-                onChangeText={setNotes}
-                multiline
-                textAlignVertical="top"
-                placeholderTextColor="#475569"
-              />
-
-              <Text style={styles.label}>Expires on</Text>
-              <TextInput
-                style={styles.input}
-                value={expiresOn}
-                onChangeText={setExpiresOn}
-                placeholder="2030-12-31"
-                placeholderTextColor="#475569"
-                autoCapitalize="none"
-              />
-              <View style={{ height: 14 }} />
-            </ScrollView>
-
-            <View style={styles.actions}>
+          <View style={styles.smallModal}>
+            <Text style={styles.modalTitle}>Note for {noteFor}</Text>
+            <Text style={styles.modalHint}>
+              Saved with your next upload for this category.
+            </Text>
+            <TextInput
+              style={[styles.input, { minHeight: 80, marginTop: 12 }]}
+              value={noteDraft}
+              onChangeText={setNoteDraft}
+              multiline
+              textAlignVertical="top"
+              placeholder="e.g. verified original on 2026-05-22"
+              placeholderTextColor={c.textFaint}
+            />
+            <View style={styles.modalActions}>
               <TouchableOpacity
                 style={[styles.btn, styles.btnGhost]}
-                onPress={() => setShowForm(false)}
-                disabled={saving}
+                onPress={() => setNoteFor(null)}
               >
                 <Text style={styles.btnGhostText}>Cancel</Text>
               </TouchableOpacity>
               <TouchableOpacity
                 style={[styles.btn, styles.btnPrimary]}
-                onPress={onSave}
-                disabled={saving}
+                onPress={saveNote}
               >
-                <Text style={styles.btnPrimaryText}>
-                  {saving ? "..." : "Save"}
-                </Text>
+                <Text style={styles.btnPrimaryText}>Save</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </KeyboardAvoidingView>
+      </Modal>
+
+      <Modal
+        visible={showAddCat}
+        animationType="fade"
+        transparent
+        onRequestClose={() => setShowAddCat(false)}
+      >
+        <KeyboardAvoidingView
+          behavior={Platform.OS === "ios" ? "padding" : undefined}
+          style={styles.modalWrap}
+        >
+          <View style={styles.smallModal}>
+            <Text style={styles.modalTitle}>Add a document slot</Text>
+            <Text style={styles.modalHint}>
+              For categories not in the standard list.
+            </Text>
+            <TextInput
+              style={[styles.input, { marginTop: 12 }]}
+              value={customCat}
+              onChangeText={setCustomCat}
+              placeholder="e.g. Visa, NDA"
+              placeholderTextColor={c.textFaint}
+            />
+            <View style={styles.modalActions}>
+              <TouchableOpacity
+                style={[styles.btn, styles.btnGhost]}
+                onPress={() => setShowAddCat(false)}
+              >
+                <Text style={styles.btnGhostText}>Cancel</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.btn, styles.btnPrimary]}
+                onPress={addCustomCategory}
+              >
+                <Text style={styles.btnPrimaryText}>Add</Text>
               </TouchableOpacity>
             </View>
           </View>
@@ -386,112 +551,178 @@ export default function HrUserDocuments() {
   );
 }
 
-const styles = StyleSheet.create({
-  safe: { flex: 1, backgroundColor: "#0b1220" },
-  loader: {
-    flex: 1,
-    backgroundColor: "#0b1220",
-    justifyContent: "center",
-    alignItems: "center",
-  },
-  header: {
-    flexDirection: "row",
-    alignItems: "center",
-    paddingHorizontal: 16,
-    paddingVertical: 14,
-    borderBottomWidth: 1,
-    borderBottomColor: "#1f2937",
-    gap: 12,
-  },
-  title: { color: "#fff", fontSize: 18, fontWeight: "800" },
-  subtitle: { color: "#94a3b8", fontSize: 11, marginTop: 2 },
-  card: {
-    flexDirection: "row",
-    alignItems: "center",
-    backgroundColor: "#111827",
-    padding: 12,
-    borderRadius: 12,
-    marginBottom: 8,
-    borderWidth: 1,
-    borderColor: "#1f2937",
-    gap: 12,
-  },
-  iconBox: {
-    width: 36,
-    height: 36,
-    borderRadius: 10,
-    backgroundColor: "#3b82f6",
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  cardName: { color: "#fff", fontSize: 14, fontWeight: "700" },
-  cardCat: { color: "#94a3b8", fontSize: 11, marginTop: 2 },
-  expiry: { color: "#f59e0b", fontSize: 11, marginTop: 2 },
-  notes: { color: "#64748b", fontSize: 11, marginTop: 2 },
-  deleteBtn: { padding: 6 },
-  emptyWrap: { flex: 1, justifyContent: "center" },
-  empty: { alignItems: "center", gap: 10 },
-  emptyText: { color: "#475569", fontSize: 14 },
-  modalWrap: {
-    flex: 1,
-    justifyContent: "flex-end",
-    backgroundColor: "rgba(0,0,0,0.5)",
-  },
-  modal: {
-    backgroundColor: "#0f172a",
-    padding: 20,
-    borderTopLeftRadius: 18,
-    borderTopRightRadius: 18,
-    borderTopWidth: 1,
-    borderTopColor: "#1e293b",
-    maxHeight: "92%",
-  },
-  modalHeader: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    marginBottom: 10,
-  },
-  modalTitle: { color: "#fff", fontSize: 17, fontWeight: "800" },
-  label: {
-    color: "#94a3b8",
-    fontSize: 11,
-    letterSpacing: 1.2,
-    fontWeight: "700",
-    marginTop: 14,
-    marginBottom: 6,
-  },
-  input: {
-    backgroundColor: "#111827",
-    color: "#fff",
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-    borderRadius: 10,
-    borderWidth: 1,
-    borderColor: "#1f2937",
-    minHeight: 42,
-  },
-  chipRow: { flexDirection: "row", flexWrap: "wrap", gap: 6 },
-  chip: {
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-    borderRadius: 999,
-    backgroundColor: "#111827",
-    borderWidth: 1,
-    borderColor: "#1f2937",
-  },
-  chipActive: { backgroundColor: "#3b82f6", borderColor: "#3b82f6" },
-  chipText: { color: "#94a3b8", fontSize: 11, fontWeight: "700" },
-  chipTextActive: { color: "#fff" },
-  actions: { flexDirection: "row", gap: 10, marginTop: 14 },
-  btn: {
-    flex: 1,
-    paddingVertical: 14,
-    borderRadius: 12,
-    alignItems: "center",
-  },
-  btnGhost: { backgroundColor: "#1e293b" },
-  btnGhostText: { color: "#94a3b8", fontWeight: "700" },
-  btnPrimary: { backgroundColor: "#3b82f6" },
-  btnPrimaryText: { color: "#fff", fontWeight: "800" },
-});
+const makeStyles = (c: any) =>
+  StyleSheet.create({
+    safe: { flex: 1, backgroundColor: c.bg },
+    loader: {
+      flex: 1,
+      backgroundColor: c.bg,
+      justifyContent: "center",
+      alignItems: "center" },
+    header: {
+      flexDirection: "row",
+      alignItems: "center",
+      paddingHorizontal: 16,
+      paddingVertical: 14,
+      borderBottomWidth: 1,
+      borderBottomColor: c.surfaceBorder,
+      gap: 12 },
+    title: { color: c.text, fontSize: 18, fontWeight: "800" },
+    subtitle: { color: c.textMuted, fontSize: 11, marginTop: 2 },
+    addBtn: {
+      width: 32,
+      height: 32,
+      borderRadius: 10,
+      backgroundColor: c.accent,
+      alignItems: "center",
+      justifyContent: "center" },
+    infoBanner: {
+      flexDirection: "row",
+      alignItems: "flex-start",
+      backgroundColor: "rgba(96,165,250,0.1)",
+      borderColor: "rgba(96,165,250,0.35)",
+      borderWidth: 1,
+      paddingHorizontal: 12,
+      paddingVertical: 10,
+      marginHorizontal: 12,
+      marginTop: 10,
+      marginBottom: 4,
+      borderRadius: 10,
+      gap: 8 },
+    infoBannerText: {
+      color: "#bfdbfe",
+      fontSize: 12,
+      lineHeight: 17,
+      flex: 1 },
+    listWrap: { padding: 12, gap: 10 },
+
+    catCard: {
+      backgroundColor: c.surface,
+      borderRadius: 14,
+      padding: 14,
+      borderWidth: 1,
+      borderColor: c.surfaceBorder },
+    catHeader: {
+      flexDirection: "row",
+      alignItems: "flex-start",
+      gap: 10,
+      marginBottom: 10 },
+    catName: { color: c.text, fontSize: 15, fontWeight: "800" },
+    catReqNote: {
+      color: c.textMuted,
+      fontSize: 11,
+      marginTop: 4,
+      lineHeight: 15 },
+    statusPill: {
+      paddingHorizontal: 8,
+      paddingVertical: 4,
+      borderRadius: 999 },
+    statusPillText: { fontSize: 10, fontWeight: "800", letterSpacing: 0.3 },
+    cornerDelete: {
+      width: 28,
+      height: 28,
+      borderRadius: 8,
+      alignItems: "center",
+      justifyContent: "center",
+      backgroundColor: c.surfaceMuted,
+      borderWidth: 1,
+      borderColor: c.surfaceBorder,
+      marginLeft: 4 },
+
+    fileBlock: {
+      flexDirection: "row",
+      alignItems: "flex-start",
+      gap: 10,
+      backgroundColor: c.surfaceMuted,
+      borderRadius: 10,
+      padding: 10,
+      borderWidth: 1,
+      borderColor: c.surfaceBorder },
+    fileName: { color: c.text, fontSize: 13, fontWeight: "700" },
+    fileMeta: { color: c.textMuted, fontSize: 11, marginTop: 2 },
+    fileNote: { color: c.textMuted, fontSize: 11, marginTop: 4, lineHeight: 15 },
+
+    emptyBlock: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 8,
+      backgroundColor: c.surfaceMuted,
+      borderRadius: 10,
+      padding: 12,
+      borderWidth: 1,
+      borderColor: c.surfaceBorder,
+      borderStyle: "dashed" },
+    emptyBlockText: { color: c.textFaint, fontSize: 12 },
+
+    pendingNote: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 6,
+      marginTop: 8,
+      paddingHorizontal: 8,
+      paddingVertical: 6,
+      borderRadius: 8,
+      backgroundColor: "rgba(96,165,250,0.1)" },
+    pendingNoteText: { color: "#bfdbfe", fontSize: 11, flex: 1 },
+
+    actionRow: {
+      flexDirection: "row",
+      gap: 8,
+      marginTop: 12,
+      alignItems: "stretch" },
+    actionBtn: {
+      flex: 1,
+      flexDirection: "row",
+      alignItems: "center",
+      justifyContent: "center",
+      paddingVertical: 10,
+      borderRadius: 10,
+      gap: 6 },
+    actionBtnGhost: {
+      backgroundColor: c.surfaceMuted,
+      borderWidth: 1,
+      borderColor: c.surfaceBorder },
+    actionBtnGhostText: { color: c.text, fontWeight: "700", fontSize: 13 },
+    actionBtnVerify: { backgroundColor: "#16a34a" },
+    actionBtnVerifyText: { color: "#fff", fontWeight: "800", fontSize: 13 },
+    actionBtnPrimary: {
+      flex: 1,
+      alignSelf: "auto",
+      justifyContent: "center",
+      paddingVertical: 10 },
+
+    modalWrap: {
+      flex: 1,
+      justifyContent: "center",
+      alignItems: "center",
+      paddingHorizontal: 18,
+      backgroundColor: c.overlay },
+    smallModal: {
+      width: "100%",
+      maxWidth: 420,
+      backgroundColor: c.surface,
+      borderRadius: 16,
+      padding: 18,
+      borderWidth: 1,
+      borderColor: c.surfaceBorder },
+    modalTitle: { color: c.text, fontSize: 16, fontWeight: "800" },
+    modalHint: { color: c.textMuted, fontSize: 12, marginTop: 4 },
+    input: {
+      backgroundColor: c.surfaceMuted,
+      color: c.text,
+      paddingHorizontal: 12,
+      paddingVertical: 10,
+      borderRadius: 10,
+      borderWidth: 1,
+      borderColor: c.surfaceBorder,
+      minHeight: 42 },
+    modalActions: { flexDirection: "row", gap: 10, marginTop: 14 },
+    btn: {
+      flex: 1,
+      paddingVertical: 12,
+      borderRadius: 12,
+      alignItems: "center" },
+    btnGhost: { backgroundColor: c.surfaceMuted },
+    btnGhostText: { color: c.text, fontWeight: "700" },
+    btnPrimary: { backgroundColor: c.accent },
+    btnPrimaryText: { color: "#fff", fontWeight: "800" } });

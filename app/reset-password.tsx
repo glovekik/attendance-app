@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+﻿import React, { useState, useMemo} from "react";
 
 import {
   View,
@@ -6,25 +6,30 @@ import {
   TextInput,
   TouchableOpacity,
   StyleSheet,
-  SafeAreaView,
   ActivityIndicator,
   KeyboardAvoidingView,
   Platform,
-  ScrollView,
-} from "react-native";
+  ScrollView } from "react-native";
+import { SafeAreaView } from "react-native-safe-area-context";
 
 import {
   useRouter,
-  useLocalSearchParams,
-} from "expo-router";
+  useLocalSearchParams } from "expo-router";
 
 import { Ionicons } from "@expo/vector-icons";
 
 import { resetPassword } from "../src/services/api";
-
+
+import { useTheme } from "../src/theme/ThemeProvider";
 export default function ResetPassword() {
 
   const router = useRouter();
+
+  const { theme } = useTheme();
+
+  const c = theme.colors;
+
+  const s = useMemo(() => makeStyles(c), [c]);
   const params = useLocalSearchParams();
 
   const [token, setToken] = useState(
@@ -106,12 +111,12 @@ export default function ResetPassword() {
 
           <TouchableOpacity
             style={s.backBtn}
-            onPress={() => router.back()}
+            onPress={() => (router.canGoBack() ? router.back() : router.replace("/"))}
           >
             <Ionicons
               name="chevron-back"
               size={22}
-              color="#fff"
+              color={c.text}
             />
           </TouchableOpacity>
 
@@ -119,7 +124,7 @@ export default function ResetPassword() {
             <Ionicons
               name="key-outline"
               size={48}
-              color="#2563eb"
+              color={c.accent}
             />
           </View>
 
@@ -137,7 +142,7 @@ export default function ResetPassword() {
               setError("");
             }}
             placeholder="Paste token here"
-            placeholderTextColor="#64748b"
+            placeholderTextColor={c.textFaint}
             autoCapitalize="none"
             editable={!submitting}
           />
@@ -151,7 +156,7 @@ export default function ResetPassword() {
               setError("");
             }}
             placeholder="Min 8 characters"
-            placeholderTextColor="#64748b"
+            placeholderTextColor={c.textFaint}
             secureTextEntry
             editable={!submitting}
           />
@@ -165,7 +170,7 @@ export default function ResetPassword() {
               setError("");
             }}
             placeholder="Re-enter password"
-            placeholderTextColor="#64748b"
+            placeholderTextColor={c.textFaint}
             secureTextEntry
             editable={!submitting}
           />
@@ -190,26 +195,24 @@ export default function ResetPassword() {
   );
 }
 
-const s = StyleSheet.create({
+const makeStyles = (c: any) => StyleSheet.create({
   safe: { flex: 1, backgroundColor: "#020617" },
   content: { padding: 24, paddingTop: 60, flexGrow: 1 },
   center: {
     flex: 1,
     justifyContent: "center",
     alignItems: "center",
-    padding: 30,
-  },
+    padding: 30 },
   backBtn: {
     width: 42,
     height: 42,
     borderRadius: 12,
-    backgroundColor: "#111827",
+    backgroundColor: c.surface,
     justifyContent: "center",
     alignItems: "center",
     borderWidth: 1,
-    borderColor: "#1f2937",
-    marginBottom: 30,
-  },
+    borderColor: c.surfaceBorder,
+    marginBottom: 30 },
   iconWrap: {
     width: 80,
     height: 80,
@@ -217,8 +220,7 @@ const s = StyleSheet.create({
     backgroundColor: "rgba(37,99,235,0.12)",
     justifyContent: "center",
     alignItems: "center",
-    marginBottom: 18,
-  },
+    marginBottom: 18 },
   iconOk: {
     width: 80,
     height: 80,
@@ -226,55 +228,47 @@ const s = StyleSheet.create({
     backgroundColor: "#16a34a",
     justifyContent: "center",
     alignItems: "center",
-    marginBottom: 18,
-  },
+    marginBottom: 18 },
   title: {
-    color: "#fff",
+    color: c.text,
     fontSize: 26,
     fontWeight: "800",
     marginBottom: 10,
-    textAlign: "center",
-  },
+    textAlign: "center" },
   subtitle: {
-    color: "#94a3b8",
+    color: c.textMuted,
     fontSize: 14,
     lineHeight: 20,
     marginBottom: 26,
-    textAlign: "center",
-  },
+    textAlign: "center" },
   label: {
-    color: "#cbd5e1",
+    color: c.text,
     fontSize: 13,
     fontWeight: "600",
     marginBottom: 8,
-    marginTop: 14,
-  },
+    marginTop: 14 },
   input: {
-    backgroundColor: "#0f172a",
-    color: "#fff",
+    backgroundColor: c.surfaceMuted,
+    color: c.text,
     paddingVertical: 14,
     paddingHorizontal: 16,
     borderRadius: 14,
     borderWidth: 1,
-    borderColor: "#1e293b",
-    fontSize: 15,
-  },
+    borderColor: c.surfaceBorder,
+    fontSize: 15 },
   err: {
     color: "#fca5a5",
     fontSize: 13,
-    marginTop: 14,
-  },
+    marginTop: 14 },
   primary: {
-    backgroundColor: "#2563eb",
+    backgroundColor: c.accent,
     paddingVertical: 15,
     borderRadius: 14,
     alignItems: "center",
     marginTop: 26,
-    width: "100%",
-  },
+    width: "100%" },
   primaryText: {
     color: "#fff",
     fontSize: 15,
-    fontWeight: "700",
-  },
-});
+    fontWeight: "700" } });
+

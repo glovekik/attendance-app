@@ -1,7 +1,6 @@
-import React, {
+﻿import React, {
   useEffect,
-  useState,
-} from "react";
+  useState, useMemo} from "react";
 
 import {
   View,
@@ -11,9 +10,8 @@ import {
   TouchableOpacity,
   TextInput,
   ActivityIndicator,
-  SafeAreaView,
-  Platform,
-} from "react-native";
+  Platform } from "react-native";
+import { SafeAreaView } from "react-native-safe-area-context";
 
 import AsyncStorage from "@react-native-async-storage/async-storage";
 
@@ -26,25 +24,30 @@ import DateTimePicker from "@react-native-community/datetimepicker";
 import {
   WebDateField,
   dateToYMD,
-  ymdToDate,
-} from "../src/components/WebDateField";
+  ymdToDate } from "../src/components/WebDateField";
 
 import {
   userResign,
   getMyExit,
   setMyExitTaskStatus,
-  downloadExperienceLetterUrl,
-} from "../src/services/exit";
+  downloadExperienceLetterUrl } from "../src/services/exit";
 
 import { downloadPdfWithAuth } from "../src/utils/download";
 
 import { ExitRequest, OnboardingTask } from "../src/types";
 
+import { useTheme } from "../src/theme/ThemeProvider";
 const isWeb = Platform.OS === "web";
 
 export default function MyExit() {
 
   const router = useRouter();
+
+  const { theme } = useTheme();
+
+  const c = theme.colors;
+
+  const s = useMemo(() => makeStyles(c), [c]);
 
   const [data, setData] = useState<ExitRequest | null>(null);
   const [loading, setLoading] = useState(true);
@@ -63,8 +66,7 @@ export default function MyExit() {
   const [popup, setPopup] = useState({
     visible: false,
     type: "success" as "success" | "error",
-    message: "",
-  });
+    message: "" });
 
   const showPopup = (
     msg: string,
@@ -108,8 +110,7 @@ export default function MyExit() {
       if (!token) return;
       await userResign(token, {
         reason: reason.trim(),
-        requestedLastWorkingDay: dateToYMD(lastDay),
-      });
+        requestedLastWorkingDay: dateToYMD(lastDay) });
       showPopup("Resignation submitted");
       setFormVisible(false);
       await load();
@@ -129,8 +130,7 @@ export default function MyExit() {
       const newStatus = t.status === "DONE" ? "PENDING" : "DONE";
       const updated = await setMyExitTaskStatus(token, {
         taskId: t.id,
-        status: newStatus,
-      });
+        status: newStatus });
       setData(updated);
     } catch (err: any) {
       showPopup(err?.message || "Failed", "error");
@@ -159,7 +159,7 @@ export default function MyExit() {
   if (loading) {
     return (
       <View style={s.loader}>
-        <ActivityIndicator size="large" color="#2563eb" />
+        <ActivityIndicator size="large" color={c.accent} />
       </View>
     );
   }
@@ -170,9 +170,9 @@ export default function MyExit() {
         <View style={s.header}>
           <TouchableOpacity
             style={s.backBtn}
-            onPress={() => router.back()}
+            onPress={() => (router.canGoBack() ? router.back() : router.replace("/"))}
           >
-            <Ionicons name="chevron-back" size={22} color="#fff" />
+            <Ionicons name="chevron-back" size={22} color={c.text} />
           </TouchableOpacity>
           <View style={{ flex: 1 }}>
             <Text style={s.title}>Exit</Text>
@@ -213,9 +213,9 @@ export default function MyExit() {
         <View style={s.header}>
           <TouchableOpacity
             style={s.backBtn}
-            onPress={() => router.back()}
+            onPress={() => (router.canGoBack() ? router.back() : router.replace("/"))}
           >
-            <Ionicons name="chevron-back" size={22} color="#fff" />
+            <Ionicons name="chevron-back" size={22} color={c.text} />
           </TouchableOpacity>
           <View style={{ flex: 1 }}>
             <Text style={s.title}>My Exit</Text>
@@ -233,7 +233,7 @@ export default function MyExit() {
                 <Ionicons
                   name="calendar-outline"
                   size={18}
-                  color="#94a3b8"
+                  color={c.textMuted}
                 />
                 <WebDateField
                   mode="date"
@@ -253,15 +253,14 @@ export default function MyExit() {
                   <Ionicons
                     name="calendar-outline"
                     size={18}
-                    color="#94a3b8"
+                    color={c.textMuted}
                   />
                   <Text style={s.dateText}>
                     {lastDay.toLocaleDateString("en-US", {
                       weekday: "short",
                       month: "short",
                       day: "numeric",
-                      year: "numeric",
-                    })}
+                      year: "numeric" })}
                   </Text>
                 </TouchableOpacity>
                 {showPicker && (
@@ -283,7 +282,7 @@ export default function MyExit() {
               value={reason}
               onChangeText={setReason}
               placeholder="Why are you resigning?"
-              placeholderTextColor="#64748b"
+              placeholderTextColor={c.textFaint}
               multiline
             />
 
@@ -305,28 +304,27 @@ export default function MyExit() {
         {data && (
           <>
             <View style={s.statusCard}>
-              <View
-                style={[
-                  s.statusChip,
-                  data.status === "REQUESTED" && {
-                    backgroundColor: "#f59e0b",
-                  },
-                  data.status === "APPROVED" && {
-                    backgroundColor: "#2563eb",
-                  },
-                  data.status === "IN_PROGRESS" && {
-                    backgroundColor: "#0d9488",
-                  },
-                  data.status === "COMPLETED" && {
-                    backgroundColor: "#16a34a",
-                  },
-                  data.status === "REJECTED" && {
-                    backgroundColor: "#dc2626",
-                  },
-                ]}
-              >
-                <Text style={s.statusText}>{data.status}</Text>
-              </View>
+              {(() => {
+                const tone =
+                  data.status === "REQUESTED"
+                    ? { bg: c.warningBg, fg: c.warningText }
+                    : data.status === "APPROVED"
+                    ? { bg: c.accentSoft, fg: c.accentText }
+                    : data.status === "IN_PROGRESS"
+                    ? { bg: c.infoBg, fg: c.infoText }
+                    : data.status === "COMPLETED"
+                    ? { bg: c.successBg, fg: c.successText }
+                    : { bg: c.dangerBg, fg: c.dangerText };
+                return (
+                  <View
+                    style={[s.statusChip, { backgroundColor: tone.bg }]}
+                  >
+                    <Text style={[s.statusText, { color: tone.fg }]}>
+                      {data.status}
+                    </Text>
+                  </View>
+                );
+              })()}
               <Text style={s.statusInfo}>
                 Requested: {data.requestedLastWorkingDay}
               </Text>
@@ -376,8 +374,7 @@ export default function MyExit() {
                           { flex: 1, marginLeft: 10 },
                           done && {
                             textDecorationLine: "line-through",
-                            color: "#94a3b8",
-                          },
+                            color: c.textMuted },
                         ]}
                       >
                         {t.title}
@@ -434,14 +431,11 @@ export default function MyExit() {
                       s.statusChip,
                       { alignSelf: "flex-start", marginTop: 10 },
                       data.ffsCalculation.status === "PAID" && {
-                        backgroundColor: "#16a34a",
-                      },
+                        backgroundColor: "#16a34a" },
                       data.ffsCalculation.status === "FINALIZED" && {
-                        backgroundColor: "#2563eb",
-                      },
+                        backgroundColor: c.accent },
                       data.ffsCalculation.status === "DRAFT" && {
-                        backgroundColor: "#6b7280",
-                      },
+                        backgroundColor: "#6b7280" },
                     ]}
                   >
                     <Text style={s.statusText}>
@@ -477,51 +471,51 @@ export default function MyExit() {
   );
 }
 
-const s = StyleSheet.create({
-  safe: { flex: 1, backgroundColor: "#0b1220" },
+const makeStyles = (c: any) => StyleSheet.create({
+  safe: { flex: 1, backgroundColor: c.bg },
   container: { flex: 1 },
   content: { padding: 20, paddingBottom: 60 },
-  loader: { flex: 1, backgroundColor: "#0b1220", justifyContent: "center", alignItems: "center" },
+  loader: { flex: 1, backgroundColor: c.bg, justifyContent: "center", alignItems: "center" },
   popup: { position: "absolute", top: 60, left: 20, right: 20, padding: 14, borderRadius: 14, zIndex: 999 },
   popupOk: { backgroundColor: "#16a34a" },
   popupErr: { backgroundColor: "#dc2626" },
-  popupText: { color: "#fff", fontWeight: "700", textAlign: "center" },
+  popupText: { color: c.text, fontWeight: "700", textAlign: "center" },
 
   header: { flexDirection: "row", alignItems: "center", marginBottom: 18, marginTop: 10, gap: 12 },
-  backBtn: { width: 42, height: 42, borderRadius: 12, backgroundColor: "#111827", justifyContent: "center", alignItems: "center", borderWidth: 1, borderColor: "#1f2937" },
-  title: { color: "#fff", fontSize: 24, fontWeight: "800" },
+  backBtn: { width: 42, height: 42, borderRadius: 12, backgroundColor: c.surface, justifyContent: "center", alignItems: "center", borderWidth: 1, borderColor: c.surfaceBorder },
+  title: { color: c.text, fontSize: 24, fontWeight: "800" },
 
-  section: { color: "#64748b", fontSize: 12, letterSpacing: 1.5, fontWeight: "700", marginBottom: 10 },
+  section: { color: c.textMuted, fontSize: 12, letterSpacing: 1.5, fontWeight: "700", marginBottom: 10 },
 
-  label: { color: "#94a3b8", fontSize: 13, fontWeight: "600", marginBottom: 6, marginTop: 14 },
-  input: { backgroundColor: "#0f172a", color: "#fff", borderRadius: 12, padding: 13, borderWidth: 1, borderColor: "#1e293b", fontSize: 14 },
+  label: { color: c.textMuted, fontSize: 13, fontWeight: "600", marginBottom: 6, marginTop: 14 },
+  input: { backgroundColor: c.surfaceMuted, color: c.text, borderRadius: 12, padding: 13, borderWidth: 1, borderColor: c.surfaceBorder, fontSize: 14 },
   multi: { minHeight: 90, textAlignVertical: "top" },
-  dateRow: { flexDirection: "row", alignItems: "center", backgroundColor: "#0f172a", borderRadius: 12, padding: 13, borderWidth: 1, borderColor: "#1e293b", gap: 10 },
-  dateText: { color: "#fff", fontWeight: "700", fontSize: 14 },
+  dateRow: { flexDirection: "row", alignItems: "center", backgroundColor: c.surfaceMuted, borderRadius: 12, padding: 13, borderWidth: 1, borderColor: c.surfaceBorder, gap: 10 },
+  dateText: { color: c.text, fontWeight: "700", fontSize: 14 },
 
-  primary: { marginTop: 22, backgroundColor: "#2563eb", paddingVertical: 14, borderRadius: 14, alignItems: "center" },
+  primary: { marginTop: 22, backgroundColor: c.accent, paddingVertical: 14, borderRadius: 14, alignItems: "center" },
   primaryText: { color: "#fff", fontSize: 15, fontWeight: "700" },
 
   empty: { padding: 30, alignItems: "center", marginTop: 30 },
-  emptyTitle: { color: "#fff", fontSize: 16, fontWeight: "700", marginBottom: 14 },
+  emptyTitle: { color: c.text, fontSize: 16, fontWeight: "700", marginBottom: 14 },
 
-  statusCard: { backgroundColor: "#111827", borderRadius: 14, padding: 14, marginBottom: 14, borderWidth: 1, borderColor: "#1f2937" },
+  statusCard: { backgroundColor: c.surface, borderRadius: 14, padding: 14, marginBottom: 14, borderWidth: 1, borderColor: c.surfaceBorder },
   statusChip: { paddingHorizontal: 9, paddingVertical: 4, borderRadius: 999, alignSelf: "flex-start" },
-  statusText: { color: "#fff", fontSize: 10, fontWeight: "800", letterSpacing: 0.5 },
-  statusInfo: { color: "#94a3b8", fontSize: 12, marginTop: 6 },
-  note: { color: "#cbd5e1", fontSize: 12, marginTop: 8, fontStyle: "italic" },
+  statusText: { fontSize: 10, fontWeight: "800", letterSpacing: 0.5 },
+  statusInfo: { color: c.textMuted, fontSize: 12, marginTop: 6 },
+  note: { color: c.text, fontSize: 12, marginTop: 8, fontStyle: "italic" },
 
-  card: { flexDirection: "row", alignItems: "center", backgroundColor: "#111827", borderRadius: 12, padding: 12, marginBottom: 8, borderWidth: 1, borderColor: "#1f2937" },
-  body: { color: "#e2e8f0", fontSize: 13, lineHeight: 18 },
+  card: { flexDirection: "row", alignItems: "center", backgroundColor: c.surface, borderRadius: 12, padding: 12, marginBottom: 8, borderWidth: 1, borderColor: c.surfaceBorder },
+  body: { color: c.text, fontSize: 13, lineHeight: 18 },
 
-  ffsCard: { backgroundColor: "#111827", borderRadius: 14, padding: 14, borderWidth: 1, borderColor: "#1f2937" },
+  ffsCard: { backgroundColor: c.surface, borderRadius: 14, padding: 14, borderWidth: 1, borderColor: c.surfaceBorder },
   ffsRow: { flexDirection: "row", justifyContent: "space-between", paddingVertical: 4 },
-  ffsLabel: { color: "#94a3b8", fontSize: 13 },
-  ffsVal: { color: "#fff", fontSize: 13, fontWeight: "700" },
-  ffsTotal: { flexDirection: "row", justifyContent: "space-between", marginTop: 10, paddingTop: 10, borderTopWidth: 1, borderTopColor: "#1f2937" },
-  ffsTotalLabel: { color: "#fff", fontWeight: "800", fontSize: 14 },
+  ffsLabel: { color: c.textMuted, fontSize: 13 },
+  ffsVal: { color: c.text, fontSize: 13, fontWeight: "700" },
+  ffsTotal: { flexDirection: "row", justifyContent: "space-between", marginTop: 10, paddingTop: 10, borderTopWidth: 1, borderTopColor: c.surfaceBorder },
+  ffsTotalLabel: { color: c.text, fontWeight: "800", fontSize: 14 },
   ffsTotalVal: { color: "#16a34a", fontWeight: "800", fontSize: 16 },
 
   letterBtn: { marginTop: 18, backgroundColor: "#0d9488", paddingVertical: 13, borderRadius: 12, flexDirection: "row", justifyContent: "center", alignItems: "center", gap: 8 },
-  letterText: { color: "#fff", fontWeight: "700", fontSize: 14 },
-});
+  letterText: { color: c.text, fontWeight: "700", fontSize: 14 } });
+

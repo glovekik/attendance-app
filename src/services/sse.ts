@@ -94,7 +94,7 @@ export const openNotificationStream = (
       if (!cancelled) {
         reconnectTimer = setTimeout(tryStream, 5_000);
       }
-    } catch (err) {
+    } catch {
       handler.onDisconnected?.();
       if (cancelled) return;
       // Stream failed — start polling and retry SSE in 30s.

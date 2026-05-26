@@ -1,7 +1,6 @@
-import React, {
+﻿import React, {
   useEffect,
-  useState,
-} from "react";
+  useState, useMemo} from "react";
 
 import {
   View,
@@ -11,9 +10,8 @@ import {
   TouchableOpacity,
   TextInput,
   ActivityIndicator,
-  Modal,
-  SafeAreaView,
-} from "react-native";
+  Modal } from "react-native";
+import { SafeAreaView } from "react-native-safe-area-context";
 
 import AsyncStorage from "@react-native-async-storage/async-storage";
 
@@ -21,21 +19,26 @@ import { useRouter } from "expo-router";
 
 import { Ionicons } from "@expo/vector-icons";
 
+import { useTheme } from "../src/theme/ThemeProvider";
 import {
   getMyOnboarding,
   uploadOnboardingDocument,
-  setMyTaskStatus,
-} from "../src/services/onboarding";
+  setMyTaskStatus } from "../src/services/onboarding";
 
 import {
   Onboarding,
   OnboardingDocument,
-  OnboardingTask,
-} from "../src/types";
+  OnboardingTask } from "../src/types";
 
 export default function MyOnboarding() {
 
   const router = useRouter();
+
+  const { theme } = useTheme();
+
+  const c = theme.colors;
+
+  const s = useMemo(() => makeStyles(c), [c]);
 
   const [data, setData] = useState<Onboarding | null>(null);
   const [loading, setLoading] = useState(true);
@@ -48,8 +51,7 @@ export default function MyOnboarding() {
   const [popup, setPopup] = useState({
     visible: false,
     type: "success" as "success" | "error",
-    message: "",
-  });
+    message: "" });
 
   const showPopup = (
     msg: string,
@@ -96,11 +98,11 @@ export default function MyOnboarding() {
       setBusy(true);
       const token = await AsyncStorage.getItem("token");
       if (!token) return;
-      const updated = await uploadOnboardingDocument(token, {
+      await uploadOnboardingDocument(token, {
         documentId: target.id,
-        fileUrl: fileUrl.trim(),
-      });
-      setData(updated);
+        fileUrl: fileUrl.trim() });
+      // The endpoint returns only { message }; re-fetch for fresh state.
+      setData(await getMyOnboarding(token));
       setUploadVisible(false);
       showPopup("Uploaded");
     } catch (err: any) {
@@ -117,11 +119,11 @@ export default function MyOnboarding() {
       const token = await AsyncStorage.getItem("token");
       if (!token) return;
       const newStatus = t.status === "DONE" ? "PENDING" : "DONE";
-      const updated = await setMyTaskStatus(token, {
+      await setMyTaskStatus(token, {
         taskId: t.id,
-        status: newStatus,
-      });
-      setData(updated);
+        status: newStatus });
+      // The endpoint returns only { message }; re-fetch for fresh state.
+      setData(await getMyOnboarding(token));
     } catch (err: any) {
       showPopup(err?.message || "Failed to update", "error");
     } finally {
@@ -132,7 +134,7 @@ export default function MyOnboarding() {
   if (loading) {
     return (
       <View style={s.loader}>
-        <ActivityIndicator size="large" color="#2563eb" />
+        <ActivityIndicator size="large" color={c.accent} />
       </View>
     );
   }
@@ -143,19 +145,19 @@ export default function MyOnboarding() {
         <View style={s.header}>
           <TouchableOpacity
             style={s.backBtn}
-            onPress={() => router.back()}
+            onPress={() => (router.canGoBack() ? router.back() : router.replace("/"))}
           >
-            <Ionicons name="chevron-back" size={22} color="#fff" />
+            <Ionicons name="chevron-back" size={22} color={c.text} />
           </TouchableOpacity>
           <View style={{ flex: 1 }}>
             <Text style={s.title}>My Onboarding</Text>
           </View>
         </View>
         <View style={s.empty}>
-          <Ionicons name="time-outline" size={48} color="#475569" />
+          <Ionicons name="time-outline" size={48} color={c.textFaint} />
           <Text style={s.emptyTitle}>Not started yet</Text>
           <Text style={s.emptySub}>
-            HR hasn't kicked off your onboarding. Check back later.
+            HR hasn&apos;t kicked off your onboarding. Check back later.
           </Text>
         </View>
       </SafeAreaView>
@@ -184,34 +186,33 @@ export default function MyOnboarding() {
         <View style={s.header}>
           <TouchableOpacity
             style={s.backBtn}
-            onPress={() => router.back()}
+            onPress={() => (router.canGoBack() ? router.back() : router.replace("/"))}
           >
-            <Ionicons name="chevron-back" size={22} color="#fff" />
+            <Ionicons name="chevron-back" size={22} color={c.text} />
           </TouchableOpacity>
           <View style={{ flex: 1 }}>
             <Text style={s.title}>My Onboarding</Text>
             <Text style={s.subtitle}>
-              Welcome — let's get you set up
+              Welcome — let&apos;s get you set up
             </Text>
           </View>
-          <View
-            style={[
-              s.statusChip,
-              data.status === "COMPLETED" && {
-                backgroundColor: "#16a34a",
-              },
-              data.status === "IN_PROGRESS" && {
-                backgroundColor: "#2563eb",
-              },
-              data.status === "PENDING" && {
-                backgroundColor: "#f59e0b",
-              },
-            ]}
-          >
-            <Text style={s.statusText}>
-              {data.status.replace("_", " ")}
-            </Text>
-          </View>
+          {(() => {
+            const tone =
+              data.status === "COMPLETED"
+                ? { bg: c.successBg, fg: c.successText }
+                : data.status === "IN_PROGRESS"
+                ? { bg: c.accentSoft, fg: c.accentText }
+                : { bg: c.warningBg, fg: c.warningText };
+            return (
+              <View
+                style={[s.statusChip, { backgroundColor: tone.bg }]}
+              >
+                <Text style={[s.statusText, { color: tone.fg }]}>
+                  {data.status.replace("_", " ")}
+                </Text>
+              </View>
+            );
+          })()}
         </View>
 
         {/* DOCUMENTS */}
@@ -249,72 +250,49 @@ export default function MyOnboarding() {
                 <Ionicons
                   name="checkmark-circle"
                   size={22}
-                  color="#16a34a"
+                  color={c.successText}
                 />
               )}
             </View>
           );
         })}
 
-        {/* MY TASKS */}
-        <Text style={[s.section, { marginTop: 18 }]}>
-          YOUR TASKS
-        </Text>
-        {data.employeeTasks.map((t) => {
-          const done = t.status === "DONE";
-          return (
-            <TouchableOpacity
-              key={t.id}
-              style={[s.card, done && { opacity: 0.6 }]}
-              onPress={() => toggleTask(t)}
-              activeOpacity={0.85}
-              disabled={busy}
-            >
-              <Ionicons
-                name={done ? "checkmark-circle" : "ellipse-outline"}
-                size={22}
-                color={done ? "#16a34a" : "#475569"}
-              />
-              <View style={{ flex: 1, marginLeft: 10 }}>
-                <Text
-                  style={[
-                    s.cardTitle,
-                    done && {
-                      textDecorationLine: "line-through",
-                      color: "#94a3b8",
-                    },
-                  ]}
+        {/* TASKS — tap a row to toggle it done. */}
+        {data.employeeTasks.length > 0 && (
+          <>
+            <Text style={[s.section, { marginTop: 22 }]}>
+              YOUR TASKS
+            </Text>
+            {data.employeeTasks.map((t) => {
+              const done = t.status === "DONE";
+              return (
+                <TouchableOpacity
+                  key={t.id}
+                  style={s.card}
+                  onPress={() => toggleTask(t)}
+                  disabled={busy}
+                  activeOpacity={0.7}
                 >
-                  {t.title}
-                </Text>
-                {t.note ? (
-                  <Text style={s.cardMeta}>{t.note}</Text>
-                ) : null}
-              </View>
-            </TouchableOpacity>
-          );
-        })}
-
-        {/* HR TASKS (read-only) */}
-        <Text style={[s.section, { marginTop: 18 }]}>
-          HR IS HANDLING
-        </Text>
-        {data.hrTasks.map((t) => {
-          const done = t.status === "DONE";
-          return (
-            <View key={t.id} style={[s.card, { opacity: 0.7 }]}>
-              <Ionicons
-                name={done ? "checkmark-circle-outline" : "time-outline"}
-                size={20}
-                color={done ? "#16a34a" : "#94a3b8"}
-              />
-              <View style={{ flex: 1, marginLeft: 10 }}>
-                <Text style={s.cardTitle}>{t.title}</Text>
-                <Text style={s.cardMeta}>{t.status}</Text>
-              </View>
-            </View>
-          );
-        })}
+                  <Ionicons
+                    name={done ? "checkmark-circle" : "ellipse-outline"}
+                    size={24}
+                    color={done ? c.successText : c.textFaint}
+                  />
+                  <View style={{ flex: 1 }}>
+                    <Text
+                      style={[s.cardTitle, done && s.cardTitleDone]}
+                    >
+                      {t.title}
+                    </Text>
+                    {t.note ? (
+                      <Text style={s.cardMeta}>{t.note}</Text>
+                    ) : null}
+                  </View>
+                </TouchableOpacity>
+              );
+            })}
+          </>
+        )}
 
       </ScrollView>
 
@@ -335,7 +313,7 @@ export default function MyOnboarding() {
               value={fileUrl}
               onChangeText={setFileUrl}
               placeholder="https://drive.google.com/…"
-              placeholderTextColor="#64748b"
+              placeholderTextColor={c.textFaint}
               autoCapitalize="none"
             />
             <Text style={s.fineprint}>
@@ -347,7 +325,7 @@ export default function MyOnboarding() {
                 style={s.cancelBtn}
                 onPress={() => setUploadVisible(false)}
               >
-                <Text style={s.modalBtnText}>Cancel</Text>
+                <Text style={s.cancelBtnText}>Cancel</Text>
               </TouchableOpacity>
               <TouchableOpacity
                 style={[s.saveBtn, busy && { opacity: 0.7 }]}
@@ -357,7 +335,7 @@ export default function MyOnboarding() {
                 {busy ? (
                   <ActivityIndicator color="#fff" />
                 ) : (
-                  <Text style={s.modalBtnText}>Save</Text>
+                  <Text style={s.saveBtnText}>Save</Text>
                 )}
               </TouchableOpacity>
             </View>
@@ -369,55 +347,56 @@ export default function MyOnboarding() {
   );
 }
 
-const s = StyleSheet.create({
-  safe: { flex: 1, backgroundColor: "#0b1220" },
+const makeStyles = (c: any) => StyleSheet.create({
+  safe: { flex: 1, backgroundColor: c.bg },
   container: { flex: 1 },
   content: { padding: 20, paddingBottom: 60 },
-  loader: { flex: 1, backgroundColor: "#0b1220", justifyContent: "center", alignItems: "center" },
+  loader: { flex: 1, backgroundColor: c.bg, justifyContent: "center", alignItems: "center" },
   popup: { position: "absolute", top: 60, left: 20, right: 20, padding: 14, borderRadius: 14, zIndex: 999 },
-  popupOk: { backgroundColor: "#16a34a" },
-  popupErr: { backgroundColor: "#dc2626" },
+  popupOk: { backgroundColor: c.successText },
+  popupErr: { backgroundColor: c.dangerText },
   popupText: { color: "#fff", fontWeight: "700", textAlign: "center" },
 
   header: { flexDirection: "row", alignItems: "center", marginBottom: 14, marginTop: 10, gap: 12, padding: 20 },
-  backBtn: { width: 42, height: 42, borderRadius: 12, backgroundColor: "#111827", justifyContent: "center", alignItems: "center", borderWidth: 1, borderColor: "#1f2937" },
-  title: { color: "#fff", fontSize: 24, fontWeight: "800" },
-  subtitle: { color: "#94a3b8", fontSize: 13, marginTop: 3 },
+  backBtn: { width: 42, height: 42, borderRadius: 12, backgroundColor: c.surface, justifyContent: "center", alignItems: "center", borderWidth: 1, borderColor: c.surfaceBorder },
+  title: { color: c.text, fontSize: 24, fontWeight: "800" },
+  subtitle: { color: c.textMuted, fontSize: 13, marginTop: 3 },
   statusChip: { paddingHorizontal: 10, paddingVertical: 5, borderRadius: 999 },
-  statusText: { color: "#fff", fontSize: 10, fontWeight: "800", letterSpacing: 0.5 },
+  statusText: { fontSize: 10, fontWeight: "800", letterSpacing: 0.5 },
 
-  section: { color: "#64748b", fontSize: 12, letterSpacing: 1.5, fontWeight: "700", marginBottom: 10 },
+  section: { color: c.textMuted, fontSize: 12, letterSpacing: 1.5, fontWeight: "700", marginBottom: 10 },
 
   card: {
     flexDirection: "row",
     alignItems: "center",
-    backgroundColor: "#111827",
+    backgroundColor: c.surface,
     borderRadius: 12,
     padding: 12,
     marginBottom: 8,
     borderWidth: 1,
-    borderColor: "#1f2937",
-    gap: 10,
-  },
-  cardTitle: { color: "#fff", fontSize: 14, fontWeight: "700" },
-  cardMeta: { color: "#94a3b8", fontSize: 11, marginTop: 3 },
+    borderColor: c.surfaceBorder,
+    gap: 10 },
+  cardTitle: { color: c.text, fontSize: 14, fontWeight: "700" },
+  cardTitleDone: { textDecorationLine: "line-through", color: c.textMuted },
+  cardMeta: { color: c.textMuted, fontSize: 11, marginTop: 3 },
 
-  uploadBtn: { flexDirection: "row", alignItems: "center", backgroundColor: "#2563eb", paddingHorizontal: 10, paddingVertical: 6, borderRadius: 8, gap: 4 },
+  uploadBtn: { flexDirection: "row", alignItems: "center", backgroundColor: c.accent, paddingHorizontal: 10, paddingVertical: 6, borderRadius: 8, gap: 4 },
   uploadText: { color: "#fff", fontSize: 12, fontWeight: "700" },
 
-  empty: { padding: 40, backgroundColor: "#111827", borderRadius: 18, borderWidth: 1, borderColor: "#1f2937", alignItems: "center", marginHorizontal: 20 },
-  emptyTitle: { color: "#fff", fontSize: 17, fontWeight: "700", marginTop: 14 },
-  emptySub: { color: "#94a3b8", fontSize: 13, marginTop: 6, textAlign: "center" },
+  empty: { padding: 40, backgroundColor: c.surface, borderRadius: 18, borderWidth: 1, borderColor: c.surfaceBorder, alignItems: "center", marginHorizontal: 20 },
+  emptyTitle: { color: c.text, fontSize: 17, fontWeight: "700", marginTop: 14 },
+  emptySub: { color: c.textMuted, fontSize: 13, marginTop: 6, textAlign: "center" },
 
-  modalOverlay: { flex: 1, backgroundColor: "rgba(0,0,0,0.7)", justifyContent: "center", padding: 20 },
-  modalCard: { backgroundColor: "#111827", borderRadius: 18, padding: 20 },
-  modalTitle: { color: "#fff", fontSize: 22, fontWeight: "800" },
-  hint: { color: "#94a3b8", fontSize: 12, marginTop: 4, marginBottom: 8 },
-  label: { color: "#94a3b8", fontSize: 13, fontWeight: "600", marginBottom: 6, marginTop: 14 },
-  input: { backgroundColor: "#0f172a", color: "#fff", borderRadius: 12, padding: 13, borderWidth: 1, borderColor: "#1e293b", fontSize: 14 },
-  fineprint: { color: "#64748b", fontSize: 11, marginTop: 6, fontStyle: "italic" },
+  modalOverlay: { flex: 1, backgroundColor: c.overlay, justifyContent: "center", padding: 20 },
+  modalCard: { backgroundColor: c.surface, borderRadius: 18, padding: 20 },
+  modalTitle: { color: c.text, fontSize: 22, fontWeight: "800" },
+  hint: { color: c.textMuted, fontSize: 12, marginTop: 4, marginBottom: 8 },
+  label: { color: c.textMuted, fontSize: 13, fontWeight: "600", marginBottom: 6, marginTop: 14 },
+  input: { backgroundColor: c.surfaceMuted, color: c.text, borderRadius: 12, padding: 13, borderWidth: 1, borderColor: c.surfaceBorder, fontSize: 14 },
+  fineprint: { color: c.textMuted, fontSize: 11, marginTop: 6, fontStyle: "italic" },
   modalActions: { flexDirection: "row", gap: 10, marginTop: 22 },
-  cancelBtn: { flex: 1, backgroundColor: "#374151", padding: 14, borderRadius: 12, alignItems: "center" },
-  saveBtn: { flex: 1, backgroundColor: "#16a34a", padding: 14, borderRadius: 12, alignItems: "center" },
-  modalBtnText: { color: "#fff", fontWeight: "700" },
-});
+  cancelBtn: { flex: 1, backgroundColor: c.surfaceMuted, padding: 14, borderRadius: 12, alignItems: "center" },
+  cancelBtnText: { color: c.text, fontWeight: "700" },
+  saveBtn: { flex: 1, backgroundColor: c.accent, padding: 14, borderRadius: 12, alignItems: "center" },
+  saveBtnText: { color: "#fff", fontWeight: "700" } });
+

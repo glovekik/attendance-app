@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useCallback } from "react";
+﻿import React, { useEffect, useState, useCallback, useMemo} from "react";
 
 import {
   View,
@@ -7,31 +7,29 @@ import {
   FlatList,
   TouchableOpacity,
   ActivityIndicator,
-  SafeAreaView,
   RefreshControl,
   Modal,
   TextInput,
   Alert,
   KeyboardAvoidingView,
-  Platform,
-} from "react-native";
+  Platform } from "react-native";
+import { SafeAreaView } from "react-native-safe-area-context";
 
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 
 import { listMyGoals, addGoalProgress } from "../src/services/goals";
-import { Goal, GoalStatus } from "../src/types";
+import { Goal } from "../src/types";
 
-const STATUS_COLOR: Record<GoalStatus, string> = {
-  DRAFT: "#64748b",
-  ACTIVE: "#3b82f6",
-  COMPLETED: "#16a34a",
-  CANCELLED: "#64748b",
-};
+import { useTheme } from "../src/theme/ThemeProvider";
+import { goalStatusColor } from "../src/theme/statusColors";
 
 export default function MyGoals() {
   const router = useRouter();
+  const { theme } = useTheme();
+  const c = theme.colors;
+  const styles = useMemo(() => makeStyles(c), [c]);
   const [items, setItems] = useState<Goal[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -52,7 +50,10 @@ export default function MyGoals() {
       const data = await listMyGoals(token);
       setItems(data || []);
     } catch (err: any) {
-      console.log("my-goals load error", err);
+      Alert.alert(
+        "Couldn't load goals",
+        err?.message || "Pull down to retry."
+      );
     } finally {
       setLoading(false);
       setRefreshing(false);
@@ -100,7 +101,7 @@ export default function MyGoals() {
   if (loading) {
     return (
       <View style={styles.loader}>
-        <ActivityIndicator size="large" color="#3b82f6" />
+        <ActivityIndicator size="large" color={c.accent} />
       </View>
     );
   }
@@ -108,8 +109,8 @@ export default function MyGoals() {
   return (
     <SafeAreaView style={styles.safe}>
       <View style={styles.header}>
-        <TouchableOpacity onPress={() => router.back()}>
-          <Ionicons name="arrow-back" size={24} color="#fff" />
+        <TouchableOpacity onPress={() => (router.canGoBack() ? router.back() : router.replace("/"))}>
+          <Ionicons name="arrow-back" size={24} color={c.text} />
         </TouchableOpacity>
         <Text style={styles.title}>My Goals</Text>
         <View style={{ width: 24 }} />
@@ -125,13 +126,13 @@ export default function MyGoals() {
           <RefreshControl
             refreshing={refreshing}
             onRefresh={onRefresh}
-            tintColor="#3b82f6"
-            colors={["#3b82f6"]}
+            tintColor={c.accent}
+            colors={[c.accent]}
           />
         }
         ListEmptyComponent={
           <View style={styles.empty}>
-            <Ionicons name="flag-outline" size={42} color="#475569" />
+            <Ionicons name="flag-outline" size={42} color={c.textFaint} />
             <Text style={styles.emptyText}>
               No goals assigned yet
             </Text>
@@ -145,6 +146,7 @@ export default function MyGoals() {
                   ((item.achievedValue || 0) / item.targetValue) * 100
                 )
               : null;
+          const sc = goalStatusColor(item.status, c);
           return (
             <View style={styles.card}>
               <View style={styles.cardTop}>
@@ -152,10 +154,10 @@ export default function MyGoals() {
                 <View
                   style={[
                     styles.pill,
-                    { backgroundColor: STATUS_COLOR[item.status] },
+                    { backgroundColor: sc.bg },
                   ]}
                 >
-                  <Text style={styles.pillText}>{item.status}</Text>
+                  <Text style={[styles.pillText, { color: sc.fg }]}>{item.status}</Text>
                 </View>
               </View>
               {!!item.description && (
@@ -217,7 +219,7 @@ export default function MyGoals() {
             <View style={styles.modalHeader}>
               <Text style={styles.modalTitle}>Update progress</Text>
               <TouchableOpacity onPress={() => setTarget(null)}>
-                <Ionicons name="close" size={24} color="#94a3b8" />
+                <Ionicons name="close" size={24} color={c.textMuted} />
               </TouchableOpacity>
             </View>
 
@@ -238,7 +240,7 @@ export default function MyGoals() {
                   onChangeText={setAchieved}
                   keyboardType="decimal-pad"
                   placeholder="0"
-                  placeholderTextColor="#475569"
+                  placeholderTextColor={c.textFaint}
                 />
 
                 <Text style={styles.label}>Note (optional)</Text>
@@ -249,7 +251,7 @@ export default function MyGoals() {
                   multiline
                   textAlignVertical="top"
                   placeholder="Anything to add..."
-                  placeholderTextColor="#475569"
+                  placeholderTextColor={c.textFaint}
                 />
 
                 <View style={styles.actions}>
@@ -279,133 +281,117 @@ export default function MyGoals() {
   );
 }
 
-const styles = StyleSheet.create({
-  safe: { flex: 1, backgroundColor: "#0b1220" },
+const makeStyles = (c: any) => StyleSheet.create({
+  safe: { flex: 1, backgroundColor: c.bg },
   loader: {
     flex: 1,
-    backgroundColor: "#0b1220",
+    backgroundColor: c.bg,
     justifyContent: "center",
-    alignItems: "center",
-  },
+    alignItems: "center" },
   header: {
     flexDirection: "row",
     alignItems: "center",
     paddingHorizontal: 16,
     paddingVertical: 14,
     borderBottomWidth: 1,
-    borderBottomColor: "#1f2937",
-    gap: 12,
-  },
-  title: { color: "#fff", fontSize: 18, fontWeight: "800", flex: 1 },
+    borderBottomColor: c.surfaceBorder,
+    gap: 12 },
+  title: { color: c.text, fontSize: 18, fontWeight: "800", flex: 1 },
   card: {
-    backgroundColor: "#111827",
+    backgroundColor: c.surface,
     padding: 14,
     borderRadius: 14,
     marginBottom: 8,
     borderWidth: 1,
-    borderColor: "#1f2937",
-  },
+    borderColor: c.surfaceBorder },
   cardTop: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    gap: 10,
-  },
+    gap: 10 },
   cardTitle: {
-    color: "#fff",
+    color: c.text,
     fontSize: 15,
     fontWeight: "700",
-    flex: 1,
-  },
+    flex: 1 },
   pill: {
     paddingHorizontal: 8,
     paddingVertical: 3,
-    borderRadius: 6,
-  },
-  pillText: { color: "#fff", fontSize: 10, fontWeight: "800" },
-  desc: { color: "#cbd5e1", fontSize: 12, marginTop: 6 },
-  meta: { color: "#94a3b8", fontSize: 11, marginTop: 4 },
+    borderRadius: 6 },
+  pillText: { color: c.text, fontSize: 10, fontWeight: "800" },
+  desc: { color: c.text, fontSize: 12, marginTop: 6 },
+  meta: { color: c.textMuted, fontSize: 11, marginTop: 4 },
   progressWrap: { marginTop: 10 },
   progressBg: {
     height: 8,
-    backgroundColor: "#1e293b",
+    backgroundColor: c.surfaceMuted,
     borderRadius: 4,
-    overflow: "hidden",
-  },
+    overflow: "hidden" },
   progressFill: {
     height: "100%",
-    backgroundColor: "#16a34a",
-  },
+    backgroundColor: "#16a34a" },
   progressText: {
-    color: "#94a3b8",
+    color: c.textMuted,
     fontSize: 11,
     marginTop: 4,
-    textAlign: "right",
-  },
+    textAlign: "right" },
   actionBtn: {
     flexDirection: "row",
     alignItems: "center",
-    backgroundColor: "#3b82f6",
+    backgroundColor: c.accent,
     alignSelf: "flex-start",
     paddingHorizontal: 12,
     paddingVertical: 7,
     borderRadius: 10,
     marginTop: 10,
-    gap: 6,
-  },
-  actionText: { color: "#fff", fontSize: 11, fontWeight: "800" },
+    gap: 6 },
+  actionText: { color: c.text, fontSize: 11, fontWeight: "800" },
   emptyWrap: { flex: 1, justifyContent: "center" },
   empty: { alignItems: "center", gap: 10 },
-  emptyText: { color: "#475569", fontSize: 14 },
+  emptyText: { color: c.textMuted, fontSize: 14 },
   modalWrap: {
     flex: 1,
     justifyContent: "flex-end",
-    backgroundColor: "rgba(0,0,0,0.5)",
-  },
+    backgroundColor: c.overlay },
   modal: {
-    backgroundColor: "#0f172a",
+    backgroundColor: c.surfaceMuted,
     padding: 20,
     borderTopLeftRadius: 18,
     borderTopRightRadius: 18,
     borderTopWidth: 1,
-    borderTopColor: "#1e293b",
-  },
+    borderTopColor: c.surfaceBorder },
   modalHeader: {
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
-    marginBottom: 10,
-  },
-  modalTitle: { color: "#fff", fontSize: 17, fontWeight: "800" },
-  goalTitle: { color: "#fff", fontSize: 16, fontWeight: "700" },
-  hint: { color: "#64748b", fontSize: 11, marginTop: 4 },
+    marginBottom: 10 },
+  modalTitle: { color: c.text, fontSize: 17, fontWeight: "800" },
+  goalTitle: { color: c.text, fontSize: 16, fontWeight: "700" },
+  hint: { color: c.textMuted, fontSize: 11, marginTop: 4 },
   label: {
-    color: "#94a3b8",
+    color: c.textMuted,
     fontSize: 11,
     letterSpacing: 1.2,
     fontWeight: "700",
     marginTop: 14,
-    marginBottom: 6,
-  },
+    marginBottom: 6 },
   input: {
-    backgroundColor: "#111827",
-    color: "#fff",
+    backgroundColor: c.surface,
+    color: c.text,
     paddingHorizontal: 12,
     paddingVertical: 10,
     borderRadius: 10,
     borderWidth: 1,
-    borderColor: "#1f2937",
-    minHeight: 42,
-  },
+    borderColor: c.surfaceBorder,
+    minHeight: 42 },
   actions: { flexDirection: "row", gap: 10, marginTop: 18 },
   btn: {
     flex: 1,
     paddingVertical: 14,
     borderRadius: 12,
-    alignItems: "center",
-  },
-  btnGhost: { backgroundColor: "#1e293b" },
-  btnGhostText: { color: "#94a3b8", fontWeight: "700" },
-  btnPrimary: { backgroundColor: "#3b82f6" },
-  btnPrimaryText: { color: "#fff", fontWeight: "800" },
-});
+    alignItems: "center" },
+  btnGhost: { backgroundColor: c.surfaceMuted },
+  btnGhostText: { color: c.textMuted, fontWeight: "700" },
+  btnPrimary: { backgroundColor: c.accent },
+  btnPrimaryText: { color: "#fff", fontWeight: "800" } });
+

@@ -1,12 +1,13 @@
-import React, { useState } from "react";
+import React, { useState, useMemo} from "react";
 
 import {
-  View,
   Text,
   StyleSheet,
   TouchableOpacity,
   ActivityIndicator,
   Alert,
+  StyleProp,
+  ViewStyle,
 } from "react-native";
 
 import AsyncStorage from "@react-native-async-storage/async-storage";
@@ -14,6 +15,7 @@ import { Ionicons } from "@expo/vector-icons";
 
 import { uploadFile } from "../services/uploads";
 
+import { useTheme } from "../theme/ThemeProvider";
 // Lazy import keeps the build alive if expo-document-picker isn't
 // installed yet — the user gets a friendly install hint at runtime.
 const tryGetPicker = async () => {
@@ -35,6 +37,9 @@ interface Props {
   mimeType?: string | string[];
   // Compact mode — small icon-only button.
   compact?: boolean;
+  // Override container styles (e.g. to stretch the button to fill a
+  // parent row instead of the default alignSelf:'flex-start').
+  style?: StyleProp<ViewStyle>;
 }
 
 export const FilePickButton = ({
@@ -42,8 +47,12 @@ export const FilePickButton = ({
   label,
   mimeType,
   compact,
+  style,
 }: Props) => {
   const [uploading, setUploading] = useState(false);
+  const { theme } = useTheme();
+  const c = theme.colors;
+  const styles = useMemo(() => makeStyles(c), [c]);
 
   const onPress = async () => {
     if (uploading) return;
@@ -72,10 +81,18 @@ export const FilePickButton = ({
         Alert.alert("Not signed in");
         return;
       }
+      // expo-document-picker on web exposes the real File on
+      // `file.file` — forward it so uploadFile doesn't have to re-fetch
+      // a blob: URL that may already be revoked.
+      const webFile: any =
+        (file as any).file && typeof File !== "undefined"
+          ? (file as any).file
+          : undefined;
       const result = await uploadFile(token, {
         uri: file.uri,
         name: file.name,
         mimeType: file.mimeType,
+        webFile,
       });
       onUploaded(result.url, result.fileName);
     } catch (err: any) {
@@ -88,7 +105,7 @@ export const FilePickButton = ({
   if (compact) {
     return (
       <TouchableOpacity
-        style={[styles.iconBtn, uploading && styles.iconBtnBusy]}
+        style={[styles.iconBtn, uploading && styles.iconBtnBusy, style]}
         onPress={onPress}
         disabled={uploading}
       >
@@ -103,7 +120,7 @@ export const FilePickButton = ({
 
   return (
     <TouchableOpacity
-      style={[styles.btn, uploading && styles.btnBusy]}
+      style={[styles.btn, uploading && styles.btnBusy, style]}
       onPress={onPress}
       disabled={uploading}
     >
@@ -119,7 +136,7 @@ export const FilePickButton = ({
   );
 };
 
-const styles = StyleSheet.create({
+const makeStyles = (c: any) => StyleSheet.create({
   btn: {
     flexDirection: "row",
     alignItems: "center",

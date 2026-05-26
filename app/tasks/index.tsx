@@ -1,8 +1,8 @@
-import React, {
+﻿import React, {
   useEffect,
+  useMemo,
   useState,
-  useCallback,
-} from "react";
+  useCallback } from "react";
 
 import {
   View,
@@ -12,10 +12,9 @@ import {
   TouchableOpacity,
   ActivityIndicator,
   RefreshControl,
-  SafeAreaView,
   Alert,
-  Platform,
-} from "react-native";
+  Platform } from "react-native";
+import { SafeAreaView } from "react-native-safe-area-context";
 
 import AsyncStorage from "@react-native-async-storage/async-storage";
 
@@ -26,24 +25,17 @@ import { Ionicons } from "@expo/vector-icons";
 import {
   getMyTasks,
   completeTask,
-  startTask,
-} from "../../src/services/tasks";
+  startTask } from "../../src/services/tasks";
 
 import {
   syncRemindersToTasks,
-  cancelTaskReminder,
-} from "../../src/services/reminders";
+  cancelTaskReminder } from "../../src/services/reminders";
 
 import { requestNotificationPermission } from "../../src/services/notifications";
 
-import { Task, TaskPriority } from "../../src/types";
-
-const PRIORITY_COLOR: Record<TaskPriority, string> = {
-  LOW: "#64748b",
-  MEDIUM: "#3b82f6",
-  HIGH: "#f59e0b",
-  CRITICAL: "#dc2626",
-};
+import { Task } from "../../src/types";
+import { useTheme } from "../../src/theme/ThemeProvider";
+import { taskPriorityColor } from "../../src/theme/statusColors";
 
 const isToday = (iso?: string | null) => {
   if (!iso) return false;
@@ -59,6 +51,9 @@ const isToday = (iso?: string | null) => {
 export default function Tasks() {
 
   const router = useRouter();
+  const { theme } = useTheme();
+  const c = theme.colors;
+  const styles = useMemo(() => makeStyles(c), [c]);
 
   const [tasks, setTasks] = useState<Task[]>([]);
   const [loading, setLoading] = useState(true);
@@ -68,8 +63,7 @@ export default function Tasks() {
   const [popup, setPopup] = useState({
     visible: false,
     type: "success" as "success" | "error",
-    message: "",
-  });
+    message: "" });
 
   const showPopup = (
     msg: string,
@@ -142,12 +136,10 @@ export default function Tasks() {
           {
             text: "Cancel",
             style: "cancel",
-            onPress: () => resolve(false),
-          },
+            onPress: () => resolve(false) },
           {
             text: "Mark done",
-            onPress: () => resolve(true),
-          },
+            onPress: () => resolve(true) },
         ],
         { cancelable: true, onDismiss: () => resolve(false) }
       );
@@ -186,8 +178,7 @@ export default function Tasks() {
             ? {
                 ...t,
                 status: "COMPLETED",
-                completedAt: new Date().toISOString(),
-              }
+                completedAt: new Date().toISOString() }
             : t
         )
       );
@@ -204,7 +195,7 @@ export default function Tasks() {
   if (loading) {
     return (
       <View style={styles.loader}>
-        <ActivityIndicator size="large" color="#2563eb" />
+        <ActivityIndicator size="large" color={c.accent} />
       </View>
     );
   }
@@ -215,8 +206,7 @@ export default function Tasks() {
     CRITICAL: 4,
     HIGH: 3,
     MEDIUM: 2,
-    LOW: 1,
-  };
+    LOW: 1 };
   const open = tasks
     .filter((t) => t.status === "PENDING" || t.status === "ONGOING")
     .sort((a, b) => {
@@ -250,8 +240,7 @@ export default function Tasks() {
             ? {
                 ...t,
                 status: "ONGOING",
-                startedAt: new Date().toISOString(),
-              }
+                startedAt: new Date().toISOString() }
             : t
         )
       );
@@ -287,7 +276,7 @@ export default function Tasks() {
           <RefreshControl
             refreshing={refreshing}
             onRefresh={onRefresh}
-            tintColor="#2563eb"
+            tintColor={c.accent}
           />
         }
       >
@@ -296,12 +285,12 @@ export default function Tasks() {
 
           <TouchableOpacity
             style={styles.backBtn}
-            onPress={() => router.back()}
+            onPress={() => (router.canGoBack() ? router.back() : router.replace("/"))}
           >
             <Ionicons
               name="chevron-back"
               size={22}
-              color="#fff"
+              color={c.text}
             />
           </TouchableOpacity>
 
@@ -322,7 +311,7 @@ export default function Tasks() {
             <Ionicons
               name="checkmark-done-outline"
               size={48}
-              color="#475569"
+              color={c.textFaint}
             />
             <Text style={styles.emptyTitle}>
               All caught up
@@ -345,6 +334,8 @@ export default function Tasks() {
             onCheck={() => askComplete(task)}
             onStart={() => doStart(task)}
             onOpen={() => router.push(`/tasks/${task.id}`)}
+            styles={styles}
+            c={c}
           />
         ))}
 
@@ -364,6 +355,8 @@ export default function Tasks() {
             onCheck={() => {}}
             onStart={() => {}}
             onOpen={() => router.push(`/tasks/${task.id}`)}
+            styles={styles}
+            c={c}
           />
         ))}
 
@@ -379,9 +372,11 @@ interface RowProps {
   onCheck: () => void;
   onStart: () => void;
   onOpen: () => void;
+  styles: any;
+  c: any;
 }
 
-const TaskRow = ({ task, busy, onCheck, onStart, onOpen }: RowProps) => {
+const TaskRow = ({ task, busy, onCheck, onStart, onOpen, styles, c }: RowProps) => {
 
   const done = task.status === "COMPLETED";
   const ongoing = task.status === "ONGOING";
@@ -405,7 +400,7 @@ const TaskRow = ({ task, busy, onCheck, onStart, onOpen }: RowProps) => {
         hitSlop={8}
       >
         {busy ? (
-          <ActivityIndicator size="small" color="#2563eb" />
+          <ActivityIndicator size="small" color={c.accent} />
         ) : (
           <Ionicons
             name={
@@ -417,7 +412,7 @@ const TaskRow = ({ task, busy, onCheck, onStart, onOpen }: RowProps) => {
             }
             size={28}
             color={
-              done ? "#16a34a" : ongoing ? "#3b82f6" : "#475569"
+              done ? c.successText : ongoing ? c.accent : c.textFaint
             }
           />
         )}
@@ -436,16 +431,19 @@ const TaskRow = ({ task, busy, onCheck, onStart, onOpen }: RowProps) => {
           >
             {task.title}
           </Text>
-          {!done && (
-            <View
-              style={[
-                styles.priorityPill,
-                { backgroundColor: PRIORITY_COLOR[priority] },
-              ]}
-            >
-              <Text style={styles.priorityText}>{priority}</Text>
-            </View>
-          )}
+          {!done && (() => {
+            const pri = taskPriorityColor(priority, c);
+            return (
+              <View
+                style={[
+                  styles.priorityPill,
+                  { backgroundColor: pri.bg, borderColor: pri.solid, borderWidth: 1 },
+                ]}
+              >
+                <Text style={[styles.priorityText, { color: pri.fg }]}>{priority}</Text>
+              </View>
+            );
+          })()}
         </View>
 
         {task.description ? (
@@ -464,7 +462,7 @@ const TaskRow = ({ task, busy, onCheck, onStart, onOpen }: RowProps) => {
               <Ionicons
                 name="people-outline"
                 size={11}
-                color="#94a3b8"
+                color={c.textMuted}
               />
               <Text style={styles.metaText}>
                 {task.teamName}
@@ -500,7 +498,7 @@ const TaskRow = ({ task, busy, onCheck, onStart, onOpen }: RowProps) => {
               <Ionicons
                 name="calendar-outline"
                 size={11}
-                color="#94a3b8"
+                color={c.textMuted}
               />
               <Text style={styles.metaText}>
                 {task.dueDate}
@@ -526,7 +524,7 @@ const TaskRow = ({ task, busy, onCheck, onStart, onOpen }: RowProps) => {
               <Ionicons
                 name="attach"
                 size={11}
-                color="#94a3b8"
+                color={c.textMuted}
               />
               <Text style={styles.metaText}>
                 {task.attachments.length}
@@ -553,35 +551,31 @@ const TaskRow = ({ task, busy, onCheck, onStart, onOpen }: RowProps) => {
       <Ionicons
         name="chevron-forward"
         size={18}
-        color="#475569"
+        color={c.textFaint}
       />
 
     </TouchableOpacity>
   );
 };
 
-const styles = StyleSheet.create({
+const makeStyles = (c: any) => StyleSheet.create({
 
   safe: {
     flex: 1,
-    backgroundColor: "#0b1220",
-  },
+    backgroundColor: c.bg },
 
   container: {
-    flex: 1,
-  },
+    flex: 1 },
 
   content: {
     padding: 20,
-    paddingBottom: 60,
-  },
+    paddingBottom: 60 },
 
   loader: {
     flex: 1,
-    backgroundColor: "#0b1220",
+    backgroundColor: c.bg,
     justifyContent: "center",
-    alignItems: "center",
-  },
+    alignItems: "center" },
 
   popup: {
     position: "absolute",
@@ -590,136 +584,118 @@ const styles = StyleSheet.create({
     right: 20,
     padding: 14,
     borderRadius: 14,
-    zIndex: 999,
-  },
+    zIndex: 999 },
 
   successPopup: { backgroundColor: "#16a34a" },
   errorPopup: { backgroundColor: "#dc2626" },
 
   popupText: {
-    color: "#fff",
+    color: c.text,
     fontWeight: "700",
-    textAlign: "center",
-  },
+    textAlign: "center" },
 
   header: {
     flexDirection: "row",
     alignItems: "center",
     marginBottom: 18,
     marginTop: 10,
-    gap: 12,
-  },
+    gap: 12 },
 
   backBtn: {
     width: 42,
     height: 42,
     borderRadius: 12,
-    backgroundColor: "#111827",
+    backgroundColor: c.surface,
     justifyContent: "center",
     alignItems: "center",
     borderWidth: 1,
-    borderColor: "#1f2937",
-  },
+    borderColor: c.surfaceBorder },
 
   title: {
-    color: "#fff",
+    color: c.text,
     fontSize: 24,
-    fontWeight: "800",
-  },
+    fontWeight: "800" },
 
   subtitle: {
-    color: "#94a3b8",
+    color: c.textMuted,
     fontSize: 13,
-    marginTop: 3,
-  },
+    marginTop: 3 },
 
   section: {
-    color: "#64748b",
+    color: c.textMuted,
     fontSize: 12,
     letterSpacing: 1.5,
     marginBottom: 10,
-    fontWeight: "700",
-  },
+    fontWeight: "700" },
 
   emptyBox: {
     alignItems: "center",
     padding: 40,
-    backgroundColor: "#111827",
+    backgroundColor: c.surface,
     borderRadius: 18,
     borderWidth: 1,
-    borderColor: "#1f2937",
-    marginTop: 20,
-  },
+    borderColor: c.surfaceBorder,
+    marginTop: 20 },
 
   emptyTitle: {
-    color: "#fff",
+    color: c.text,
     fontSize: 17,
     fontWeight: "700",
-    marginTop: 14,
-  },
+    marginTop: 14 },
 
   emptySub: {
-    color: "#94a3b8",
+    color: c.textMuted,
     fontSize: 13,
     marginTop: 6,
-    textAlign: "center",
-  },
+    textAlign: "center" },
 
   row: {
     flexDirection: "row",
-    backgroundColor: "#111827",
+    backgroundColor: c.surface,
     borderRadius: 14,
     padding: 14,
     marginBottom: 10,
     borderWidth: 1,
-    borderColor: "#1f2937",
-    alignItems: "flex-start",
-  },
+    borderColor: c.surfaceBorder,
+    alignItems: "flex-start" },
 
   rowDone: {
-    opacity: 0.55,
-  },
+    opacity: 0.55 },
 
   rowOngoing: {
-    borderColor: "#3b82f6",
-    backgroundColor: "#0f1e3a",
-  },
+    borderColor: c.accent,
+    backgroundColor: c.accentSoft },
 
   titleRow: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 8,
-  },
+    gap: 8 },
 
   priorityPill: {
     paddingHorizontal: 6,
     paddingVertical: 2,
-    borderRadius: 4,
-  },
+    borderRadius: 4 },
 
   priorityText: {
-    color: "#fff",
+    color: c.text,
     fontSize: 9,
     fontWeight: "800",
-    letterSpacing: 0.5,
-  },
+    letterSpacing: 0.5 },
 
   startBtn: {
     flexDirection: "row",
     alignItems: "center",
-    backgroundColor: "#3b82f6",
+    backgroundColor: c.accent,
     paddingHorizontal: 10,
     paddingVertical: 6,
     borderRadius: 8,
     gap: 4,
-    marginRight: 6,
-  },
+    marginRight: 6 },
 
   startBtnText: {
     color: "#fff",
     fontSize: 11,
-    fontWeight: "800",
-  },
+    fontWeight: "800" },
 
   checkBox: {
     width: 36,
@@ -727,48 +703,39 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     alignItems: "center",
     marginRight: 10,
-    marginTop: 1,
-  },
+    marginTop: 1 },
 
   rowTitle: {
-    color: "#fff",
+    color: c.text,
     fontSize: 15,
-    fontWeight: "700",
-  },
+    fontWeight: "700" },
 
   rowTitleDone: {
     textDecorationLine: "line-through",
-    color: "#94a3b8",
-  },
+    color: c.textMuted },
 
   rowDesc: {
-    color: "#94a3b8",
+    color: c.textMuted,
     fontSize: 13,
     marginTop: 4,
-    lineHeight: 18,
-  },
+    lineHeight: 18 },
 
   metaRow: {
     flexDirection: "row",
     flexWrap: "wrap",
     gap: 6,
-    marginTop: 8,
-  },
+    marginTop: 8 },
 
   metaChip: {
     flexDirection: "row",
     alignItems: "center",
-    backgroundColor: "#0f172a",
+    backgroundColor: c.surfaceMuted,
     paddingHorizontal: 8,
     paddingVertical: 4,
     borderRadius: 999,
-    gap: 4,
-  },
+    gap: 4 },
 
   metaText: {
-    color: "#94a3b8",
+    color: c.textMuted,
     fontSize: 11,
-    fontWeight: "600",
-  },
-
-});
+    fontWeight: "600" } });

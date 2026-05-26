@@ -20,6 +20,7 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 
+import { useTheme } from "../src/theme/ThemeProvider";
 import {
   getToday,
   checkIn,
@@ -28,6 +29,9 @@ import {
 
 export default function Worksheet() {
   const router = useRouter();
+  const { theme } = useTheme();
+  const c = theme.colors;
+  const styles = useMemo(() => makeStyles(c), [c]);
 
   const [loading, setLoading] = useState(true);
 
@@ -67,14 +71,14 @@ export default function Worksheet() {
 
         setNotes(res.workNotes || "");
 
-        if (res.status === "CHECKED_IN") {
-          setCheckedIn(true);
-        }
-
-        if (res.status === "COMPLETED") {
-          setCheckedIn(true);
-          setCompleted(true);
-        }
+        // Derive state from the timestamps themselves, not the status
+        // string. The backend's classify_on_checkout returns PRESENT /
+        // LATE / HALF_DAY (never "COMPLETED"), so checking the status
+        // string alone misses the completed case.
+        const hasCheckIn = !!res.checkIn;
+        const hasCheckOut = !!res.checkOut;
+        setCheckedIn(hasCheckIn);
+        setCompleted(hasCheckOut);
       }
 
     } catch (err) {
@@ -99,6 +103,7 @@ export default function Worksheet() {
 
       const res = await checkIn(token, {
         date: today,
+        checkIn: new Date().toISOString(),
         attendanceType: "OFFICE",
       });
 
@@ -135,6 +140,7 @@ export default function Worksheet() {
 
       const res = await checkOut(token, {
         date: today,
+        checkOut: new Date().toISOString(),
         workNotes: notes,
       });
 
@@ -187,7 +193,7 @@ export default function Worksheet() {
       <View style={styles.loader}>
         <ActivityIndicator
           size="large"
-          color="#2563eb"
+          color={c.accent}
         />
       </View>
     );
@@ -210,7 +216,7 @@ export default function Worksheet() {
           <Ionicons
             name="chevron-back"
             size={22}
-            color="#fff"
+            color={c.text}
           />
         </TouchableOpacity>
 
@@ -231,13 +237,13 @@ export default function Worksheet() {
             <Ionicons
               name="briefcase-outline"
               size={22}
-              color="#fff"
+              color={c.accentText}
             />
           </View>
 
           <View style={{ flex: 1 }}>
             <Text style={styles.statusTitle}>
-              Today's Status
+              Today&apos;s Status
             </Text>
 
             <Text style={styles.statusSub}>
@@ -309,13 +315,13 @@ export default function Worksheet() {
         </Text>
 
         <Text style={styles.notesSub}>
-          Describe today's work activity
+          Describe today&apos;s work activity
         </Text>
 
         <TextInput
           style={styles.input}
           placeholder="Write your work updates..."
-          placeholderTextColor="#64748b"
+          placeholderTextColor={c.textFaint}
           multiline
           value={notes}
           editable={!completed}
@@ -364,11 +370,11 @@ export default function Worksheet() {
           <Ionicons
             name="checkmark-circle"
             size={22}
-            color="#22c55e"
+            color={c.successText}
           />
 
           <Text style={styles.completedText}>
-            Today's worksheet completed
+            Today&apos;s worksheet completed
           </Text>
         </View>
       )}
@@ -377,10 +383,10 @@ export default function Worksheet() {
   );
 }
 
-const styles = StyleSheet.create({
+const makeStyles = (c: any) => StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: "#0b1220",
+    backgroundColor: c.bg,
   },
 
   content: {
@@ -390,7 +396,7 @@ const styles = StyleSheet.create({
 
   loader: {
     flex: 1,
-    backgroundColor: "#0b1220",
+    backgroundColor: c.bg,
     justifyContent: "center",
     alignItems: "center",
   },
@@ -406,24 +412,24 @@ const styles = StyleSheet.create({
     width: 42,
     height: 42,
     borderRadius: 12,
-    backgroundColor: "#111827",
+    backgroundColor: c.surface,
     justifyContent: "center",
     alignItems: "center",
   },
 
   title: {
-    color: "#fff",
+    color: c.text,
     fontSize: 24,
     fontWeight: "800",
   },
 
   statusCard: {
-    backgroundColor: "#111827",
+    backgroundColor: c.surface,
     borderRadius: 18,
     padding: 18,
     marginBottom: 18,
     borderWidth: 1,
-    borderColor: "#1f2937",
+    borderColor: c.surfaceBorder,
   },
 
   statusTop: {
@@ -436,20 +442,20 @@ const styles = StyleSheet.create({
     width: 46,
     height: 46,
     borderRadius: 14,
-    backgroundColor: "#2563eb",
+    backgroundColor: c.accentSoft,
     justifyContent: "center",
     alignItems: "center",
     marginRight: 12,
   },
 
   statusTitle: {
-    color: "#fff",
+    color: c.text,
     fontSize: 18,
     fontWeight: "700",
   },
 
   statusSub: {
-    color: "#94a3b8",
+    color: c.textMuted,
     marginTop: 3,
   },
 
@@ -460,48 +466,48 @@ const styles = StyleSheet.create({
   },
 
   label: {
-    color: "#94a3b8",
+    color: c.textMuted,
   },
 
   value: {
-    color: "#fff",
+    color: c.text,
     fontWeight: "600",
   },
 
   notesCard: {
-    backgroundColor: "#111827",
+    backgroundColor: c.surface,
     borderRadius: 18,
     padding: 18,
     borderWidth: 1,
-    borderColor: "#1f2937",
+    borderColor: c.surfaceBorder,
     marginBottom: 22,
   },
 
   notesTitle: {
-    color: "#fff",
+    color: c.text,
     fontSize: 18,
     fontWeight: "700",
   },
 
   notesSub: {
-    color: "#94a3b8",
+    color: c.textMuted,
     marginTop: 4,
     marginBottom: 14,
   },
 
   input: {
     minHeight: 180,
-    backgroundColor: "#0f172a",
+    backgroundColor: c.surfaceMuted,
     borderRadius: 14,
     padding: 14,
-    color: "#fff",
+    color: c.text,
     textAlignVertical: "top",
     borderWidth: 1,
-    borderColor: "#1e293b",
+    borderColor: c.surfaceBorder,
   },
 
   checkInBtn: {
-    backgroundColor: "#2563eb",
+    backgroundColor: c.accent,
     flexDirection: "row",
     justifyContent: "center",
     alignItems: "center",
@@ -511,7 +517,7 @@ const styles = StyleSheet.create({
   },
 
   checkOutBtn: {
-    backgroundColor: "#dc2626",
+    backgroundColor: c.dangerText,
     flexDirection: "row",
     justifyContent: "center",
     alignItems: "center",
@@ -527,7 +533,7 @@ const styles = StyleSheet.create({
   },
 
   completedBox: {
-    backgroundColor: "#111827",
+    backgroundColor: c.successBg,
     borderRadius: 14,
     padding: 16,
     flexDirection: "row",
@@ -535,11 +541,12 @@ const styles = StyleSheet.create({
     alignItems: "center",
     gap: 10,
     borderWidth: 1,
-    borderColor: "#166534",
+    borderColor: c.successText,
   },
 
   completedText: {
-    color: "#22c55e",
+    color: c.successText,
     fontWeight: "700",
   },
 });
+

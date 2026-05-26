@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useCallback } from "react";
+﻿import React, { useEffect, useState, useCallback, useMemo} from "react";
 
 import {
   View,
@@ -7,41 +7,32 @@ import {
   FlatList,
   TouchableOpacity,
   ActivityIndicator,
-  SafeAreaView,
   RefreshControl,
   Modal,
   TextInput,
   Alert,
   KeyboardAvoidingView,
   Platform,
-  ScrollView,
-} from "react-native";
+  ScrollView } from "react-native";
+import { SafeAreaView } from "react-native-safe-area-context";
 
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 
+import { useTheme } from "../src/theme/ThemeProvider";
+import { reimbursementStatusColor } from "../src/theme/statusColors";
 import {
   listHrReimbursements,
-  decideHrReimbursement,
-} from "../src/services/reimbursements";
+  decideHrReimbursement } from "../src/services/reimbursements";
 import {
   Reimbursement,
-  ReimbursementStatus,
-} from "../src/types";
-
-const STATUS_COLOR: Record<ReimbursementStatus, string> = {
-  PENDING_MANAGER: "#f59e0b",
-  PENDING_HR: "#3b82f6",
-  APPROVED: "#16a34a",
-  REJECTED: "#dc2626",
-};
+  ReimbursementStatus } from "../src/types";
 
 const fmtMoney = (n: number) =>
   n.toLocaleString(undefined, {
     minimumFractionDigits: 2,
-    maximumFractionDigits: 2,
-  });
+    maximumFractionDigits: 2 });
 
 const fmtDate = (iso?: string) => {
   if (!iso) return "—";
@@ -53,6 +44,7 @@ const fmtDate = (iso?: string) => {
 };
 
 const TABS: { key: ReimbursementStatus; label: string }[] = [
+  { key: "PENDING_MANAGER", label: "Pending (Mgr)" },
   { key: "PENDING_HR", label: "Pending (HR)" },
   { key: "APPROVED", label: "Approved" },
   { key: "REJECTED", label: "Rejected" },
@@ -60,7 +52,13 @@ const TABS: { key: ReimbursementStatus; label: string }[] = [
 
 export default function HrReimbursements() {
   const router = useRouter();
-  const [tab, setTab] = useState<ReimbursementStatus>("PENDING_HR");
+  const { theme } = useTheme();
+  const c = theme.colors;
+  const styles = useMemo(() => makeStyles(c), [c]);
+  // Default to PENDING_MANAGER so HR lands on the *new* submissions
+  // employees just raised. Without this they'd see an empty PENDING_HR
+  // tab on first open and miss the queue.
+  const [tab, setTab] = useState<ReimbursementStatus>("PENDING_MANAGER");
   const [items, setItems] = useState<Reimbursement[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -80,7 +78,10 @@ export default function HrReimbursements() {
       const data = await listHrReimbursements(token, tab);
       setItems(data || []);
     } catch (err: any) {
-      console.log("hr-reimb load error", err);
+      Alert.alert(
+        "Couldn't load reimbursements",
+        err?.message || "Pull down to retry."
+      );
     } finally {
       setLoading(false);
       setRefreshing(false);
@@ -119,8 +120,7 @@ export default function HrReimbursements() {
       if (!token) return;
       await decideHrReimbursement(token, selected.id, {
         action,
-        note: note.trim() || undefined,
-      });
+        note: note.trim() || undefined });
       setItems((prev) => prev.filter((x) => x.id !== selected.id));
       close();
     } catch (err: any) {
@@ -136,8 +136,8 @@ export default function HrReimbursements() {
   return (
     <SafeAreaView style={styles.safe}>
       <View style={styles.header}>
-        <TouchableOpacity onPress={() => router.back()}>
-          <Ionicons name="arrow-back" size={24} color="#fff" />
+        <TouchableOpacity onPress={() => (router.canGoBack() ? router.back() : router.replace("/"))}>
+          <Ionicons name="arrow-back" size={24} color={c.text} />
         </TouchableOpacity>
         <Text style={styles.title}>Reimbursements (HR)</Text>
         <View style={{ width: 24 }} />
@@ -167,7 +167,7 @@ export default function HrReimbursements() {
 
       {loading ? (
         <View style={styles.loader}>
-          <ActivityIndicator size="large" color="#3b82f6" />
+          <ActivityIndicator size="large" color={c.accent} />
         </View>
       ) : (
         <FlatList
@@ -180,8 +180,8 @@ export default function HrReimbursements() {
             <RefreshControl
               refreshing={refreshing}
               onRefresh={onRefresh}
-              tintColor="#3b82f6"
-              colors={["#3b82f6"]}
+              tintColor={c.accent}
+              colors={[c.accent]}
             />
           }
           ListEmptyComponent={
@@ -189,13 +189,16 @@ export default function HrReimbursements() {
               <Ionicons
                 name="checkmark-done"
                 size={42}
-                color="#475569"
+                color={c.textFaint}
               />
               <Text style={styles.emptyText}>Nothing here</Text>
             </View>
           }
           renderItem={({ item }) => {
-            const isPending = item.status === "PENDING_HR";
+            const isPending =
+              item.status === "PENDING_HR" ||
+              item.status === "PENDING_MANAGER";
+            const sc = reimbursementStatusColor(item.status, c);
             return (
               <TouchableOpacity
                 style={styles.card}
@@ -221,21 +224,16 @@ export default function HrReimbursements() {
                   <View
                     style={[
                       styles.statusPill,
-                      {
-                        backgroundColor:
-                          STATUS_COLOR[
-                            item.status as ReimbursementStatus
-                          ] || "#64748b",
-                      },
+                      { backgroundColor: sc.bg },
                     ]}
                   >
-                    <Text style={styles.statusText}>{item.status}</Text>
+                    <Text style={[styles.statusText, { color: sc.fg }]}>{item.status}</Text>
                   </View>
                   {isPending ? (
                     <Ionicons
                       name="chevron-forward"
                       size={18}
-                      color="#64748b"
+                      color={c.textMuted}
                     />
                   ) : (
                     <Text style={styles.meta}>
@@ -270,7 +268,7 @@ export default function HrReimbursements() {
             <View style={styles.modalHeader}>
               <Text style={styles.modalTitle}>Final approval</Text>
               <TouchableOpacity onPress={close}>
-                <Ionicons name="close" size={24} color="#94a3b8" />
+                <Ionicons name="close" size={24} color={c.textMuted} />
               </TouchableOpacity>
             </View>
 
@@ -378,7 +376,7 @@ export default function HrReimbursements() {
               value={note}
               onChangeText={setNote}
               placeholder="..."
-              placeholderTextColor="#475569"
+              placeholderTextColor={c.textFaint}
               multiline
             />
 
@@ -409,101 +407,89 @@ export default function HrReimbursements() {
   );
 }
 
-const styles = StyleSheet.create({
-  safe: { flex: 1, backgroundColor: "#0b1220" },
+const makeStyles = (c: any) => StyleSheet.create({
+  safe: { flex: 1, backgroundColor: c.bg },
   loader: {
     flex: 1,
-    backgroundColor: "#0b1220",
+    backgroundColor: c.bg,
     justifyContent: "center",
-    alignItems: "center",
-  },
+    alignItems: "center" },
   header: {
     flexDirection: "row",
     alignItems: "center",
     paddingHorizontal: 16,
     paddingVertical: 14,
     borderBottomWidth: 1,
-    borderBottomColor: "#1f2937",
-    gap: 12,
-  },
-  title: { color: "#fff", fontSize: 18, fontWeight: "800", flex: 1 },
+    borderBottomColor: c.surfaceBorder,
+    gap: 12 },
+  title: { color: c.text, fontSize: 18, fontWeight: "800", flex: 1 },
   tabs: {
     flexDirection: "row",
     padding: 12,
     gap: 6,
     borderBottomWidth: 1,
-    borderBottomColor: "#1f2937",
-  },
+    borderBottomColor: c.surfaceBorder },
   tab: {
     flex: 1,
     paddingVertical: 8,
     borderRadius: 999,
-    backgroundColor: "#111827",
-    alignItems: "center",
-  },
-  tabActive: { backgroundColor: "#3b82f6" },
-  tabText: { color: "#94a3b8", fontSize: 11, fontWeight: "700" },
-  tabTextActive: { color: "#fff" },
+    backgroundColor: c.surface,
+    alignItems: "center" },
+  tabActive: { backgroundColor: c.accent },
+  tabText: { color: c.textMuted, fontSize: 11, fontWeight: "700" },
+  tabTextActive: { color: c.text },
   card: {
-    backgroundColor: "#111827",
+    backgroundColor: c.surface,
     padding: 14,
     borderRadius: 14,
     marginBottom: 8,
     borderWidth: 1,
-    borderColor: "#1f2937",
-  },
+    borderColor: c.surfaceBorder },
   cardTop: {
     flexDirection: "row",
     justifyContent: "space-between",
-    alignItems: "center",
-  },
-  who: { color: "#fff", fontSize: 15, fontWeight: "700" },
+    alignItems: "center" },
+  who: { color: c.text, fontSize: 15, fontWeight: "700" },
   amount: { color: "#3b82f6", fontSize: 15, fontWeight: "800" },
-  titleLine: { color: "#cbd5e1", fontSize: 13, marginTop: 6 },
-  row: { color: "#94a3b8", fontSize: 12, marginTop: 4 },
+  titleLine: { color: c.text, fontSize: 13, marginTop: 6 },
+  row: { color: c.textMuted, fontSize: 12, marginTop: 4 },
   cardFooter: {
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
-    marginTop: 10,
-  },
+    marginTop: 10 },
   statusPill: {
     paddingHorizontal: 8,
     paddingVertical: 3,
-    borderRadius: 6,
-  },
-  statusText: { color: "#fff", fontSize: 10, fontWeight: "800" },
-  meta: { color: "#64748b", fontSize: 11 },
+    borderRadius: 6 },
+  statusText: { color: c.text, fontSize: 10, fontWeight: "800" },
+  meta: { color: c.textMuted, fontSize: 11 },
   rejectNote: {
     color: "#fca5a5",
     fontSize: 12,
     marginTop: 8,
-    fontStyle: "italic",
-  },
+    fontStyle: "italic" },
   emptyWrap: { flex: 1, justifyContent: "center" },
   empty: { alignItems: "center", gap: 10 },
-  emptyText: { color: "#475569", fontSize: 14 },
+  emptyText: { color: c.textMuted, fontSize: 14 },
   modalWrap: {
     flex: 1,
     justifyContent: "flex-end",
-    backgroundColor: "rgba(0,0,0,0.5)",
-  },
+    backgroundColor: c.overlay },
   modal: {
-    backgroundColor: "#0f172a",
+    backgroundColor: c.surfaceMuted,
     padding: 20,
     borderTopLeftRadius: 18,
     borderTopRightRadius: 18,
     borderTopWidth: 1,
-    borderTopColor: "#1e293b",
-    maxHeight: "92%",
-  },
+    borderTopColor: c.surfaceBorder,
+    maxHeight: "92%" },
   modalHeader: {
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
-    marginBottom: 8,
-  },
-  modalTitle: { color: "#fff", fontSize: 18, fontWeight: "800" },
+    marginBottom: 8 },
+  modalTitle: { color: c.text, fontSize: 18, fontWeight: "800" },
   banner: {
     flexDirection: "row",
     alignItems: "center",
@@ -514,51 +500,45 @@ const styles = StyleSheet.create({
     paddingVertical: 6,
     borderRadius: 8,
     gap: 6,
-    marginBottom: 8,
-  },
+    marginBottom: 8 },
   bannerText: { color: "#86efac", fontSize: 11, fontWeight: "700" },
   detailRow: {
     flexDirection: "row",
     justifyContent: "space-between",
     paddingVertical: 6,
-    gap: 10,
-  },
-  detailLabel: { color: "#94a3b8", fontSize: 12 },
+    gap: 10 },
+  detailLabel: { color: c.textMuted, fontSize: 12 },
   detailValue: {
-    color: "#fff",
+    color: c.text,
     fontSize: 14,
     fontWeight: "600",
-    flexShrink: 1,
-  },
+    flexShrink: 1 },
   labelTop: {
-    color: "#94a3b8",
+    color: c.textMuted,
     fontSize: 11,
     letterSpacing: 1.2,
     fontWeight: "700",
     marginTop: 12,
-    marginBottom: 6,
-  },
-  body: { color: "#cbd5e1", fontSize: 13 },
+    marginBottom: 6 },
+  body: { color: c.text, fontSize: 13 },
   link: { color: "#3b82f6", fontSize: 12, marginTop: 2 },
   input: {
-    backgroundColor: "#111827",
-    color: "#fff",
+    backgroundColor: c.surface,
+    color: c.text,
     paddingHorizontal: 12,
     paddingVertical: 10,
     borderRadius: 10,
     borderWidth: 1,
-    borderColor: "#1f2937",
+    borderColor: c.surfaceBorder,
     minHeight: 60,
-    textAlignVertical: "top",
-  },
+    textAlignVertical: "top" },
   actions: { flexDirection: "row", gap: 10, marginTop: 14 },
   btn: {
     flex: 1,
     paddingVertical: 14,
     borderRadius: 12,
-    alignItems: "center",
-  },
+    alignItems: "center" },
   btnReject: { backgroundColor: "#dc2626" },
   btnApprove: { backgroundColor: "#16a34a" },
-  btnText: { color: "#fff", fontWeight: "800" },
-});
+  btnText: { color: c.text, fontWeight: "800" } });
+

@@ -1,7 +1,4 @@
-import React, {
-  useEffect,
-  useState,
-} from "react";
+﻿import React, { useCallback, useEffect, useState, useMemo} from "react";
 
 import {
   View,
@@ -12,12 +9,10 @@ import {
   TextInput,
   ActivityIndicator,
   Modal,
-  SafeAreaView,
   Switch,
   Platform,
-  Alert,
-  RefreshControl,
-} from "react-native";
+  RefreshControl } from "react-native";
+import { SafeAreaView } from "react-native-safe-area-context";
 
 import AsyncStorage from "@react-native-async-storage/async-storage";
 
@@ -25,661 +20,576 @@ import { useRouter, useFocusEffect } from "expo-router";
 
 import { Ionicons } from "@expo/vector-icons";
 
-import DateTimePicker from "@react-native-community/datetimepicker";
-
-import {
-  WebDateField,
-  dateToYMD,
-  ymdToDate,
-} from "../src/components/WebDateField";
+import { DatePickerField } from "../src/components/DatePickerField";
 
 import {
   listLeaveTypes,
   getLeaveBalance,
   submitLeaveRequest,
   listMyLeaves,
-  cancelLeaveRequest,
-} from "../src/services/leaves";
+  cancelLeaveRequest } from "../src/services/leaves";
 
 import {
   LeaveType,
   LeaveBalance,
   LeaveRequest,
   HalfDayPart,
-} from "../src/types";
+  User } from "../src/types";
 
-const isWeb = Platform.OS === "web";
+import { useTheme } from "../src/theme/ThemeProvider";
+import { getMe } from "../src/services/api";
+import {
+  BottomTabBar,
+  BOTTOM_BAR_RESERVED_HEIGHT } from "../src/components/BottomTabBar";
+import { confirmAction, notify } from "../src/utils/confirm";
 
+/**
+ * Leaves — balance cards (pastel-tinted), apply CTA, and a list of
+ * request history with cancel for pending items.
+ */
 export default function MyLeaves() {
-
   const router = useRouter();
+  const { theme } = useTheme();
+  const c = theme.colors;
+  const styles = useMemo(() => makeStyles(c), [c]);
 
   const [types, setTypes] = useState<LeaveType[]>([]);
   const [balances, setBalances] = useState<LeaveBalance[]>([]);
   const [mine, setMine] = useState<LeaveRequest[]>([]);
+  const [me, setMe] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
 
-  const [popup, setPopup] = useState({
-    visible: false,
-    type: "success" as "success" | "error",
-    message: "",
-  });
-
-  // ===== request modal =====
+  // Apply modal state
   const [modalVisible, setModalVisible] = useState(false);
   const [typeCode, setTypeCode] = useState("");
-  const [fromDate, setFromDate] = useState(new Date());
-  const [toDate, setToDate] = useState(new Date());
-  const [showFrom, setShowFrom] = useState(false);
-  const [showTo, setShowTo] = useState(false);
+  const [fromDate, setFromDate] = useState(dateYMD(new Date()));
+  const [toDate, setToDate] = useState(dateYMD(new Date()));
   const [reason, setReason] = useState("");
   const [halfDay, setHalfDay] = useState(false);
-  const [halfDayPart, setHalfDayPart] =
-    useState<HalfDayPart>("FIRST");
-  const [attachmentUrl, setAttachmentUrl] = useState("");
+  const [halfDayPart, setHalfDayPart] = useState<HalfDayPart>("FIRST");
   const [saving, setSaving] = useState(false);
+  const [submitError, setSubmitError] = useState<string | null>(null);
 
-  const showPopup = (
-    msg: string,
-    kind: "success" | "error" = "success"
-  ) => {
-    setPopup({ visible: true, type: kind, message: msg });
-    setTimeout(() => {
-      setPopup((p) => ({ ...p, visible: false }));
-    }, 2500);
-  };
-
-  const load = async () => {
+  const load = useCallback(async () => {
     try {
       const token = await AsyncStorage.getItem("token");
       if (!token) {
         router.replace("/login");
         return;
       }
-      const [t, b, m] = await Promise.all([
-        listLeaveTypes(token),
-        getLeaveBalance(token),
-        listMyLeaves(token),
+      const [t, b, m, meRes] = await Promise.all([
+        listLeaveTypes(token).catch(() => [] as LeaveType[]),
+        getLeaveBalance(token).catch(() => [] as LeaveBalance[]),
+        listMyLeaves(token).catch(() => [] as LeaveRequest[]),
+        getMe(token).catch(() => null),
       ]);
       setTypes(t || []);
-      setBalances(b || []);
+      // Dedup balances by leaveTypeCode (DBs sometimes have duplicates).
+      const seen = new Set<string>();
+      const deduped: LeaveBalance[] = [];
+      for (const bal of (b || [])) {
+        if (!bal?.leaveTypeCode || seen.has(bal.leaveTypeCode)) continue;
+        seen.add(bal.leaveTypeCode);
+        deduped.push(bal);
+      }
+      setBalances(deduped);
       setMine(m || []);
+      setMe(meRes);
     } catch (err: any) {
-      showPopup(err?.message || "Failed to load", "error");
+      notify("Couldn't load leaves", err?.message || "");
+    } finally {
+      setLoading(false);
+      setRefreshing(false);
     }
-    setLoading(false);
-    setRefreshing(false);
-  };
+  }, [router]);
 
   useEffect(() => {
     load();
-  }, []);
+  }, [load]);
 
-  // Refresh balances each time the screen regains focus — covers the
-  // case where HR allocates/adjusts leave while the screen was stale.
-  useFocusEffect(
-    React.useCallback(() => {
-      load();
-    }, [])
-  );
+  useFocusEffect(useCallback(() => { load(); }, [load]));
 
-  const onRefresh = () => {
-    setRefreshing(true);
-    load();
-  };
-
-  const openRequest = () => {
+  const openApply = () => {
     if (types.length === 0) {
-      showPopup("No leave types configured", "error");
+      notify("No leave types", "HR hasn't set up leave types yet.");
       return;
     }
     setTypeCode(types[0].code);
-    const today = new Date();
-    setFromDate(today);
-    setToDate(today);
+    setFromDate(dateYMD(new Date()));
+    setToDate(dateYMD(new Date()));
     setReason("");
     setHalfDay(false);
     setHalfDayPart("FIRST");
-    setAttachmentUrl("");
+    setSubmitError(null);
     setModalVisible(true);
   };
 
   const selectedType = types.find((t) => t.code === typeCode);
 
   const submit = async () => {
-
     if (saving) return;
-
-    if (!typeCode) {
-      showPopup("Pick a leave type", "error");
-      return;
-    }
-    if (!reason.trim()) {
-      showPopup("Reason required", "error");
-      return;
-    }
-    if (
-      selectedType?.requiresAttachment &&
-      !attachmentUrl.trim()
-    ) {
-      showPopup(
-        "This leave type requires an attachment URL",
-        "error"
-      );
-      return;
-    }
-    if (halfDay && dateToYMD(fromDate) !== dateToYMD(toDate)) {
-      showPopup(
-        "Half-day must be a single date",
-        "error"
-      );
-      return;
-    }
-    if (toDate < fromDate) {
-      showPopup("To date must be on or after from date", "error");
-      return;
-    }
+    setSubmitError(null);
+    if (!typeCode) return setSubmitError("Pick a leave type");
+    if (!reason.trim()) return setSubmitError("Reason required");
+    if (halfDay && fromDate !== toDate)
+      return setSubmitError("Half-day must be a single date");
+    if (toDate < fromDate)
+      return setSubmitError("To date must be on or after from date");
 
     try {
       setSaving(true);
       const token = await AsyncStorage.getItem("token");
       if (!token) return;
-
       await submitLeaveRequest(token, {
         leaveTypeCode: typeCode,
-        fromDate: dateToYMD(fromDate),
-        toDate: dateToYMD(toDate),
+        fromDate,
+        toDate,
         reason: reason.trim(),
         halfDay,
-        halfDayPart: halfDay ? halfDayPart : undefined,
-        attachmentUrl: attachmentUrl.trim() || undefined,
-      });
-
-      showPopup("Leave request submitted");
+        halfDayPart: halfDay ? halfDayPart : undefined });
+      notify("Submitted", "Your leave request has been sent.");
       setModalVisible(false);
       await load();
-
     } catch (err: any) {
-      // 409 = overlapping pending/approved leave. Show a friendly message.
-      if (err?.status === 409) {
-        showPopup(
-          "You already have a leave request that overlaps these dates.",
-          "error"
-        );
-      } else {
-        showPopup(err?.message || "Failed to submit", "error");
-      }
+      const msg =
+        err?.status === 409
+          ? "You already have a request that overlaps these dates."
+          : err?.message || "Failed to submit";
+      setSubmitError(msg);
     } finally {
       setSaving(false);
     }
   };
 
-  const askCancel = (req: LeaveRequest) => {
-    if (Platform.OS === "web") {
-      if (
-        typeof window !== "undefined" &&
-        window.confirm("Cancel this leave request?")
-      ) {
-        doCancel(req.id);
-      }
-      return;
-    }
-    Alert.alert(
-      "Cancel request?",
-      `${req.leaveTypeCode}  ·  ${req.fromDate} → ${req.toDate}`,
-      [
-        { text: "Keep", style: "cancel" },
-        {
-          text: "Cancel",
-          style: "destructive",
-          onPress: () => doCancel(req.id),
-        },
-      ]
-    );
-  };
-
-  const doCancel = async (id: string) => {
+  const askCancel = async (req: LeaveRequest) => {
+    const ok = await confirmAction({
+      title: "Cancel request?",
+      message: `${req.leaveTypeCode} · ${req.fromDate} → ${req.toDate}`,
+      confirmLabel: "Cancel",
+      destructive: true });
+    if (!ok) return;
     try {
       const token = await AsyncStorage.getItem("token");
       if (!token) return;
-      await cancelLeaveRequest(token, id);
-      showPopup("Cancelled");
+      await cancelLeaveRequest(token, req.id);
       await load();
     } catch (err: any) {
-      showPopup(err?.message || "Failed to cancel", "error");
+      notify("Cancel failed", err?.message || "");
     }
   };
 
   if (loading) {
     return (
-      <View style={styles.loader}>
-        <ActivityIndicator size="large" color="#2563eb" />
+      <View style={[styles.loader, { backgroundColor: c.bg }]}>
+        <ActivityIndicator size="large" color={c.accent} />
       </View>
     );
   }
 
+  // Pastel themes cycled across balance cards.
+  const balanceTints = [
+    { bg: c.pastelLavender, fg: "#6d28d9" },
+    { bg: c.pastelMint, fg: "#15803d" },
+    { bg: c.pastelPeach, fg: "#c2410c" },
+    { bg: c.pastelPink, fg: "#be185d" },
+    { bg: c.pastelSky, fg: "#0369a1" },
+    { bg: c.pastelYellow, fg: "#a16207" },
+  ];
+
   return (
-    <SafeAreaView style={styles.safe}>
-
-      {popup.visible && (
-        <View
-          style={[
-            styles.popup,
-            popup.type === "success"
-              ? styles.successPopup
-              : styles.errorPopup,
-          ]}
-        >
-          <Text style={styles.popupText}>{popup.message}</Text>
-        </View>
-      )}
-
+    <SafeAreaView style={[styles.safe, { backgroundColor: c.bg }]}>
       <ScrollView
-        style={styles.container}
-        contentContainerStyle={styles.content}
+        contentContainerStyle={{
+          padding: 20,
+          paddingBottom: BOTTOM_BAR_RESERVED_HEIGHT + 24 }}
         refreshControl={
           <RefreshControl
             refreshing={refreshing}
-            onRefresh={onRefresh}
-            tintColor="#3b82f6"
-            colors={["#3b82f6"]}
+            onRefresh={() => {
+              setRefreshing(true);
+              load();
+            }}
+            tintColor={c.accent}
+            colors={[c.accent]}
           />
         }
+        showsVerticalScrollIndicator={false}
       >
-
-        <View style={styles.header}>
+        {/* HEADER */}
+        <View style={styles.headerRow}>
           <TouchableOpacity
-            style={styles.backBtn}
-            onPress={() => router.back()}
+            onPress={() =>
+              router.canGoBack() ? router.back() : router.replace("/")
+            }
+            style={[
+              styles.iconBtn,
+              { backgroundColor: c.surface, borderColor: c.surfaceBorder },
+            ]}
           >
-            <Ionicons name="chevron-back" size={22} color="#fff" />
+            <Ionicons name="chevron-back" size={22} color={c.text} />
           </TouchableOpacity>
-
-          <View style={{ flex: 1 }}>
-            <Text style={styles.title}>My Leaves</Text>
-            <Text style={styles.subtitle}>
-              Balance & history
+          <View style={{ flex: 1, marginLeft: 12 }}>
+            <Text style={[styles.title, { color: c.text }]}>My Leaves</Text>
+            <Text style={[styles.subtitle, { color: c.textMuted }]}>
+              Balances & history
             </Text>
           </View>
-
           <TouchableOpacity
-            style={styles.addBtn}
-            onPress={openRequest}
+            style={[
+              styles.applyBtn,
+              { backgroundColor: c.accent, shadowColor: c.shadow },
+            ]}
+            onPress={openApply}
+            activeOpacity={0.85}
           >
             <Ionicons name="add" size={22} color="#fff" />
           </TouchableOpacity>
         </View>
 
         {/* BALANCES */}
-        <Text style={styles.section}>BALANCE</Text>
-
+        <Text style={[styles.section, { color: c.textMuted }]}>BALANCE</Text>
         {balances.length === 0 ? (
-          <View style={styles.emptyBox}>
-            <Text style={styles.emptySub}>
-              No balances available yet.
+          <View
+            style={[
+              styles.emptyCard,
+              {
+                backgroundColor: c.surface,
+                borderColor: c.surfaceBorder,
+                shadowColor: c.shadow },
+            ]}
+          >
+            <Ionicons
+              name="airplane-outline"
+              size={28}
+              color={c.textMuted}
+            />
+            <Text style={[styles.emptyText, { color: c.text }]}>
+              {types.length === 0
+                ? "HR hasn't set up any leave types yet."
+                : "Your balance hasn't been allocated yet. Pull to refresh."}
             </Text>
           </View>
         ) : (
           <View style={styles.balanceGrid}>
-            {balances.map((b) => (
-              <View key={b.leaveTypeCode} style={styles.balanceCard}>
-                <Text style={styles.balanceCode}>
-                  {b.leaveType?.name || b.leaveTypeCode}
-                </Text>
-                <Text style={styles.balanceRemaining}>
-                  {b.remaining}
-                </Text>
-                <Text style={styles.balanceUnit}>
-                  remaining
-                </Text>
-                <View style={styles.balanceFooter}>
-                  <Text style={styles.balanceMeta}>
-                    Used {b.used}
+            {balances.map((b, idx) => {
+              const tint = balanceTints[idx % balanceTints.length];
+              const allocated = Number(b.allocated ?? 0);
+              const used = Number(b.used ?? 0);
+              const pending = Number(b.pending ?? 0);
+              const remaining = Number(
+                b.remaining ?? allocated - used - pending
+              );
+              return (
+                <View
+                  key={b.leaveTypeCode}
+                  style={[
+                    styles.balanceCard,
+                    {
+                      backgroundColor: c.surface,
+                      borderColor: c.surfaceBorder,
+                      shadowColor: c.shadow },
+                  ]}
+                >
+                  <View
+                    style={[
+                      styles.balanceIcon,
+                      { backgroundColor: tint.bg },
+                    ]}
+                  >
+                    <Ionicons
+                      name="airplane-outline"
+                      size={18}
+                      color={tint.fg}
+                    />
+                  </View>
+                  <Text
+                    style={[styles.balanceName, { color: c.text }]}
+                    numberOfLines={1}
+                  >
+                    {b.leaveType?.name || b.leaveTypeCode}
                   </Text>
-                  {b.pending > 0 && (
+                  <Text
+                    style={[styles.balanceValue, { color: tint.fg }]}
+                  >
+                    {remaining}
+                  </Text>
+                  <Text
+                    style={[styles.balanceSub, { color: c.textMuted }]}
+                  >
+                    of {allocated}
+                  </Text>
+                  <View style={styles.balanceFooter}>
                     <Text
                       style={[
-                        styles.balanceMeta,
-                        { color: "#fbbf24" },
+                        styles.balanceFoot,
+                        { color: c.textMuted },
                       ]}
                     >
-                      Pending {b.pending}
+                      Used {used}
                     </Text>
-                  )}
+                    {pending > 0 && (
+                      <Text
+                        style={[
+                          styles.balanceFoot,
+                          { color: c.warningText },
+                        ]}
+                      >
+                        Pending {pending}
+                      </Text>
+                    )}
+                  </View>
                 </View>
-              </View>
-            ))}
+              );
+            })}
           </View>
         )}
 
         {/* HISTORY */}
-        <Text style={[styles.section, { marginTop: 22 }]}>
+        <Text style={[styles.section, { color: c.textMuted }]}>
           MY REQUESTS
         </Text>
-
         {mine.length === 0 ? (
-          <View style={styles.emptyBox}>
-            <Text style={styles.emptySub}>
-              No leave requests yet. Tap + to apply.
+          <View
+            style={[
+              styles.emptyCard,
+              {
+                backgroundColor: c.surface,
+                borderColor: c.surfaceBorder,
+                shadowColor: c.shadow },
+            ]}
+          >
+            <Ionicons name="time-outline" size={28} color={c.textMuted} />
+            <Text style={[styles.emptyText, { color: c.text }]}>
+              No leave requests yet.
+            </Text>
+            <Text style={[styles.emptySub, { color: c.textMuted }]}>
+              Tap + to apply for leave.
             </Text>
           </View>
         ) : (
           mine.map((r) => (
-            <View key={r.id} style={styles.requestCard}>
-              <View style={styles.requestTop}>
-                <View>
-                  <Text style={styles.requestType}>
-                    {r.leaveType?.name || r.leaveTypeCode}
-                  </Text>
-                  <Text style={styles.requestDates}>
-                    {r.fromDate}
-                    {r.fromDate !== r.toDate && ` → ${r.toDate}`}
-                    {r.halfDay && " (half day)"}
-                    {"  ·  "}
-                    {r.totalDays}d
-                  </Text>
-                </View>
-                <View
-                  style={[
-                    styles.statusChip,
-                    r.status === "APPROVED" && {
-                      backgroundColor: "#16a34a",
-                    },
-                    r.status === "REJECTED" && {
-                      backgroundColor: "#dc2626",
-                    },
-                    r.status === "CANCELLED" && {
-                      backgroundColor: "#374151",
-                    },
-                    r.status === "PENDING" && {
-                      backgroundColor: "#f59e0b",
-                    },
-                  ]}
-                >
-                  <Text style={styles.statusText}>
-                    {r.status}
-                  </Text>
-                </View>
-              </View>
-
-              <Text style={styles.reasonLine}>{r.reason}</Text>
-
-              {r.note ? (
-                <Text style={styles.hrNote}>
-                  HR note: {r.note}
-                </Text>
-              ) : null}
-
-              {r.status === "PENDING" && (
-                <TouchableOpacity
-                  style={styles.cancelLine}
-                  onPress={() => askCancel(r)}
-                >
-                  <Ionicons
-                    name="close-circle-outline"
-                    size={14}
-                    color="#dc2626"
-                  />
-                  <Text style={styles.cancelText}>
-                    Cancel request
-                  </Text>
-                </TouchableOpacity>
-              )}
-            </View>
+            <RequestCard
+              key={r.id}
+              req={r}
+              onCancel={() => askCancel(r)}
+              theme={theme}
+            />
           ))
         )}
-
       </ScrollView>
 
-      {/* REQUEST MODAL */}
+      {/* APPLY MODAL */}
       <Modal
         visible={modalVisible}
         transparent
         animationType="slide"
         onRequestClose={() => setModalVisible(false)}
       >
-        <View style={styles.modalOverlay}>
-          <View style={styles.modalCard}>
+        <View style={[styles.modalScrim, { backgroundColor: c.overlay }]}>
+          <View
+            style={[
+              styles.modalCard,
+              {
+                backgroundColor: c.surface,
+                shadowColor: c.shadow },
+            ]}
+          >
             <ScrollView
               showsVerticalScrollIndicator={false}
               keyboardShouldPersistTaps="handled"
             >
-
-              <Text style={styles.modalTitle}>
-                Request Leave
-              </Text>
-
-              <Text style={styles.label}>Type</Text>
-              <View style={styles.chipPicker}>
-                {types.map((t) => (
-                  <TouchableOpacity
-                    key={t.code}
-                    style={[
-                      styles.pickBtn,
-                      typeCode === t.code && styles.pickActive,
-                    ]}
-                    onPress={() => setTypeCode(t.code)}
-                  >
-                    <Text
-                      style={[
-                        styles.pickText,
-                        typeCode === t.code && {
-                          color: "#fff",
-                        },
-                      ]}
-                    >
-                      {t.name}
-                    </Text>
-                  </TouchableOpacity>
-                ))}
+              <View style={styles.modalHeader}>
+                <Text style={[styles.modalTitle, { color: c.text }]}>
+                  Apply for leave
+                </Text>
+                <TouchableOpacity
+                  onPress={() => setModalVisible(false)}
+                  hitSlop={8}
+                >
+                  <Ionicons name="close" size={22} color={c.textMuted} />
+                </TouchableOpacity>
               </View>
 
-              <Text style={styles.label}>From</Text>
-              {isWeb ? (
-                <View style={styles.dateRow}>
-                  <Ionicons
-                    name="calendar-outline"
-                    size={18}
-                    color="#94a3b8"
-                  />
-                  <WebDateField
-                    mode="date"
-                    value={dateToYMD(fromDate)}
+              {/* Leave type chips */}
+              <Text style={[styles.label, { color: c.textMuted }]}>
+                TYPE
+              </Text>
+              <View style={styles.chipsRow}>
+                {types.map((t) => {
+                  const active = typeCode === t.code;
+                  return (
+                    <TouchableOpacity
+                      key={t.code}
+                      onPress={() => setTypeCode(t.code)}
+                      style={[
+                        styles.chip,
+                        {
+                          backgroundColor: active
+                            ? c.accentSoft
+                            : c.surfaceMuted,
+                          borderColor: active
+                            ? c.accent
+                            : c.surfaceBorder },
+                      ]}
+                    >
+                      <Text
+                        style={{
+                          color: active ? c.accent : c.textMuted,
+                          fontWeight: "700",
+                          fontSize: 12 }}
+                      >
+                        {t.name}
+                      </Text>
+                    </TouchableOpacity>
+                  );
+                })}
+              </View>
+
+              {/* From / To dates */}
+              <View style={{ flexDirection: "row", gap: 8, marginTop: 6 }}>
+                <View style={{ flex: 1 }}>
+                  <Text style={[styles.label, { color: c.textMuted }]}>
+                    FROM
+                  </Text>
+                  <DatePickerField
+                    value={fromDate}
                     onChange={(v) => {
-                      const d = ymdToDate(v);
-                      if (d) setFromDate(d);
+                      setFromDate(v);
+                      if (toDate < v) setToDate(v);
                     }}
                   />
                 </View>
-              ) : (
-                <>
-                  <TouchableOpacity
-                    style={styles.dateRow}
-                    onPress={() => setShowFrom(true)}
-                  >
-                    <Ionicons
-                      name="calendar-outline"
-                      size={18}
-                      color="#94a3b8"
-                    />
-                    <Text style={styles.dateText}>
-                      {fromDate.toLocaleDateString("en-US", {
-                        weekday: "short",
-                        month: "short",
-                        day: "numeric",
-                        year: "numeric",
-                      })}
-                    </Text>
-                  </TouchableOpacity>
-                  {showFrom && (
-                    <DateTimePicker
-                      value={fromDate}
-                      mode="date"
-                      onChange={(_, d) => {
-                        setShowFrom(Platform.OS === "ios");
-                        if (d) setFromDate(d);
-                      }}
-                    />
-                  )}
-                </>
-              )}
-
-              <Text style={styles.label}>To</Text>
-              {isWeb ? (
-                <View style={styles.dateRow}>
-                  <Ionicons
-                    name="calendar-outline"
-                    size={18}
-                    color="#94a3b8"
-                  />
-                  <WebDateField
-                    mode="date"
-                    value={dateToYMD(toDate)}
-                    onChange={(v) => {
-                      const d = ymdToDate(v);
-                      if (d) setToDate(d);
-                    }}
+                <View style={{ flex: 1 }}>
+                  <Text style={[styles.label, { color: c.textMuted }]}>
+                    TO
+                  </Text>
+                  <DatePickerField
+                    value={toDate}
+                    onChange={setToDate}
+                    min={fromDate}
                   />
                 </View>
-              ) : (
-                <>
-                  <TouchableOpacity
-                    style={styles.dateRow}
-                    onPress={() => setShowTo(true)}
-                  >
-                    <Ionicons
-                      name="calendar-outline"
-                      size={18}
-                      color="#94a3b8"
-                    />
-                    <Text style={styles.dateText}>
-                      {toDate.toLocaleDateString("en-US", {
-                        weekday: "short",
-                        month: "short",
-                        day: "numeric",
-                        year: "numeric",
-                      })}
-                    </Text>
-                  </TouchableOpacity>
-                  {showTo && (
-                    <DateTimePicker
-                      value={toDate}
-                      mode="date"
-                      onChange={(_, d) => {
-                        setShowTo(Platform.OS === "ios");
-                        if (d) setToDate(d);
-                      }}
-                    />
-                  )}
-                </>
-              )}
+              </View>
 
+              {/* Half day */}
               {selectedType?.allowHalfDay && (
                 <>
-                  <View style={styles.toggleRow}>
-                    <Text style={styles.label}>Half day</Text>
+                  <View style={styles.switchRow}>
+                    <Text style={[styles.label, { color: c.textMuted }]}>
+                      HALF DAY
+                    </Text>
                     <Switch
                       value={halfDay}
                       onValueChange={setHalfDay}
                       trackColor={{
-                        false: "#374151",
-                        true: "#2563eb",
-                      }}
-                      thumbColor="#fff"
+                        false: c.surfaceBorder,
+                        true: c.accent }}
                     />
                   </View>
-
                   {halfDay && (
-                    <View style={styles.chipPicker}>
-                      <TouchableOpacity
-                        style={[
-                          styles.pickBtn,
-                          halfDayPart === "FIRST" &&
-                            styles.pickActive,
-                        ]}
-                        onPress={() =>
-                          setHalfDayPart("FIRST")
-                        }
-                      >
-                        <Text
-                          style={[
-                            styles.pickText,
-                            halfDayPart === "FIRST" && {
-                              color: "#fff",
-                            },
-                          ]}
-                        >
-                          First half
-                        </Text>
-                      </TouchableOpacity>
-                      <TouchableOpacity
-                        style={[
-                          styles.pickBtn,
-                          halfDayPart === "SECOND" &&
-                            styles.pickActive,
-                        ]}
-                        onPress={() =>
-                          setHalfDayPart("SECOND")
-                        }
-                      >
-                        <Text
-                          style={[
-                            styles.pickText,
-                            halfDayPart === "SECOND" && {
-                              color: "#fff",
-                            },
-                          ]}
-                        >
-                          Second half
-                        </Text>
-                      </TouchableOpacity>
+                    <View style={[styles.chipsRow, { marginTop: 4 }]}>
+                      {(["FIRST", "SECOND"] as HalfDayPart[]).map((p) => {
+                        const active = halfDayPart === p;
+                        return (
+                          <TouchableOpacity
+                            key={p}
+                            onPress={() => setHalfDayPart(p)}
+                            style={[
+                              styles.chip,
+                              {
+                                backgroundColor: active
+                                  ? c.accentSoft
+                                  : c.surfaceMuted,
+                                borderColor: active
+                                  ? c.accent
+                                  : c.surfaceBorder },
+                            ]}
+                          >
+                            <Text
+                              style={{
+                                color: active ? c.accent : c.textMuted,
+                                fontWeight: "700",
+                                fontSize: 12 }}
+                            >
+                              {p === "FIRST" ? "Morning" : "Afternoon"}
+                            </Text>
+                          </TouchableOpacity>
+                        );
+                      })}
                     </View>
                   )}
                 </>
               )}
 
-              <Text style={styles.label}>Reason</Text>
+              {/* Reason */}
+              <Text style={[styles.label, { color: c.textMuted }]}>
+                REASON
+              </Text>
               <TextInput
-                style={[styles.input, styles.multiline]}
+                style={[
+                  styles.textArea,
+                  {
+                    backgroundColor: c.surfaceMuted,
+                    color: c.text,
+                    borderColor: c.surfaceBorder },
+                ]}
                 value={reason}
                 onChangeText={setReason}
-                placeholder="Why do you need this leave?"
-                placeholderTextColor="#64748b"
+                placeholder="Brief reason for your leave"
+                placeholderTextColor={c.textFaint}
                 multiline
+                textAlignVertical="top"
               />
 
-              {selectedType?.requiresAttachment && (
-                <>
-                  <Text style={styles.label}>
-                    Attachment URL{" "}
-                    <Text style={{ color: "#dc2626" }}>
-                      (required)
-                    </Text>
-                  </Text>
-                  <TextInput
-                    style={styles.input}
-                    value={attachmentUrl}
-                    onChangeText={setAttachmentUrl}
-                    placeholder="https://drive.google.com/..."
-                    placeholderTextColor="#64748b"
-                    autoCapitalize="none"
+              {!!submitError && (
+                <View
+                  style={[
+                    styles.errorBanner,
+                    {
+                      backgroundColor: c.dangerBg,
+                      borderColor: c.dangerText },
+                  ]}
+                >
+                  <Ionicons
+                    name="alert-circle-outline"
+                    size={16}
+                    color={c.dangerText}
                   />
-                </>
+                  <Text
+                    style={{
+                      color: c.dangerText,
+                      fontSize: 12,
+                      fontWeight: "600",
+                      flex: 1 }}
+                  >
+                    {submitError}
+                  </Text>
+                </View>
               )}
 
               <View style={styles.modalActions}>
                 <TouchableOpacity
-                  style={styles.cancelBtn}
+                  style={[
+                    styles.cancelBtn,
+                    { backgroundColor: c.surfaceMuted },
+                  ]}
                   onPress={() => setModalVisible(false)}
+                  disabled={saving}
                 >
-                  <Text style={styles.modalBtnText}>Cancel</Text>
+                  <Text
+                    style={{ color: c.text, fontWeight: "700" }}
+                  >
+                    Cancel
+                  </Text>
                 </TouchableOpacity>
-
                 <TouchableOpacity
                   style={[
-                    styles.saveBtn,
-                    saving && { opacity: 0.7 },
+                    styles.submitBtn,
+                    {
+                      backgroundColor: c.accent,
+                      shadowColor: c.shadow,
+                      opacity: saving ? 0.7 : 1 },
                   ]}
                   onPress={submit}
                   disabled={saving}
@@ -687,303 +597,275 @@ export default function MyLeaves() {
                   {saving ? (
                     <ActivityIndicator color="#fff" />
                   ) : (
-                    <Text style={styles.modalBtnText}>
+                    <Text style={{ color: "#fff", fontWeight: "800" }}>
                       Submit
                     </Text>
                   )}
                 </TouchableOpacity>
               </View>
-
             </ScrollView>
           </View>
         </View>
       </Modal>
 
+      <BottomTabBar user={me} />
     </SafeAreaView>
   );
 }
 
-const styles = StyleSheet.create({
-  safe: { flex: 1, backgroundColor: "#0b1220" },
-  container: { flex: 1 },
-  content: { padding: 20, paddingBottom: 60 },
-  loader: {
-    flex: 1,
-    backgroundColor: "#0b1220",
-    justifyContent: "center",
-    alignItems: "center",
-  },
+function dateYMD(d: Date): string {
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${d.getFullYear()}-${m}-${day}`;
+}
 
-  popup: {
-    position: "absolute",
-    top: 60,
-    left: 20,
-    right: 20,
-    padding: 14,
-    borderRadius: 14,
-    zIndex: 999,
-  },
-  successPopup: { backgroundColor: "#16a34a" },
-  errorPopup: { backgroundColor: "#dc2626" },
-  popupText: { color: "#fff", fontWeight: "700", textAlign: "center" },
+const RequestCard = ({
+  req,
+  onCancel,
+  theme }: {
+  req: LeaveRequest;
+  onCancel: () => void;
+  theme: any;
+}) => {
+  const c = theme.colors;
+  const styles = useMemo(() => makeStyles(c), [c]);
+  const statusMap: Record<string, { bg: string; fg: string }> = {
+    APPROVED: { bg: c.successBg, fg: c.successText },
+    REJECTED: { bg: c.dangerBg, fg: c.dangerText },
+    CANCELLED: { bg: c.surfaceMuted, fg: c.textMuted },
+    PENDING: { bg: c.warningBg, fg: c.warningText } };
+  const tone = statusMap[req.status] || statusMap.PENDING;
+  return (
+    <View
+      style={[
+        styles.reqCard,
+        {
+          backgroundColor: c.surface,
+          borderColor: c.surfaceBorder,
+          shadowColor: c.shadow },
+      ]}
+    >
+      <View style={styles.reqHeader}>
+        <View style={{ flex: 1 }}>
+          <Text style={[styles.reqType, { color: c.text }]}>
+            {req.leaveType?.name || req.leaveTypeCode}
+          </Text>
+          <Text style={[styles.reqDates, { color: c.textMuted }]}>
+            {req.fromDate}
+            {req.fromDate !== req.toDate && ` → ${req.toDate}`}
+            {req.halfDay && " · half day"}
+            {`  ·  ${req.totalDays}d`}
+          </Text>
+        </View>
+        <View
+          style={[
+            styles.statusPill,
+            { backgroundColor: tone.bg },
+          ]}
+        >
+          <Text style={{ color: tone.fg, fontSize: 10, fontWeight: "800" }}>
+            {req.status}
+          </Text>
+        </View>
+      </View>
+      {!!req.reason && (
+        <Text style={[styles.reqReason, { color: c.textMuted }]}>
+          {req.reason}
+        </Text>
+      )}
+      {req.note ? (
+        <Text style={[styles.reqNote, { color: c.text }]}>
+          HR note: {req.note}
+        </Text>
+      ) : null}
+      {req.status === "PENDING" && (
+        <TouchableOpacity
+          style={styles.reqCancel}
+          onPress={onCancel}
+        >
+          <Ionicons
+            name="close-circle-outline"
+            size={14}
+            color={c.dangerText}
+          />
+          <Text
+            style={{
+              color: c.dangerText,
+              fontSize: 12,
+              fontWeight: "700" }}
+          >
+            Cancel request
+          </Text>
+        </TouchableOpacity>
+      )}
+    </View>
+  );
+};
 
-  header: {
+const makeStyles = (c: any) => StyleSheet.create({
+  safe: { flex: 1 },
+  loader: { flex: 1, alignItems: "center", justifyContent: "center" },
+  headerRow: {
     flexDirection: "row",
     alignItems: "center",
     marginBottom: 18,
-    marginTop: 10,
-    gap: 12,
-  },
-  backBtn: {
+    gap: 8 },
+  iconBtn: {
     width: 42,
     height: 42,
-    borderRadius: 12,
-    backgroundColor: "#111827",
-    justifyContent: "center",
-    alignItems: "center",
+    borderRadius: 14,
     borderWidth: 1,
-    borderColor: "#1f2937",
-  },
-  addBtn: {
-    width: 42,
-    height: 42,
-    borderRadius: 12,
-    backgroundColor: "#2563eb",
-    justifyContent: "center",
     alignItems: "center",
-  },
-  title: { color: "#fff", fontSize: 24, fontWeight: "800" },
-  subtitle: { color: "#94a3b8", fontSize: 13, marginTop: 3 },
+    justifyContent: "center" },
+  title: { fontSize: 26, fontWeight: "800" },
+  subtitle: { fontSize: 13, marginTop: 2 },
+  applyBtn: {
+    width: 46,
+    height: 46,
+    borderRadius: 16,
+    alignItems: "center",
+    justifyContent: "center",
+    shadowOpacity: 0.2,
+    shadowRadius: 12,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 3 },
 
   section: {
-    color: "#64748b",
-    fontSize: 12,
-    letterSpacing: 1.5,
-    fontWeight: "700",
-    marginBottom: 10,
-  },
-
-  balanceGrid: {
-    flexDirection: "row",
-    flexWrap: "wrap",
-    gap: 10,
-  },
-  balanceCard: {
-    flexGrow: 1,
-    minWidth: "47%",
-    backgroundColor: "#111827",
-    borderRadius: 14,
-    padding: 14,
-    borderWidth: 1,
-    borderColor: "#1f2937",
-  },
-  balanceCode: {
-    color: "#94a3b8",
     fontSize: 11,
-    fontWeight: "700",
-    letterSpacing: 0.5,
-  },
-  balanceRemaining: {
-    color: "#fff",
-    fontSize: 28,
     fontWeight: "800",
-    marginTop: 4,
-  },
-  balanceUnit: {
-    color: "#64748b",
-    fontSize: 11,
-    marginTop: -2,
-  },
+    letterSpacing: 1.4,
+    marginTop: 18,
+    marginBottom: 10,
+    marginLeft: 4 },
+
+  balanceGrid: { flexDirection: "row", flexWrap: "wrap", gap: 10 },
+  balanceCard: {
+    width: "47%",
+    flexGrow: 1,
+    padding: 14,
+    borderRadius: 18,
+    borderWidth: 1,
+    shadowOpacity: 1,
+    shadowRadius: 12,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 2 },
+  balanceIcon: {
+    width: 32,
+    height: 32,
+    borderRadius: 10,
+    alignItems: "center",
+    justifyContent: "center",
+    marginBottom: 10 },
+  balanceName: { fontSize: 13, fontWeight: "700", marginBottom: 6 },
+  balanceValue: { fontSize: 30, fontWeight: "800" },
+  balanceSub: { fontSize: 12, marginTop: 2 },
   balanceFooter: {
     flexDirection: "row",
-    gap: 12,
-    marginTop: 8,
-  },
-  balanceMeta: {
-    color: "#94a3b8",
-    fontSize: 11,
-    fontWeight: "600",
-  },
-
-  emptyBox: {
-    backgroundColor: "#111827",
-    borderRadius: 14,
-    padding: 22,
-    borderWidth: 1,
-    borderColor: "#1f2937",
-    alignItems: "center",
-  },
-  emptySub: {
-    color: "#94a3b8",
-    fontSize: 13,
-    textAlign: "center",
-  },
-
-  requestCard: {
-    backgroundColor: "#111827",
-    borderRadius: 14,
-    padding: 14,
-    marginBottom: 10,
-    borderWidth: 1,
-    borderColor: "#1f2937",
-  },
-  requestTop: {
-    flexDirection: "row",
     justifyContent: "space-between",
-    alignItems: "flex-start",
-    gap: 10,
-  },
-  requestType: {
-    color: "#fff",
-    fontSize: 15,
-    fontWeight: "700",
-  },
-  requestDates: {
-    color: "#94a3b8",
-    fontSize: 12,
-    marginTop: 3,
-  },
-  statusChip: {
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 999,
-  },
-  statusText: {
-    color: "#fff",
-    fontSize: 10,
-    fontWeight: "800",
-    letterSpacing: 0.5,
-  },
-  reasonLine: {
-    color: "#cbd5e1",
-    fontSize: 13,
-    marginTop: 8,
-    lineHeight: 18,
-  },
-  hrNote: {
-    color: "#94a3b8",
-    fontSize: 12,
-    marginTop: 6,
-    fontStyle: "italic",
-  },
-  cancelLine: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 4,
-    marginTop: 10,
-    alignSelf: "flex-start",
-  },
-  cancelText: {
-    color: "#dc2626",
-    fontSize: 12,
-    fontWeight: "700",
-  },
+    marginTop: 12 },
+  balanceFoot: { fontSize: 11, fontWeight: "700" },
 
-  modalOverlay: {
-    flex: 1,
-    backgroundColor: "rgba(0,0,0,0.7)",
-    justifyContent: "center",
-    padding: 20,
-  },
-  modalCard: {
-    backgroundColor: "#111827",
+  emptyCard: {
+    padding: 24,
     borderRadius: 18,
-    padding: 20,
-    maxHeight: "92%",
-  },
-  modalTitle: {
-    color: "#fff",
-    fontSize: 22,
-    fontWeight: "800",
-    marginBottom: 12,
-  },
-
-  label: {
-    color: "#94a3b8",
-    fontSize: 13,
-    fontWeight: "600",
-    marginBottom: 6,
-    marginTop: 14,
-  },
-
-  chipPicker: {
-    flexDirection: "row",
-    flexWrap: "wrap",
-    gap: 6,
-  },
-  pickBtn: {
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    backgroundColor: "#0f172a",
-    borderRadius: 10,
     borderWidth: 1,
-    borderColor: "#1e293b",
-  },
-  pickActive: {
-    backgroundColor: "#2563eb",
-    borderColor: "#2563eb",
-  },
-  pickText: {
-    color: "#94a3b8",
-    fontSize: 12,
-    fontWeight: "700",
-  },
+    alignItems: "center",
+    gap: 8,
+    shadowOpacity: 1,
+    shadowRadius: 12,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 2 },
+  emptyText: { fontSize: 14, fontWeight: "700", textAlign: "center" },
+  emptySub: { fontSize: 12, textAlign: "center" },
 
-  dateRow: {
+  reqCard: {
+    padding: 14,
+    borderRadius: 16,
+    borderWidth: 1,
+    marginBottom: 10,
+    shadowOpacity: 1,
+    shadowRadius: 10,
+    shadowOffset: { width: 0, height: 3 },
+    elevation: 1 },
+  reqHeader: { flexDirection: "row", alignItems: "center", gap: 10 },
+  reqType: { fontSize: 15, fontWeight: "800" },
+  reqDates: { fontSize: 12, marginTop: 3 },
+  statusPill: {
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 999 },
+  reqReason: { fontSize: 12, marginTop: 8, lineHeight: 17 },
+  reqNote: { fontSize: 12, marginTop: 6, fontStyle: "italic" },
+  reqCancel: {
     flexDirection: "row",
     alignItems: "center",
-    backgroundColor: "#0f172a",
-    borderRadius: 12,
-    padding: 13,
-    borderWidth: 1,
-    borderColor: "#1e293b",
-    gap: 10,
-  },
-  dateText: {
-    color: "#fff",
-    fontWeight: "700",
-    fontSize: 14,
-  },
+    gap: 6,
+    marginTop: 10 },
 
-  toggleRow: {
+  // Modal
+  modalScrim: { flex: 1, justifyContent: "flex-end" },
+  modalCard: {
+    padding: 20,
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    maxHeight: "90%",
+    shadowOpacity: 1,
+    shadowRadius: 24,
+    shadowOffset: { width: 0, height: -8 },
+    elevation: 12 },
+  modalHeader: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    marginBottom: 4 },
+  modalTitle: { fontSize: 20, fontWeight: "800" },
+  label: {
+    fontSize: 11,
+    fontWeight: "800",
+    letterSpacing: 1.2,
+    marginTop: 14,
+    marginBottom: 6 },
+  chipsRow: { flexDirection: "row", flexWrap: "wrap", gap: 6 },
+  chip: {
+    paddingHorizontal: 12,
+    paddingVertical: 7,
+    borderRadius: 999,
+    borderWidth: 1 },
+  switchRow: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    marginTop: 14,
-  },
-
-  input: {
-    backgroundColor: "#0f172a",
-    color: "#fff",
-    borderRadius: 12,
-    padding: 13,
-    borderWidth: 1,
-    borderColor: "#1e293b",
-    fontSize: 14,
-  },
-  multiline: {
+    marginTop: 14 },
+  textArea: {
     minHeight: 80,
-    textAlignVertical: "top",
-  },
-
+    padding: 12,
+    borderRadius: 12,
+    borderWidth: 1,
+    fontSize: 14 },
+  errorBanner: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    padding: 10,
+    borderRadius: 12,
+    borderWidth: 1,
+    marginTop: 12 },
   modalActions: {
     flexDirection: "row",
     gap: 10,
-    marginTop: 22,
-  },
+    marginTop: 18,
+    marginBottom: Platform.OS === "ios" ? 10 : 0 },
   cancelBtn: {
     flex: 1,
-    backgroundColor: "#374151",
-    padding: 14,
-    borderRadius: 12,
+    paddingVertical: 14,
+    borderRadius: 14,
+    alignItems: "center" },
+  submitBtn: {
+    flex: 1.5,
+    paddingVertical: 14,
+    borderRadius: 14,
     alignItems: "center",
-  },
-  saveBtn: {
-    flex: 1,
-    backgroundColor: "#16a34a",
-    padding: 14,
-    borderRadius: 12,
-    alignItems: "center",
-  },
-  modalBtnText: { color: "#fff", fontWeight: "700" },
-});
+    shadowOpacity: 0.2,
+    shadowRadius: 10,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 3 } });

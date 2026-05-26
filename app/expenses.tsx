@@ -1,7 +1,6 @@
-import React, {
+﻿import React, {
   useEffect,
-  useState,
-} from "react";
+  useState, useMemo} from "react";
 
 import {
   View,
@@ -12,10 +11,9 @@ import {
   TextInput,
   ActivityIndicator,
   Modal,
-  SafeAreaView,
   Platform,
-  Alert,
-} from "react-native";
+  Alert } from "react-native";
+import { SafeAreaView } from "react-native-safe-area-context";
 
 import AsyncStorage from "@react-native-async-storage/async-storage";
 
@@ -28,8 +26,7 @@ import DateTimePicker from "@react-native-community/datetimepicker";
 import {
   WebDateField,
   dateToYMD,
-  ymdToDate,
-} from "../src/components/WebDateField";
+  ymdToDate } from "../src/components/WebDateField";
 
 import {
   hrCreateExpense,
@@ -37,10 +34,14 @@ import {
   hrExpenseSummary,
   hrUpdateExpense,
   hrDeleteExpense,
-} from "../src/services/expenses";
+  ExpenseSortColumn } from "../src/services/expenses";
+
+import { downloadXlsxWithAuth } from "../src/utils/download";
+import { API_URL } from "../src/config";
 
 import { Expense, ExpenseSummary } from "../src/types";
-
+
+import { useTheme } from "../src/theme/ThemeProvider";
 const isWeb = Platform.OS === "web";
 
 const monthBounds = (year: number, month: number) => {
@@ -53,12 +54,17 @@ const monthBounds = (year: number, month: number) => {
 const monthLabel = (year: number, month: number) =>
   new Date(year, month - 1, 1).toLocaleDateString("en-US", {
     month: "long",
-    year: "numeric",
-  });
+    year: "numeric" });
 
 export default function Expenses() {
 
   const router = useRouter();
+
+  const { theme } = useTheme();
+
+  const c = theme.colors;
+
+  const s = useMemo(() => makeStyles(c), [c]);
 
   const now = new Date();
   const [year, setYear] = useState(now.getFullYear());
@@ -68,6 +74,20 @@ export default function Expenses() {
   const [summary, setSummary] = useState<ExpenseSummary | null>(null);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
+
+  const [sortBy, setSortBy] = useState<ExpenseSortColumn>("date");
+  const [sortOrder, setSortOrder] = useState<"asc" | "desc">("desc");
+
+  const toggleSort = (col: ExpenseSortColumn) => {
+    if (sortBy === col) {
+      // Same column: flip direction.
+      setSortOrder(sortOrder === "asc" ? "desc" : "asc");
+    } else {
+      // New column: default to descending for date/amount, ascending for text.
+      setSortBy(col);
+      setSortOrder(col === "date" || col === "amount" ? "desc" : "asc");
+    }
+  };
 
   const [modalVisible, setModalVisible] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -86,8 +106,7 @@ export default function Expenses() {
   const [popup, setPopup] = useState({
     visible: false,
     type: "success" as "success" | "error",
-    message: "",
-  });
+    message: "" });
 
   const showPopup = (
     msg: string,
@@ -108,7 +127,11 @@ export default function Expenses() {
       }
       const { from, to } = monthBounds(year, month);
       const [list, sum] = await Promise.all([
-        hrListExpenses(token, { from, to }),
+        hrListExpenses(token, {
+          from,
+          to,
+          sort: sortBy,
+          order: sortOrder }),
         hrExpenseSummary(token, year, month).catch(() => null),
       ]);
       setItems(list || []);
@@ -121,7 +144,7 @@ export default function Expenses() {
 
   useEffect(() => {
     load();
-  }, [year, month]);
+  }, [year, month, sortBy, sortOrder]);
 
   const goPrev = () => {
     if (month === 1) {
@@ -200,8 +223,7 @@ export default function Expenses() {
         description: description.trim() || undefined,
         vendor: vendor.trim() || undefined,
         paymentMethod: paymentMethod.trim() || undefined,
-        receiptUrl: receiptUrl.trim() || undefined,
-      };
+        receiptUrl: receiptUrl.trim() || undefined };
 
       if (editingId) {
         await hrUpdateExpense(token, editingId, payload);
@@ -238,8 +260,7 @@ export default function Expenses() {
         {
           text: "Delete",
           style: "destructive",
-          onPress: () => doDelete(e.id),
-        },
+          onPress: () => doDelete(e.id) },
       ]
     );
   };
@@ -256,10 +277,25 @@ export default function Expenses() {
     }
   };
 
+  const exportExcel = async () => {
+    try {
+      const token = await AsyncStorage.getItem("token");
+      if (!token) return;
+      const { from, to } = monthBounds(year, month);
+      const url =
+        `${API_URL}/hr/export/expenses.xlsx?from=${from}&to=${to}`;
+      const filename =
+        `expenses_${year}_${String(month).padStart(2, "0")}.xlsx`;
+      await downloadXlsxWithAuth(url, token, filename);
+    } catch (err: any) {
+      showPopup(err?.message || "Failed to export", "error");
+    }
+  };
+
   if (loading) {
     return (
       <View style={s.loader}>
-        <ActivityIndicator size="large" color="#2563eb" />
+        <ActivityIndicator size="large" color={c.accent} />
       </View>
     );
   }
@@ -286,13 +322,23 @@ export default function Expenses() {
         <View style={s.header}>
           <TouchableOpacity
             style={s.backBtn}
-            onPress={() => router.back()}
+            onPress={() => (router.canGoBack() ? router.back() : router.replace("/"))}
           >
-            <Ionicons name="chevron-back" size={22} color="#fff" />
+            <Ionicons name="chevron-back" size={22} color={c.text} />
           </TouchableOpacity>
           <View style={{ flex: 1 }}>
             <Text style={s.title}>Office Expenses</Text>
           </View>
+          <TouchableOpacity
+            style={[s.addBtn, { backgroundColor: "#16a34a" }]}
+            onPress={exportExcel}
+          >
+            <Ionicons
+              name="download-outline"
+              size={20}
+              color="#fff"
+            />
+          </TouchableOpacity>
           <TouchableOpacity style={s.addBtn} onPress={openCreate}>
             <Ionicons name="add" size={22} color="#fff" />
           </TouchableOpacity>
@@ -304,7 +350,7 @@ export default function Expenses() {
             <Ionicons
               name="chevron-back"
               size={20}
-              color="#94a3b8"
+              color={c.textMuted}
             />
           </TouchableOpacity>
           <Text style={s.monthLabel}>
@@ -314,7 +360,7 @@ export default function Expenses() {
             <Ionicons
               name="chevron-forward"
               size={20}
-              color="#94a3b8"
+              color={c.textMuted}
             />
           </TouchableOpacity>
         </View>
@@ -343,13 +389,13 @@ export default function Expenses() {
 
         {/* SEARCH */}
         <View style={s.searchBox}>
-          <Ionicons name="search" size={16} color="#64748b" />
+          <Ionicons name="search" size={16} color={c.textMuted} />
           <TextInput
             style={s.searchInput}
             value={search}
             onChangeText={setSearch}
             placeholder="Search by title, category, vendor"
-            placeholderTextColor="#64748b"
+            placeholderTextColor={c.textFaint}
             autoCapitalize="none"
           />
           {search.length > 0 && (
@@ -357,13 +403,13 @@ export default function Expenses() {
               <Ionicons
                 name="close-circle"
                 size={16}
-                color="#64748b"
+                color={c.textMuted}
               />
             </TouchableOpacity>
           )}
         </View>
 
-        {/* LIST */}
+        {/* TABLE */}
         {items.length === 0 ? (
           <View style={s.empty}>
             <Text style={s.emptyTitle}>No expenses</Text>
@@ -372,41 +418,95 @@ export default function Expenses() {
             </Text>
           </View>
         ) : (
-          items
-            .filter((e) => {
-              const q = search.trim().toLowerCase();
-              if (!q) return true;
-              return (
-                e.title.toLowerCase().includes(q) ||
-                e.category.toLowerCase().includes(q) ||
-                (e.vendor || "").toLowerCase().includes(q)
-              );
-            })
-            .map((e) => (
-            <TouchableOpacity
-              key={e.id}
-              style={s.card}
-              onPress={() => openEdit(e)}
-              onLongPress={() => askDelete(e)}
-              activeOpacity={0.85}
-            >
-              <View style={{ flex: 1 }}>
-                <Text style={s.cardTitle}>{e.title}</Text>
-                <Text style={s.cardMeta}>
-                  {e.category}  ·  {e.date}
-                  {e.vendor ? `  ·  ${e.vendor}` : ""}
-                </Text>
-                {e.description ? (
-                  <Text style={s.cardDesc} numberOfLines={2}>
-                    {e.description}
+          <View style={s.tableCard}>
+            <View style={[s.tableRow, s.tableHead]}>
+              <HeaderCell
+                col="date"
+                label="Date"
+                style={[s.colDate]}
+                sortBy={sortBy}
+                sortOrder={sortOrder}
+                onPress={toggleSort}
+              />
+              <HeaderCell
+                col="title"
+                label="Title"
+                style={[s.colTitle]}
+                sortBy={sortBy}
+                sortOrder={sortOrder}
+                onPress={toggleSort}
+              />
+              <HeaderCell
+                col="category"
+                label="Category"
+                style={[s.colCategory]}
+                sortBy={sortBy}
+                sortOrder={sortOrder}
+                onPress={toggleSort}
+              />
+              <HeaderCell
+                col="vendor"
+                label="Vendor"
+                style={[s.colVendor]}
+                sortBy={sortBy}
+                sortOrder={sortOrder}
+                onPress={toggleSort}
+              />
+              <HeaderCell
+                col="amount"
+                label="Amount"
+                style={[s.colAmount, { alignItems: "flex-end" }]}
+                sortBy={sortBy}
+                sortOrder={sortOrder}
+                onPress={toggleSort}
+                rightAlign
+              />
+            </View>
+            {items
+              .filter((e) => {
+                const q = search.trim().toLowerCase();
+                if (!q) return true;
+                return (
+                  e.title.toLowerCase().includes(q) ||
+                  e.category.toLowerCase().includes(q) ||
+                  (e.vendor || "").toLowerCase().includes(q)
+                );
+              })
+              .map((e) => (
+                <TouchableOpacity
+                  key={e.id}
+                  style={s.tableRow}
+                  onPress={() => openEdit(e)}
+                  onLongPress={() => askDelete(e)}
+                  activeOpacity={0.85}
+                >
+                  <Text style={[s.tableCell, s.colDate]} numberOfLines={1}>
+                    {e.date}
                   </Text>
-                ) : null}
-              </View>
-              <Text style={s.cardAmount}>
-                ₹ {e.amount.toLocaleString("en-IN")}
-              </Text>
-            </TouchableOpacity>
-          ))
+                  <Text
+                    style={[s.tableCell, s.colTitle, { color: "#fff" }]}
+                    numberOfLines={1}
+                  >
+                    {e.title}
+                  </Text>
+                  <Text style={[s.tableCell, s.colCategory]} numberOfLines={1}>
+                    {e.category}
+                  </Text>
+                  <Text style={[s.tableCell, s.colVendor]} numberOfLines={1}>
+                    {e.vendor || "—"}
+                  </Text>
+                  <Text
+                    style={[
+                      s.tableCell,
+                      s.colAmount,
+                      { color: "#16a34a", fontWeight: "800", textAlign: "right" },
+                    ]}
+                  >
+                    ₹ {e.amount.toLocaleString("en-IN")}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+          </View>
         )}
 
       </ScrollView>
@@ -433,7 +533,7 @@ export default function Expenses() {
                 value={title}
                 onChangeText={setTitle}
                 placeholder="Office rent · May"
-                placeholderTextColor="#64748b"
+                placeholderTextColor={c.textFaint}
               />
 
               <View style={s.twoCol}>
@@ -444,7 +544,7 @@ export default function Expenses() {
                     value={amount}
                     onChangeText={setAmount}
                     placeholder="15000"
-                    placeholderTextColor="#64748b"
+                    placeholderTextColor={c.textFaint}
                     keyboardType="decimal-pad"
                   />
                 </View>
@@ -455,7 +555,7 @@ export default function Expenses() {
                     value={category}
                     onChangeText={setCategory}
                     placeholder="RENT / TRAVEL / …"
-                    placeholderTextColor="#64748b"
+                    placeholderTextColor={c.textFaint}
                   />
                 </View>
               </View>
@@ -466,7 +566,7 @@ export default function Expenses() {
                   <Ionicons
                     name="calendar-outline"
                     size={18}
-                    color="#94a3b8"
+                    color={c.textMuted}
                   />
                   <WebDateField
                     mode="date"
@@ -486,15 +586,14 @@ export default function Expenses() {
                     <Ionicons
                       name="calendar-outline"
                       size={18}
-                      color="#94a3b8"
+                      color={c.textMuted}
                     />
                     <Text style={s.rowText}>
                       {date.toLocaleDateString("en-US", {
                         weekday: "short",
                         month: "short",
                         day: "numeric",
-                        year: "numeric",
-                      })}
+                        year: "numeric" })}
                     </Text>
                   </TouchableOpacity>
                   {showDate && (
@@ -516,7 +615,7 @@ export default function Expenses() {
                 value={vendor}
                 onChangeText={setVendor}
                 placeholder="Optional"
-                placeholderTextColor="#64748b"
+                placeholderTextColor={c.textFaint}
               />
 
               <Text style={s.label}>Payment Method</Text>
@@ -525,7 +624,7 @@ export default function Expenses() {
                 value={paymentMethod}
                 onChangeText={setPaymentMethod}
                 placeholder="Bank / UPI / Card / Cash"
-                placeholderTextColor="#64748b"
+                placeholderTextColor={c.textFaint}
               />
 
               <Text style={s.label}>Receipt URL</Text>
@@ -534,7 +633,7 @@ export default function Expenses() {
                 value={receiptUrl}
                 onChangeText={setReceiptUrl}
                 placeholder="https://…"
-                placeholderTextColor="#64748b"
+                placeholderTextColor={c.textFaint}
                 autoCapitalize="none"
               />
 
@@ -544,7 +643,7 @@ export default function Expenses() {
                 value={description}
                 onChangeText={setDescription}
                 placeholder="Optional"
-                placeholderTextColor="#64748b"
+                placeholderTextColor={c.textFaint}
                 multiline
               />
 
@@ -578,19 +677,69 @@ export default function Expenses() {
   );
 }
 
-const s = StyleSheet.create({
-  safe: { flex: 1, backgroundColor: "#0b1220" },
+interface HeaderCellProps {
+  col: ExpenseSortColumn;
+  label: string;
+  sortBy: ExpenseSortColumn;
+  sortOrder: "asc" | "desc";
+  onPress: (col: ExpenseSortColumn) => void;
+  style?: any;
+  rightAlign?: boolean;
+}
+
+const HeaderCell = ({
+  col,
+  label,
+  sortBy,
+  sortOrder,
+  onPress,
+  style,
+  rightAlign }: HeaderCellProps) => {
+  const active = sortBy === col;
+  return (
+    <TouchableOpacity
+      style={[
+        { flexDirection: "row", alignItems: "center", gap: 3 },
+        rightAlign && { justifyContent: "flex-end" },
+        style,
+      ]}
+      onPress={() => onPress(col)}
+      activeOpacity={0.6}
+    >
+      <Text
+        style={{
+          color: active ? "#fff" : "#94a3b8",
+          fontSize: 10,
+          fontWeight: "800",
+          letterSpacing: 0.5,
+          textTransform: "uppercase" }}
+      >
+        {label}
+      </Text>
+      {active && (
+        <Ionicons
+          name={sortOrder === "asc" ? "arrow-up" : "arrow-down"}
+          size={11}
+          color="#fff"
+        />
+      )}
+    </TouchableOpacity>
+  );
+};
+
+const makeStyles = (c: any) => StyleSheet.create({
+  safe: { flex: 1, backgroundColor: c.bg },
   container: { flex: 1 },
   content: { padding: 20, paddingBottom: 60 },
-  loader: { flex: 1, backgroundColor: "#0b1220", justifyContent: "center", alignItems: "center" },
+  loader: { flex: 1, backgroundColor: c.bg, justifyContent: "center", alignItems: "center" },
   popup: { position: "absolute", top: 60, left: 20, right: 20, padding: 14, borderRadius: 14, zIndex: 999 },
   popupOk: { backgroundColor: "#16a34a" },
   popupErr: { backgroundColor: "#dc2626" },
-  popupText: { color: "#fff", fontWeight: "700", textAlign: "center" },
+  popupText: { color: c.text, fontWeight: "700", textAlign: "center" },
   header: { flexDirection: "row", alignItems: "center", marginBottom: 12, marginTop: 10, gap: 12 },
-  backBtn: { width: 42, height: 42, borderRadius: 12, backgroundColor: "#111827", justifyContent: "center", alignItems: "center", borderWidth: 1, borderColor: "#1f2937" },
-  addBtn: { width: 42, height: 42, borderRadius: 12, backgroundColor: "#2563eb", justifyContent: "center", alignItems: "center" },
-  title: { color: "#fff", fontSize: 24, fontWeight: "800" },
+  backBtn: { width: 42, height: 42, borderRadius: 12, backgroundColor: c.surface, justifyContent: "center", alignItems: "center", borderWidth: 1, borderColor: c.surfaceBorder },
+  addBtn: { width: 42, height: 42, borderRadius: 12, backgroundColor: c.accent, justifyContent: "center", alignItems: "center" },
+  title: { color: c.text, fontSize: 24, fontWeight: "800" },
 
   monthNav: {
     flexDirection: "row",
@@ -598,66 +747,91 @@ const s = StyleSheet.create({
     justifyContent: "space-between",
     paddingHorizontal: 20,
     paddingVertical: 12,
-    backgroundColor: "#111827",
+    backgroundColor: c.surface,
     borderRadius: 12,
     borderWidth: 1,
-    borderColor: "#1f2937",
-    marginBottom: 14,
-  },
-  monthLabel: { color: "#fff", fontSize: 15, fontWeight: "800" },
+    borderColor: c.surfaceBorder,
+    marginBottom: 14 },
+  monthLabel: { color: c.text, fontSize: 15, fontWeight: "800" },
 
   summaryCard: {
-    backgroundColor: "#111827",
+    backgroundColor: c.surface,
     borderRadius: 16,
     padding: 16,
     borderWidth: 1,
-    borderColor: "#1f2937",
-    marginBottom: 14,
-  },
-  summaryLabel: { color: "#64748b", fontSize: 11, fontWeight: "700", letterSpacing: 1 },
-  summaryAmount: { color: "#fff", fontSize: 30, fontWeight: "800", marginTop: 4 },
+    borderColor: c.surfaceBorder,
+    marginBottom: 14 },
+  summaryLabel: { color: c.textMuted, fontSize: 11, fontWeight: "700", letterSpacing: 1 },
+  summaryAmount: { color: c.text, fontSize: 30, fontWeight: "800", marginTop: 4 },
   byCatRow: { flexDirection: "row", flexWrap: "wrap", gap: 6, marginTop: 12 },
-  catChip: { backgroundColor: "#0f172a", paddingHorizontal: 10, paddingVertical: 6, borderRadius: 10, borderWidth: 1, borderColor: "#1e293b" },
-  catLabel: { color: "#94a3b8", fontSize: 10, fontWeight: "700", letterSpacing: 0.4 },
-  catTotal: { color: "#fff", fontSize: 12, fontWeight: "700", marginTop: 2 },
+  catChip: { backgroundColor: c.surfaceMuted, paddingHorizontal: 10, paddingVertical: 6, borderRadius: 10, borderWidth: 1, borderColor: c.surfaceBorder },
+  catLabel: { color: c.textMuted, fontSize: 10, fontWeight: "700", letterSpacing: 0.4 },
+  catTotal: { color: c.text, fontSize: 12, fontWeight: "700", marginTop: 2 },
 
   searchBox: {
     flexDirection: "row",
     alignItems: "center",
-    backgroundColor: "#111827",
+    backgroundColor: c.surface,
     borderRadius: 12,
     paddingHorizontal: 12,
     marginBottom: 12,
     borderWidth: 1,
-    borderColor: "#1f2937",
-    gap: 8,
-  },
-  searchInput: { flex: 1, color: "#fff", paddingVertical: 10, fontSize: 14 },
+    borderColor: c.surfaceBorder,
+    gap: 8 },
+  searchInput: { flex: 1, color: c.text, paddingVertical: 10, fontSize: 14 },
 
-  empty: { padding: 30, backgroundColor: "#111827", borderRadius: 14, borderWidth: 1, borderColor: "#1f2937", alignItems: "center" },
-  emptyTitle: { color: "#fff", fontSize: 15, fontWeight: "700" },
-  emptySub: { color: "#94a3b8", fontSize: 12, marginTop: 4 },
+  empty: { padding: 30, backgroundColor: c.surface, borderRadius: 14, borderWidth: 1, borderColor: c.surfaceBorder, alignItems: "center" },
+  emptyTitle: { color: c.text, fontSize: 15, fontWeight: "700" },
+  emptySub: { color: c.textMuted, fontSize: 12, marginTop: 4 },
 
-  card: { flexDirection: "row", backgroundColor: "#111827", borderRadius: 12, padding: 12, marginBottom: 8, borderWidth: 1, borderColor: "#1f2937", gap: 10, alignItems: "flex-start" },
-  cardTitle: { color: "#fff", fontSize: 14, fontWeight: "700" },
-  cardMeta: { color: "#94a3b8", fontSize: 11, marginTop: 3 },
-  cardDesc: { color: "#cbd5e1", fontSize: 12, marginTop: 4 },
+  card: { flexDirection: "row", backgroundColor: c.surface, borderRadius: 12, padding: 12, marginBottom: 8, borderWidth: 1, borderColor: c.surfaceBorder, gap: 10, alignItems: "flex-start" },
+  cardTitle: { color: c.text, fontSize: 14, fontWeight: "700" },
+  cardMeta: { color: c.textMuted, fontSize: 11, marginTop: 3 },
+  cardDesc: { color: c.text, fontSize: 12, marginTop: 4 },
   cardAmount: { color: "#16a34a", fontSize: 14, fontWeight: "800" },
 
-  modalOverlay: { flex: 1, backgroundColor: "rgba(0,0,0,0.7)", justifyContent: "center", padding: 20 },
-  modalCard: { backgroundColor: "#111827", borderRadius: 18, padding: 20, maxHeight: "92%" },
-  modalTitle: { color: "#fff", fontSize: 22, fontWeight: "800", marginBottom: 8 },
+  tableCard: {
+    backgroundColor: c.surface,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: c.surfaceBorder,
+    overflow: "hidden" },
+  tableRow: {
+    flexDirection: "row",
+    paddingVertical: 10,
+    paddingHorizontal: 10,
+    borderBottomWidth: 1,
+    borderBottomColor: c.surfaceBorder,
+    alignItems: "center",
+    gap: 6 },
+  tableHead: { backgroundColor: c.surfaceMuted },
+  tableCell: { color: c.text, fontSize: 12 },
+  tableHeadText: {
+    color: c.textMuted,
+    fontSize: 10,
+    fontWeight: "800",
+    letterSpacing: 0.5,
+    textTransform: "uppercase" },
+  colDate: { flex: 1.1 },
+  colTitle: { flex: 1.7 },
+  colCategory: { flex: 1.1 },
+  colVendor: { flex: 1.1 },
+  colAmount: { flex: 1.2 },
 
-  label: { color: "#94a3b8", fontSize: 13, fontWeight: "600", marginBottom: 6, marginTop: 14 },
-  input: { backgroundColor: "#0f172a", color: "#fff", borderRadius: 12, padding: 13, borderWidth: 1, borderColor: "#1e293b", fontSize: 14 },
+  modalOverlay: { flex: 1, backgroundColor: c.overlay, justifyContent: "center", padding: 20 },
+  modalCard: { backgroundColor: c.surface, borderRadius: 18, padding: 20, maxHeight: "92%" },
+  modalTitle: { color: c.text, fontSize: 22, fontWeight: "800", marginBottom: 8 },
+
+  label: { color: c.textMuted, fontSize: 13, fontWeight: "600", marginBottom: 6, marginTop: 14 },
+  input: { backgroundColor: c.surfaceMuted, color: c.text, borderRadius: 12, padding: 13, borderWidth: 1, borderColor: c.surfaceBorder, fontSize: 14 },
   multi: { minHeight: 70, textAlignVertical: "top" },
   twoCol: { flexDirection: "row", gap: 10 },
 
-  row: { flexDirection: "row", alignItems: "center", backgroundColor: "#0f172a", borderRadius: 12, padding: 13, borderWidth: 1, borderColor: "#1e293b", gap: 10 },
-  rowText: { color: "#fff", fontWeight: "700", fontSize: 14 },
+  row: { flexDirection: "row", alignItems: "center", backgroundColor: c.surfaceMuted, borderRadius: 12, padding: 13, borderWidth: 1, borderColor: c.surfaceBorder, gap: 10 },
+  rowText: { color: c.text, fontWeight: "700", fontSize: 14 },
 
   modalActions: { flexDirection: "row", gap: 10, marginTop: 22 },
-  cancelBtn: { flex: 1, backgroundColor: "#374151", padding: 14, borderRadius: 12, alignItems: "center" },
+  cancelBtn: { flex: 1, backgroundColor: c.surfaceMuted, padding: 14, borderRadius: 12, alignItems: "center" },
   saveBtn: { flex: 1, backgroundColor: "#16a34a", padding: 14, borderRadius: 12, alignItems: "center" },
-  modalBtnText: { color: "#fff", fontWeight: "700" },
-});
+  modalBtnText: { color: c.text, fontWeight: "700" } });
+

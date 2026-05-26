@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useCallback } from "react";
+﻿import React, { useEffect, useState, useCallback, useMemo} from "react";
 
 import {
   View,
@@ -7,51 +7,37 @@ import {
   FlatList,
   TouchableOpacity,
   ActivityIndicator,
-  SafeAreaView,
   RefreshControl,
   Modal,
   TextInput,
   Alert,
   KeyboardAvoidingView,
   Platform,
-  ScrollView,
-} from "react-native";
+  ScrollView } from "react-native";
+import { SafeAreaView } from "react-native-safe-area-context";
 
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 
 import { FilePickButton } from "../src/components/FilePickButton";
+import { DatePickerField } from "../src/components/DatePickerField";
+import { useTheme } from "../src/theme/ThemeProvider";
+import {
+  reimbursementStatusColor,
+  reimbursementStatusLabel } from "../src/theme/statusColors";
 import {
   listMyReimbursements,
-  submitReimbursement,
-} from "../src/services/reimbursements";
+  submitReimbursement } from "../src/services/reimbursements";
 import {
   PAYMENT_MODES,
   PaymentMode,
-  Reimbursement,
-  ReimbursementStatus,
-} from "../src/types";
-
-const STATUS_COLOR: Record<ReimbursementStatus, string> = {
-  PENDING_MANAGER: "#f59e0b",
-  PENDING_HR: "#3b82f6",
-  APPROVED: "#16a34a",
-  REJECTED: "#dc2626",
-};
-
-const STATUS_LABEL: Record<ReimbursementStatus, string> = {
-  PENDING_MANAGER: "Awaiting manager",
-  PENDING_HR: "Awaiting HR",
-  APPROVED: "Approved",
-  REJECTED: "Rejected",
-};
+  Reimbursement } from "../src/types";
 
 const fmtMoney = (n: number) =>
   n.toLocaleString(undefined, {
     minimumFractionDigits: 2,
-    maximumFractionDigits: 2,
-  });
+    maximumFractionDigits: 2 });
 
 const todayYMD = () => {
   const d = new Date();
@@ -63,6 +49,9 @@ const todayYMD = () => {
 
 export default function ReimbursementsScreen() {
   const router = useRouter();
+  const { theme } = useTheme();
+  const c = theme.colors;
+  const styles = useMemo(() => makeStyles(c), [c]);
   const [items, setItems] = useState<Reimbursement[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -92,7 +81,10 @@ export default function ReimbursementsScreen() {
       const data = await listMyReimbursements(token);
       setItems(data || []);
     } catch (err: any) {
-      console.log("reimb load error", err);
+      Alert.alert(
+        "Couldn't load reimbursements",
+        err?.message || "Pull down to retry."
+      );
     } finally {
       setLoading(false);
       setRefreshing(false);
@@ -153,8 +145,7 @@ export default function ReimbursementsScreen() {
         invoiceNumber: invoiceNumber.trim() || undefined,
         taxAmount: taxAmount ? parseFloat(taxAmount) : undefined,
         description: description.trim() || undefined,
-        attachments: attachments.length ? attachments : undefined,
-      });
+        attachments: attachments.length ? attachments : undefined });
       setShowForm(false);
       resetForm();
       load();
@@ -168,7 +159,7 @@ export default function ReimbursementsScreen() {
   if (loading) {
     return (
       <View style={styles.loader}>
-        <ActivityIndicator size="large" color="#3b82f6" />
+        <ActivityIndicator size="large" color={c.accent} />
       </View>
     );
   }
@@ -176,12 +167,12 @@ export default function ReimbursementsScreen() {
   return (
     <SafeAreaView style={styles.safe}>
       <View style={styles.header}>
-        <TouchableOpacity onPress={() => router.back()}>
-          <Ionicons name="arrow-back" size={24} color="#fff" />
+        <TouchableOpacity onPress={() => (router.canGoBack() ? router.back() : router.replace("/"))}>
+          <Ionicons name="arrow-back" size={24} color={c.text} />
         </TouchableOpacity>
         <Text style={styles.title}>Reimbursements</Text>
         <TouchableOpacity onPress={() => setShowForm(true)}>
-          <Ionicons name="add-circle" size={28} color="#3b82f6" />
+          <Ionicons name="add-circle" size={28} color={c.accent} />
         </TouchableOpacity>
       </View>
 
@@ -195,13 +186,13 @@ export default function ReimbursementsScreen() {
           <RefreshControl
             refreshing={refreshing}
             onRefresh={onRefresh}
-            tintColor="#3b82f6"
-            colors={["#3b82f6"]}
+            tintColor={c.accent}
+            colors={[c.accent]}
           />
         }
         ListEmptyComponent={
           <View style={styles.empty}>
-            <Ionicons name="card-outline" size={42} color="#475569" />
+            <Ionicons name="card-outline" size={42} color={c.textFaint} />
             <Text style={styles.emptyText}>
               No reimbursements yet
             </Text>
@@ -216,12 +207,8 @@ export default function ReimbursementsScreen() {
           </View>
         }
         renderItem={({ item }) => {
-          const color =
-            STATUS_COLOR[item.status as ReimbursementStatus] ||
-            "#64748b";
-          const label =
-            STATUS_LABEL[item.status as ReimbursementStatus] ||
-            item.status;
+          const sc = reimbursementStatusColor(item.status, c);
+          const label = reimbursementStatusLabel(item.status);
           return (
             <View style={styles.card}>
               <View style={styles.cardTop}>
@@ -238,9 +225,9 @@ export default function ReimbursementsScreen() {
               </Text>
               <View style={styles.cardFooter}>
                 <View
-                  style={[styles.statusPill, { backgroundColor: color }]}
+                  style={[styles.statusPill, { backgroundColor: sc.bg }]}
                 >
-                  <Text style={styles.statusText}>{label}</Text>
+                  <Text style={[styles.statusText, { color: sc.fg }]}>{label}</Text>
                 </View>
                 <Text style={styles.meta}>
                   {new Date(item.createdAt).toLocaleDateString()}
@@ -270,7 +257,7 @@ export default function ReimbursementsScreen() {
             <View style={styles.modalHeader}>
               <Text style={styles.modalTitle}>New reimbursement</Text>
               <TouchableOpacity onPress={() => setShowForm(false)}>
-                <Ionicons name="close" size={24} color="#94a3b8" />
+                <Ionicons name="close" size={24} color={c.textMuted} />
               </TouchableOpacity>
             </View>
 
@@ -281,7 +268,7 @@ export default function ReimbursementsScreen() {
                 value={title}
                 onChangeText={setTitle}
                 placeholder="Client lunch — Wipro"
-                placeholderTextColor="#475569"
+                placeholderTextColor={c.textFaint}
               />
 
               <Text style={styles.label}>Category *</Text>
@@ -290,18 +277,15 @@ export default function ReimbursementsScreen() {
                 value={category}
                 onChangeText={setCategory}
                 placeholder="Food / Travel / Software ..."
-                placeholderTextColor="#475569"
+                placeholderTextColor={c.textFaint}
               />
 
               <View style={{ flexDirection: "row", gap: 8 }}>
                 <View style={{ flex: 1 }}>
                   <Text style={styles.label}>Expense date *</Text>
-                  <TextInput
-                    style={styles.input}
+                  <DatePickerField
                     value={expenseDate}
-                    onChangeText={setExpenseDate}
-                    placeholder="YYYY-MM-DD"
-                    placeholderTextColor="#475569"
+                    onChange={setExpenseDate}
                   />
                 </View>
                 <View style={{ flex: 1 }}>
@@ -311,7 +295,7 @@ export default function ReimbursementsScreen() {
                     value={amount}
                     onChangeText={setAmount}
                     placeholder="0.00"
-                    placeholderTextColor="#475569"
+                    placeholderTextColor={c.textFaint}
                     keyboardType="decimal-pad"
                   />
                 </View>
@@ -348,7 +332,7 @@ export default function ReimbursementsScreen() {
                     value={vendorName}
                     onChangeText={setVendorName}
                     placeholder="Olive Beach"
-                    placeholderTextColor="#475569"
+                    placeholderTextColor={c.textFaint}
                   />
                 </View>
                 <View style={{ flex: 1 }}>
@@ -358,7 +342,7 @@ export default function ReimbursementsScreen() {
                     value={invoiceNumber}
                     onChangeText={setInvoiceNumber}
                     placeholder="INV-7793"
-                    placeholderTextColor="#475569"
+                    placeholderTextColor={c.textFaint}
                     autoCapitalize="characters"
                   />
                 </View>
@@ -370,7 +354,7 @@ export default function ReimbursementsScreen() {
                 value={taxAmount}
                 onChangeText={setTaxAmount}
                 placeholder="0.00"
-                placeholderTextColor="#475569"
+                placeholderTextColor={c.textFaint}
                 keyboardType="decimal-pad"
               />
 
@@ -380,7 +364,7 @@ export default function ReimbursementsScreen() {
                 value={description}
                 onChangeText={setDescription}
                 placeholder="What was it for?"
-                placeholderTextColor="#475569"
+                placeholderTextColor={c.textFaint}
                 multiline
               />
 
@@ -407,7 +391,7 @@ export default function ReimbursementsScreen() {
                   value={attachmentUrl}
                   onChangeText={setAttachmentUrl}
                   placeholder="https://..."
-                  placeholderTextColor="#475569"
+                  placeholderTextColor={c.textFaint}
                   autoCapitalize="none"
                 />
                 <TouchableOpacity
@@ -422,7 +406,7 @@ export default function ReimbursementsScreen() {
                   <Ionicons
                     name="attach"
                     size={14}
-                    color="#94a3b8"
+                    color={c.textMuted}
                   />
                   <Text style={styles.attachUrl} numberOfLines={1}>
                     {a}
@@ -433,7 +417,7 @@ export default function ReimbursementsScreen() {
                     <Ionicons
                       name="close"
                       size={16}
-                      color="#94a3b8"
+                      color={c.textMuted}
                     />
                   </TouchableOpacity>
                 </View>
@@ -467,156 +451,137 @@ export default function ReimbursementsScreen() {
   );
 }
 
-const styles = StyleSheet.create({
-  safe: { flex: 1, backgroundColor: "#0b1220" },
+const makeStyles = (c: any) => StyleSheet.create({
+  safe: { flex: 1, backgroundColor: c.bg },
   loader: {
     flex: 1,
-    backgroundColor: "#0b1220",
+    backgroundColor: c.bg,
     justifyContent: "center",
-    alignItems: "center",
-  },
+    alignItems: "center" },
   header: {
     flexDirection: "row",
     alignItems: "center",
     paddingHorizontal: 16,
     paddingVertical: 14,
     borderBottomWidth: 1,
-    borderBottomColor: "#1f2937",
-    gap: 12,
-  },
-  title: { color: "#fff", fontSize: 18, fontWeight: "800", flex: 1 },
+    borderBottomColor: c.surfaceBorder,
+    gap: 12 },
+  title: { color: c.text, fontSize: 18, fontWeight: "800", flex: 1 },
   card: {
-    backgroundColor: "#111827",
+    backgroundColor: c.surface,
     padding: 14,
     borderRadius: 14,
     marginBottom: 8,
     borderWidth: 1,
-    borderColor: "#1f2937",
-  },
+    borderColor: c.surfaceBorder },
   cardTop: {
     flexDirection: "row",
     justifyContent: "space-between",
-    alignItems: "center",
-  },
+    alignItems: "center" },
   cardTitle: {
-    color: "#fff",
+    color: c.text,
     fontSize: 15,
     fontWeight: "700",
     flex: 1,
-    marginRight: 8,
-  },
+    marginRight: 8 },
   amount: { color: "#3b82f6", fontSize: 15, fontWeight: "800" },
-  row: { color: "#94a3b8", fontSize: 12, marginTop: 6 },
+  row: { color: c.textMuted, fontSize: 12, marginTop: 6 },
   cardFooter: {
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
-    marginTop: 10,
-  },
+    marginTop: 10 },
   statusPill: {
     paddingHorizontal: 8,
     paddingVertical: 3,
-    borderRadius: 6,
-  },
-  statusText: { color: "#fff", fontSize: 10, fontWeight: "800" },
-  meta: { color: "#64748b", fontSize: 11 },
+    borderRadius: 6 },
+  statusText: { color: c.text, fontSize: 10, fontWeight: "800" },
+  meta: { color: c.textMuted, fontSize: 11 },
   rejectNote: {
     color: "#fca5a5",
     fontSize: 12,
     marginTop: 8,
-    fontStyle: "italic",
-  },
+    fontStyle: "italic" },
   emptyWrap: { flex: 1, justifyContent: "center" },
   empty: { alignItems: "center", gap: 10, padding: 24 },
-  emptyText: { color: "#475569", fontSize: 14 },
+  emptyText: { color: c.textMuted, fontSize: 14 },
   emptyBtn: {
-    backgroundColor: "#3b82f6",
+    backgroundColor: c.accent,
     paddingHorizontal: 18,
     paddingVertical: 10,
     borderRadius: 10,
-    marginTop: 6,
-  },
+    marginTop: 6 },
   emptyBtnText: { color: "#fff", fontWeight: "700" },
   modalWrap: {
     flex: 1,
     justifyContent: "flex-end",
-    backgroundColor: "rgba(0,0,0,0.5)",
-  },
+    backgroundColor: c.overlay },
   modal: {
-    backgroundColor: "#0f172a",
+    backgroundColor: c.surfaceMuted,
     padding: 20,
     borderTopLeftRadius: 18,
     borderTopRightRadius: 18,
     borderTopWidth: 1,
-    borderTopColor: "#1e293b",
-    maxHeight: "92%",
-  },
+    borderTopColor: c.surfaceBorder,
+    maxHeight: "92%" },
   modalHeader: {
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
-    marginBottom: 8,
-  },
-  modalTitle: { color: "#fff", fontSize: 18, fontWeight: "800" },
+    marginBottom: 8 },
+  modalTitle: { color: c.text, fontSize: 18, fontWeight: "800" },
   label: {
-    color: "#94a3b8",
+    color: c.textMuted,
     fontSize: 11,
     letterSpacing: 1.2,
     fontWeight: "700",
     marginTop: 12,
-    marginBottom: 6,
-  },
+    marginBottom: 6 },
   input: {
-    backgroundColor: "#111827",
-    color: "#fff",
+    backgroundColor: c.surface,
+    color: c.text,
     paddingHorizontal: 12,
     paddingVertical: 10,
     borderRadius: 10,
     borderWidth: 1,
-    borderColor: "#1f2937",
-  },
+    borderColor: c.surfaceBorder },
   modeRow: { flexDirection: "row", flexWrap: "wrap", gap: 6 },
   modeBtn: {
     paddingHorizontal: 10,
     paddingVertical: 7,
     borderRadius: 8,
-    backgroundColor: "#111827",
+    backgroundColor: c.surface,
     borderWidth: 1,
-    borderColor: "#1f2937",
-  },
+    borderColor: c.surfaceBorder },
   modeBtnActive: {
-    backgroundColor: "#3b82f6",
-    borderColor: "#3b82f6",
-  },
-  modeText: { color: "#94a3b8", fontSize: 11, fontWeight: "700" },
-  modeTextActive: { color: "#fff" },
+    backgroundColor: c.accent,
+    borderColor: c.accent },
+  modeText: { color: c.textMuted, fontSize: 11, fontWeight: "700" },
+  modeTextActive: { color: c.text },
   addBtn: {
     width: 44,
-    backgroundColor: "#3b82f6",
+    backgroundColor: c.accent,
     borderRadius: 10,
     alignItems: "center",
-    justifyContent: "center",
-  },
+    justifyContent: "center" },
   attachRow: {
     flexDirection: "row",
     alignItems: "center",
-    backgroundColor: "#111827",
+    backgroundColor: c.surface,
     paddingHorizontal: 10,
     paddingVertical: 6,
     borderRadius: 8,
     marginTop: 6,
-    gap: 6,
-  },
-  attachUrl: { color: "#cbd5e1", fontSize: 11, flex: 1 },
+    gap: 6 },
+  attachUrl: { color: c.text, fontSize: 11, flex: 1 },
   actions: { flexDirection: "row", gap: 10, marginTop: 14 },
   btn: {
     flex: 1,
     paddingVertical: 14,
     borderRadius: 12,
-    alignItems: "center",
-  },
-  btnGhost: { backgroundColor: "#1e293b" },
-  btnGhostText: { color: "#94a3b8", fontWeight: "700" },
-  btnPrimary: { backgroundColor: "#3b82f6" },
-  btnPrimaryText: { color: "#fff", fontWeight: "800" },
-});
+    alignItems: "center" },
+  btnGhost: { backgroundColor: c.surfaceMuted },
+  btnGhostText: { color: c.textMuted, fontWeight: "700" },
+  btnPrimary: { backgroundColor: c.accent },
+  btnPrimaryText: { color: "#fff", fontWeight: "800" } });
+

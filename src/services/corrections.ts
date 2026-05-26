@@ -4,15 +4,27 @@ import {
   CorrectionStatus,
 } from "../types";
 
+export type AttendanceTypeLiteral = "OFFICE" | "WFH" | "LEAVE" | "HOLIDAY";
+
 export interface CorrectionRequestBody {
-  requestedCheckOut: string;
   reason: string;
+  // All optional — send any subset the employee wants to change.
+  requestedDate?: string;            // YYYY-MM-DD
+  requestedCheckIn?: string;         // ISO 8601
+  requestedCheckOut?: string;        // ISO 8601
+  requestedAttendanceType?: AttendanceTypeLiteral;
+  requestedWorkNotes?: string;
 }
 
 export interface CorrectionDecisionBody {
   action: "APPROVE" | "REJECT";
   note?: string;
+  // HR/Manager can override any requested field before stamping.
+  overrideDate?: string;
+  overrideCheckIn?: string;
   overrideCheckOut?: string;
+  overrideAttendanceType?: AttendanceTypeLiteral;
+  overrideWorkNotes?: string;
 }
 
 // ===== USER =====

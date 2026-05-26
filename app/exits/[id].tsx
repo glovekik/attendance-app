@@ -1,7 +1,6 @@
 import React, {
   useEffect,
-  useState,
-} from "react";
+  useState, useMemo} from "react";
 
 import {
   View,
@@ -50,11 +49,18 @@ import { downloadPdfWithAuth } from "../../src/utils/download";
 
 import { ExitRequest, OnboardingTask } from "../../src/types";
 
+import { useTheme } from "../../src/theme/ThemeProvider";
 const isWeb = Platform.OS === "web";
 
 export default function HRExitDetail() {
 
   const router = useRouter();
+
+  const { theme } = useTheme();
+
+  const c = theme.colors;
+
+  const s = useMemo(() => makeStyles(c), [c]);
   const params = useLocalSearchParams();
   const id = params.id as string;
 
@@ -273,7 +279,7 @@ export default function HRExitDetail() {
   if (loading) {
     return (
       <View style={s.loader}>
-        <ActivityIndicator size="large" color="#2563eb" />
+        <ActivityIndicator size="large" color={c.accent} />
       </View>
     );
   }
@@ -281,7 +287,7 @@ export default function HRExitDetail() {
   if (!data) {
     return (
       <View style={s.loader}>
-        <Text style={{ color: "#fff" }}>Not found</Text>
+        <Text style={{ color: c.text }}>Not found</Text>
       </View>
     );
   }
@@ -316,9 +322,9 @@ export default function HRExitDetail() {
         <View style={s.header}>
           <TouchableOpacity
             style={s.backBtn}
-            onPress={() => router.back()}
+            onPress={() => (router.canGoBack() ? router.back() : router.replace("/"))}
           >
-            <Ionicons name="chevron-back" size={22} color="#fff" />
+            <Ionicons name="chevron-back" size={22} color={c.text} />
           </TouchableOpacity>
           <View style={{ flex: 1 }}>
             <Text style={s.title}>
@@ -403,7 +409,7 @@ export default function HRExitDetail() {
                       { flex: 1, marginLeft: 10 },
                       done && {
                         textDecorationLine: "line-through",
-                        color: "#94a3b8",
+                        color: c.textMuted,
                       },
                     ]}
                   >
@@ -468,7 +474,7 @@ export default function HRExitDetail() {
                 value={ffsNotes}
                 onChangeText={setFfsNotes}
                 placeholder="Optional"
-                placeholderTextColor="#64748b"
+                placeholderTextColor={c.textFaint}
                 multiline
                 editable={ffsStatus === "DRAFT" || !ffsStatus}
               />
@@ -491,7 +497,7 @@ export default function HRExitDetail() {
                     <TouchableOpacity
                       style={[
                         s.smallBtn,
-                        { backgroundColor: "#2563eb" },
+                        { backgroundColor: c.accent },
                       ]}
                       onPress={finalizeFFS}
                       disabled={busy}
@@ -595,7 +601,7 @@ export default function HRExitDetail() {
                       <Ionicons
                         name="calendar-outline"
                         size={18}
-                        color="#94a3b8"
+                        color={c.textMuted}
                       />
                       <WebDateField
                         mode="date"
@@ -615,7 +621,7 @@ export default function HRExitDetail() {
                         <Ionicons
                           name="calendar-outline"
                           size={18}
-                          color="#94a3b8"
+                          color={c.textMuted}
                         />
                         <Text style={s.dateText}>
                           {approvedDate.toLocaleDateString("en-US", {
@@ -646,7 +652,7 @@ export default function HRExitDetail() {
                 value={decideNote}
                 onChangeText={setDecideNote}
                 placeholder="Optional"
-                placeholderTextColor="#64748b"
+                placeholderTextColor={c.textFaint}
                 multiline
               />
 
@@ -688,59 +694,59 @@ export default function HRExitDetail() {
   );
 }
 
-const s = StyleSheet.create({
-  safe: { flex: 1, backgroundColor: "#0b1220" },
+const makeStyles = (c: any) => StyleSheet.create({
+  safe: { flex: 1, backgroundColor: c.bg },
   container: { flex: 1 },
   content: { padding: 20, paddingBottom: 60 },
-  loader: { flex: 1, backgroundColor: "#0b1220", justifyContent: "center", alignItems: "center" },
+  loader: { flex: 1, backgroundColor: c.bg, justifyContent: "center", alignItems: "center" },
   popup: { position: "absolute", top: 60, left: 20, right: 20, padding: 14, borderRadius: 14, zIndex: 999 },
   popupOk: { backgroundColor: "#16a34a" },
   popupErr: { backgroundColor: "#dc2626" },
-  popupText: { color: "#fff", fontWeight: "700", textAlign: "center" },
+  popupText: { color: c.text, fontWeight: "700", textAlign: "center" },
 
   header: { flexDirection: "row", alignItems: "center", marginBottom: 14, marginTop: 10, gap: 12 },
-  backBtn: { width: 42, height: 42, borderRadius: 12, backgroundColor: "#111827", justifyContent: "center", alignItems: "center", borderWidth: 1, borderColor: "#1f2937" },
-  title: { color: "#fff", fontSize: 22, fontWeight: "800" },
-  subtitle: { color: "#94a3b8", fontSize: 12, marginTop: 3 },
+  backBtn: { width: 42, height: 42, borderRadius: 12, backgroundColor: c.surface, justifyContent: "center", alignItems: "center", borderWidth: 1, borderColor: c.surfaceBorder },
+  title: { color: c.text, fontSize: 22, fontWeight: "800" },
+  subtitle: { color: c.textMuted, fontSize: 12, marginTop: 3 },
 
-  section: { color: "#64748b", fontSize: 12, letterSpacing: 1.5, fontWeight: "700", marginBottom: 10 },
+  section: { color: c.textMuted, fontSize: 12, letterSpacing: 1.5, fontWeight: "700", marginBottom: 10 },
 
-  summaryCard: { backgroundColor: "#111827", borderRadius: 14, padding: 14, borderWidth: 1, borderColor: "#1f2937", marginBottom: 12 },
+  summaryCard: { backgroundColor: c.surface, borderRadius: 14, padding: 14, borderWidth: 1, borderColor: c.surfaceBorder, marginBottom: 12 },
   row: { flexDirection: "row", justifyContent: "space-between", paddingVertical: 4 },
-  label: { color: "#94a3b8", fontSize: 12, fontWeight: "600", marginBottom: 4, marginTop: 8 },
-  val: { color: "#fff", fontSize: 13, fontWeight: "700" },
-  body: { color: "#e2e8f0", fontSize: 13, lineHeight: 18 },
+  label: { color: c.textMuted, fontSize: 12, fontWeight: "600", marginBottom: 4, marginTop: 8 },
+  val: { color: c.text, fontSize: 13, fontWeight: "700" },
+  body: { color: c.text, fontSize: 13, lineHeight: 18 },
 
   actionsRow: { flexDirection: "row", gap: 10, marginTop: 10 },
   rejectBtn: { flex: 1, backgroundColor: "#dc2626", paddingVertical: 12, borderRadius: 12, alignItems: "center" },
   approveBtn: { flex: 1, backgroundColor: "#16a34a", paddingVertical: 12, borderRadius: 12, alignItems: "center" },
-  actionText: { color: "#fff", fontWeight: "700", fontSize: 14 },
+  actionText: { color: c.text, fontWeight: "700", fontSize: 14 },
 
-  card: { flexDirection: "row", alignItems: "center", backgroundColor: "#111827", borderRadius: 12, padding: 12, marginBottom: 8, borderWidth: 1, borderColor: "#1f2937" },
+  card: { flexDirection: "row", alignItems: "center", backgroundColor: c.surface, borderRadius: 12, padding: 12, marginBottom: 8, borderWidth: 1, borderColor: c.surfaceBorder },
 
-  ffsCard: { backgroundColor: "#111827", borderRadius: 14, padding: 14, borderWidth: 1, borderColor: "#1f2937" },
+  ffsCard: { backgroundColor: c.surface, borderRadius: 14, padding: 14, borderWidth: 1, borderColor: c.surfaceBorder },
   twoCol: { flexDirection: "row", gap: 10 },
-  inputSmall: { backgroundColor: "#0f172a", color: "#fff", borderRadius: 10, padding: 11, borderWidth: 1, borderColor: "#1e293b", fontSize: 13, marginTop: 4 },
-  ffsTotal: { flexDirection: "row", justifyContent: "space-between", marginTop: 14, paddingTop: 14, borderTopWidth: 1, borderTopColor: "#1f2937" },
-  ffsTotalLabel: { color: "#fff", fontWeight: "800", fontSize: 14 },
+  inputSmall: { backgroundColor: c.surfaceMuted, color: c.text, borderRadius: 10, padding: 11, borderWidth: 1, borderColor: c.surfaceBorder, fontSize: 13, marginTop: 4 },
+  ffsTotal: { flexDirection: "row", justifyContent: "space-between", marginTop: 14, paddingTop: 14, borderTopWidth: 1, borderTopColor: c.surfaceBorder },
+  ffsTotalLabel: { color: c.text, fontWeight: "800", fontSize: 14 },
   ffsTotalVal: { color: "#16a34a", fontWeight: "800", fontSize: 16 },
   ffsActions: { flexDirection: "row", gap: 8, marginTop: 12 },
 
   row2: { flexDirection: "row", gap: 10 },
-  smallBtn: { backgroundColor: "#2563eb", paddingHorizontal: 14, paddingVertical: 10, borderRadius: 10 },
+  smallBtn: { backgroundColor: c.accent, paddingHorizontal: 14, paddingVertical: 10, borderRadius: 10 },
   smallBtnText: { color: "#fff", fontWeight: "700", fontSize: 13 },
 
   completeBtn: { marginTop: 22, backgroundColor: "#16a34a", paddingVertical: 14, borderRadius: 14, flexDirection: "row", justifyContent: "center", alignItems: "center", gap: 8 },
-  completeText: { color: "#fff", fontWeight: "700", fontSize: 15 },
+  completeText: { color: c.text, fontWeight: "700", fontSize: 15 },
 
-  modalOverlay: { flex: 1, backgroundColor: "rgba(0,0,0,0.7)", justifyContent: "center", padding: 20 },
-  modalCard: { backgroundColor: "#111827", borderRadius: 18, padding: 20, maxHeight: "90%" },
-  modalTitle: { color: "#fff", fontSize: 22, fontWeight: "800" },
-  dateRow: { flexDirection: "row", alignItems: "center", backgroundColor: "#0f172a", borderRadius: 12, padding: 13, borderWidth: 1, borderColor: "#1e293b", gap: 10 },
-  dateText: { color: "#fff", fontWeight: "700", fontSize: 14 },
+  modalOverlay: { flex: 1, backgroundColor: c.overlay, justifyContent: "center", padding: 20 },
+  modalCard: { backgroundColor: c.surface, borderRadius: 18, padding: 20, maxHeight: "90%" },
+  modalTitle: { color: c.text, fontSize: 22, fontWeight: "800" },
+  dateRow: { flexDirection: "row", alignItems: "center", backgroundColor: c.surfaceMuted, borderRadius: 12, padding: 13, borderWidth: 1, borderColor: c.surfaceBorder, gap: 10 },
+  dateText: { color: c.text, fontWeight: "700", fontSize: 14 },
   modalActions: { flexDirection: "row", gap: 10, marginTop: 18 },
-  cancelBtn: { flex: 1, backgroundColor: "#374151", padding: 13, borderRadius: 11, alignItems: "center" },
+  cancelBtn: { flex: 1, backgroundColor: c.surfaceMuted, padding: 13, borderRadius: 11, alignItems: "center" },
   approveConfirm: { flex: 1, backgroundColor: "#16a34a", padding: 13, borderRadius: 11, alignItems: "center" },
   rejectConfirm: { flex: 1, backgroundColor: "#dc2626", padding: 13, borderRadius: 11, alignItems: "center" },
-  modalBtnText: { color: "#fff", fontWeight: "700" },
+  modalBtnText: { color: c.text, fontWeight: "700" },
 });

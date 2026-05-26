@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useCallback } from "react";
+﻿import React, { useEffect, useState, useCallback, useMemo} from "react";
 
 import {
   View,
@@ -7,15 +7,14 @@ import {
   FlatList,
   TouchableOpacity,
   ActivityIndicator,
-  SafeAreaView,
   RefreshControl,
   Modal,
   TextInput,
   Alert,
   ScrollView,
   KeyboardAvoidingView,
-  Platform,
-} from "react-native";
+  Platform } from "react-native";
+import { SafeAreaView } from "react-native-safe-area-context";
 
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useRouter } from "expo-router";
@@ -26,30 +25,26 @@ import {
   createOffer,
   sendOffer,
   recordOfferDecision,
-  revokeOffer,
-} from "../src/services/offers";
+  revokeOffer } from "../src/services/offers";
 import { listCandidates } from "../src/services/candidates";
-import { Candidate, Offer, OfferStatus } from "../src/types";
+import { Candidate, Offer } from "../src/types";
+import { DatePickerField } from "../src/components/DatePickerField";
 
-const STATUS_COLOR: Record<OfferStatus, string> = {
-  DRAFT: "#64748b",
-  SENT: "#3b82f6",
-  ACCEPTED: "#16a34a",
-  REJECTED: "#dc2626",
-  EXPIRED: "#f59e0b",
-  REVOKED: "#dc2626",
-};
+import { useTheme } from "../src/theme/ThemeProvider";
+import { offerStatusColor } from "../src/theme/statusColors";
 
 const fmtMoney = (n?: number) =>
   n != null
     ? n.toLocaleString(undefined, {
         minimumFractionDigits: 0,
-        maximumFractionDigits: 2,
-      })
+        maximumFractionDigits: 2 })
     : "—";
 
 export default function HrOffers() {
   const router = useRouter();
+  const { theme } = useTheme();
+  const c = theme.colors;
+  const styles = useMemo(() => makeStyles(c), [c]);
   const [items, setItems] = useState<Offer[]>([]);
   const [candidates, setCandidates] = useState<Candidate[]>([]);
   const [loading, setLoading] = useState(true);
@@ -89,7 +84,10 @@ export default function HrOffers() {
       setItems(offers || []);
       setCandidates(cands || []);
     } catch (err: any) {
-      console.log("offers load error", err);
+      Alert.alert(
+        "Couldn't load offers",
+        err?.message || "Pull down to retry."
+      );
     } finally {
       setLoading(false);
       setRefreshing(false);
@@ -127,8 +125,7 @@ export default function HrOffers() {
         annualCtc: annualCtc ? parseFloat(annualCtc) : undefined,
         joiningDate: joiningDate.trim() || undefined,
         validUntil: validUntil.trim() || undefined,
-        notes: notes.trim() || undefined,
-      });
+        notes: notes.trim() || undefined });
       setShowForm(false);
       resetForm();
       load();
@@ -156,8 +153,7 @@ export default function HrOffers() {
             } catch (err: any) {
               Alert.alert("Send failed", err?.message || "");
             }
-          },
-        },
+          } },
       ]
     );
   };
@@ -177,8 +173,7 @@ export default function HrOffers() {
           } catch (err: any) {
             Alert.alert("Revoke failed", err?.message || "");
           }
-        },
-      },
+        } },
     ]);
   };
 
@@ -212,18 +207,18 @@ export default function HrOffers() {
   return (
     <SafeAreaView style={styles.safe}>
       <View style={styles.header}>
-        <TouchableOpacity onPress={() => router.back()}>
-          <Ionicons name="arrow-back" size={24} color="#fff" />
+        <TouchableOpacity onPress={() => (router.canGoBack() ? router.back() : router.replace("/"))}>
+          <Ionicons name="arrow-back" size={24} color={c.text} />
         </TouchableOpacity>
         <Text style={styles.title}>Offers</Text>
         <TouchableOpacity onPress={() => setShowForm(true)}>
-          <Ionicons name="add-circle" size={28} color="#3b82f6" />
+          <Ionicons name="add-circle" size={28} color={c.accent} />
         </TouchableOpacity>
       </View>
 
       {loading ? (
         <View style={styles.loader}>
-          <ActivityIndicator size="large" color="#3b82f6" />
+          <ActivityIndicator size="large" color={c.accent} />
         </View>
       ) : (
         <FlatList
@@ -236,8 +231,8 @@ export default function HrOffers() {
             <RefreshControl
               refreshing={refreshing}
               onRefresh={onRefresh}
-              tintColor="#3b82f6"
-              colors={["#3b82f6"]}
+              tintColor={c.accent}
+              colors={[c.accent]}
             />
           }
           ListEmptyComponent={
@@ -245,16 +240,17 @@ export default function HrOffers() {
               <Ionicons
                 name="document-text-outline"
                 size={42}
-                color="#475569"
+                color={c.textFaint}
               />
               <Text style={styles.emptyText}>No offers yet</Text>
             </View>
           }
           renderItem={({ item }) => {
             const cand =
-              candidates.find((c) => c.id === item.candidateId)?.name ||
+              candidates.find((x) => x.id === item.candidateId)?.name ||
               item.candidate?.name ||
               "Unknown";
+            const sc = offerStatusColor(item.status, c);
             return (
               <View style={styles.card}>
                 <View style={styles.cardTop}>
@@ -265,10 +261,10 @@ export default function HrOffers() {
                   <View
                     style={[
                       styles.pill,
-                      { backgroundColor: STATUS_COLOR[item.status] },
+                      { backgroundColor: sc.bg },
                     ]}
                   >
-                    <Text style={styles.pillText}>{item.status}</Text>
+                    <Text style={[styles.pillText, { color: sc.fg }]}>{item.status}</Text>
                   </View>
                 </View>
                 <Text style={styles.row}>
@@ -337,7 +333,7 @@ export default function HrOffers() {
             <View style={styles.modalHeader}>
               <Text style={styles.modalTitle}>New offer</Text>
               <TouchableOpacity onPress={() => setShowForm(false)}>
-                <Ionicons name="close" size={24} color="#94a3b8" />
+                <Ionicons name="close" size={24} color={c.textMuted} />
               </TouchableOpacity>
             </View>
 
@@ -375,7 +371,7 @@ export default function HrOffers() {
                 value={position}
                 onChangeText={setPosition}
                 placeholder="Senior Backend Engineer"
-                placeholderTextColor="#475569"
+                placeholderTextColor={c.textFaint}
               />
 
               <Text style={styles.label}>Annual CTC (₹)</Text>
@@ -384,31 +380,23 @@ export default function HrOffers() {
                 value={annualCtc}
                 onChangeText={setAnnualCtc}
                 placeholder="1800000"
-                placeholderTextColor="#475569"
+                placeholderTextColor={c.textFaint}
                 keyboardType="decimal-pad"
               />
 
               <View style={{ flexDirection: "row", gap: 8 }}>
                 <View style={{ flex: 1 }}>
                   <Text style={styles.label}>Joining date</Text>
-                  <TextInput
-                    style={styles.input}
+                  <DatePickerField
                     value={joiningDate}
-                    onChangeText={setJoiningDate}
-                    placeholder="YYYY-MM-DD"
-                    placeholderTextColor="#475569"
-                    autoCapitalize="none"
+                    onChange={setJoiningDate}
                   />
                 </View>
                 <View style={{ flex: 1 }}>
                   <Text style={styles.label}>Valid until</Text>
-                  <TextInput
-                    style={styles.input}
+                  <DatePickerField
                     value={validUntil}
-                    onChangeText={setValidUntil}
-                    placeholder="YYYY-MM-DD"
-                    placeholderTextColor="#475569"
-                    autoCapitalize="none"
+                    onChange={setValidUntil}
                   />
                 </View>
               </View>
@@ -419,7 +407,7 @@ export default function HrOffers() {
                 value={notes}
                 onChangeText={setNotes}
                 placeholder="Anything you want included"
-                placeholderTextColor="#475569"
+                placeholderTextColor={c.textFaint}
                 multiline
                 textAlignVertical="top"
               />
@@ -465,7 +453,7 @@ export default function HrOffers() {
                 Record {decisionAction.toLowerCase()}
               </Text>
               <TouchableOpacity onPress={() => setDecisionTarget(null)}>
-                <Ionicons name="close" size={24} color="#94a3b8" />
+                <Ionicons name="close" size={24} color={c.textMuted} />
               </TouchableOpacity>
             </View>
 
@@ -481,7 +469,7 @@ export default function HrOffers() {
                   onChangeText={setDecisionNote}
                   multiline
                   textAlignVertical="top"
-                  placeholderTextColor="#475569"
+                  placeholderTextColor={c.textFaint}
                 />
 
                 <View style={styles.actionsFooter}>
@@ -516,134 +504,119 @@ export default function HrOffers() {
   );
 }
 
-const styles = StyleSheet.create({
-  safe: { flex: 1, backgroundColor: "#0b1220" },
+const makeStyles = (c: any) => StyleSheet.create({
+  safe: { flex: 1, backgroundColor: c.bg },
   loader: {
     flex: 1,
-    backgroundColor: "#0b1220",
+    backgroundColor: c.bg,
     justifyContent: "center",
-    alignItems: "center",
-  },
+    alignItems: "center" },
   header: {
     flexDirection: "row",
     alignItems: "center",
     paddingHorizontal: 16,
     paddingVertical: 14,
     borderBottomWidth: 1,
-    borderBottomColor: "#1f2937",
-    gap: 12,
-  },
-  title: { color: "#fff", fontSize: 18, fontWeight: "800", flex: 1 },
+    borderBottomColor: c.surfaceBorder,
+    gap: 12 },
+  title: { color: c.text, fontSize: 18, fontWeight: "800", flex: 1 },
   card: {
-    backgroundColor: "#111827",
+    backgroundColor: c.surface,
     padding: 14,
     borderRadius: 14,
     marginBottom: 8,
     borderWidth: 1,
-    borderColor: "#1f2937",
-  },
+    borderColor: c.surfaceBorder },
   cardTop: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 10,
-  },
-  cardTitle: { color: "#fff", fontSize: 15, fontWeight: "700" },
-  cardSub: { color: "#cbd5e1", fontSize: 12, marginTop: 2 },
+    gap: 10 },
+  cardTitle: { color: c.text, fontSize: 15, fontWeight: "700" },
+  cardSub: { color: c.text, fontSize: 12, marginTop: 2 },
   pill: {
     paddingHorizontal: 8,
     paddingVertical: 3,
-    borderRadius: 6,
-  },
-  pillText: { color: "#fff", fontSize: 10, fontWeight: "800" },
-  row: { color: "#94a3b8", fontSize: 12, marginTop: 6 },
+    borderRadius: 6 },
+  pillText: { color: c.text, fontSize: 10, fontWeight: "800" },
+  row: { color: c.textMuted, fontSize: 12, marginTop: 6 },
   actions: {
     flexDirection: "row",
     flexWrap: "wrap",
     gap: 6,
-    marginTop: 10,
-  },
+    marginTop: 10 },
   actionBtn: {
     flexDirection: "row",
     alignItems: "center",
     paddingHorizontal: 12,
     paddingVertical: 7,
     borderRadius: 8,
-    gap: 4,
-  },
-  btnPrimary: { backgroundColor: "#3b82f6" },
+    gap: 4 },
+  btnPrimary: { backgroundColor: c.accent },
   btnAccept: { backgroundColor: "#16a34a" },
   btnReject: { backgroundColor: "#dc2626" },
   btnGhost: {
-    backgroundColor: "#1e293b",
+    backgroundColor: c.surfaceMuted,
     borderWidth: 1,
-    borderColor: "#334155",
-  },
-  actionText: { color: "#fff", fontSize: 11, fontWeight: "800" },
+    borderColor: "#334155" },
+  actionText: { color: c.text, fontSize: 11, fontWeight: "800" },
   emptyWrap: { flex: 1, justifyContent: "center" },
   empty: { alignItems: "center", gap: 10 },
-  emptyText: { color: "#475569", fontSize: 14 },
+  emptyText: { color: c.textMuted, fontSize: 14 },
   modalWrap: {
     flex: 1,
     justifyContent: "flex-end",
-    backgroundColor: "rgba(0,0,0,0.5)",
-  },
+    backgroundColor: c.overlay },
   modal: {
-    backgroundColor: "#0f172a",
+    backgroundColor: c.surfaceMuted,
     padding: 20,
     borderTopLeftRadius: 18,
     borderTopRightRadius: 18,
     borderTopWidth: 1,
-    borderTopColor: "#1e293b",
-    maxHeight: "92%",
-  },
+    borderTopColor: c.surfaceBorder,
+    maxHeight: "92%" },
   modalHeader: {
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
-    marginBottom: 10,
-  },
-  modalTitle: { color: "#fff", fontSize: 17, fontWeight: "800" },
+    marginBottom: 10 },
+  modalTitle: { color: c.text, fontSize: 17, fontWeight: "800" },
   label: {
-    color: "#94a3b8",
+    color: c.textMuted,
     fontSize: 11,
     letterSpacing: 1.2,
     fontWeight: "700",
     marginTop: 14,
-    marginBottom: 6,
-  },
+    marginBottom: 6 },
   input: {
-    backgroundColor: "#111827",
-    color: "#fff",
+    backgroundColor: c.surface,
+    color: c.text,
     paddingHorizontal: 12,
     paddingVertical: 10,
     borderRadius: 10,
     borderWidth: 1,
-    borderColor: "#1f2937",
-    minHeight: 42,
-  },
+    borderColor: c.surfaceBorder,
+    minHeight: 42 },
   chipRow: { flexDirection: "row", flexWrap: "wrap", gap: 6 },
   chip: {
     paddingHorizontal: 10,
     paddingVertical: 6,
     borderRadius: 999,
-    backgroundColor: "#111827",
+    backgroundColor: c.surface,
     borderWidth: 1,
-    borderColor: "#1f2937",
-  },
-  chipActive: { backgroundColor: "#3b82f6", borderColor: "#3b82f6" },
-  chipText: { color: "#94a3b8", fontSize: 11, fontWeight: "700" },
-  chipTextActive: { color: "#fff" },
-  hint: { color: "#64748b", fontSize: 11, fontStyle: "italic" },
-  btnGhostText: { color: "#94a3b8", fontWeight: "700" },
+    borderColor: c.surfaceBorder },
+  chipActive: { backgroundColor: c.accent, borderColor: c.accent },
+  chipText: { color: c.textMuted, fontSize: 11, fontWeight: "700" },
+  chipTextActive: { color: c.text },
+  hint: { color: c.textMuted, fontSize: 11, fontStyle: "italic" },
+  btnGhostText: { color: c.textMuted, fontWeight: "700" },
   btnPrimaryText: { color: "#fff", fontWeight: "800" },
   actionsFooter: { flexDirection: "row", gap: 10, marginTop: 14 },
   btn: {
     flex: 1,
     paddingVertical: 14,
     borderRadius: 12,
-    alignItems: "center",
-  },
-  btnGhostFull: { backgroundColor: "#1e293b" },
-  btnPrimaryFull: { backgroundColor: "#3b82f6" },
-  btnRejectFull: { backgroundColor: "#dc2626" },
-});
+    alignItems: "center" },
+  btnGhostFull: { backgroundColor: c.surfaceMuted },
+  btnPrimaryFull: { backgroundColor: c.accent },
+  btnRejectFull: { backgroundColor: "#dc2626" } });
+

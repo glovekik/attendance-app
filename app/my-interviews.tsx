@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useCallback } from "react";
+﻿import React, { useEffect, useState, useCallback, useMemo} from "react";
 
 import {
   View,
@@ -7,42 +7,29 @@ import {
   FlatList,
   TouchableOpacity,
   ActivityIndicator,
-  SafeAreaView,
   RefreshControl,
   Modal,
   TextInput,
   Alert,
-  ScrollView,
   KeyboardAvoidingView,
-  Platform,
-} from "react-native";
+  Platform } from "react-native";
+import { SafeAreaView } from "react-native-safe-area-context";
 
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 
+import { useTheme } from "../src/theme/ThemeProvider";
+import {
+  interviewStatusColor,
+  recommendationColor } from "../src/theme/statusColors";
 import {
   listMyInterviews,
-  submitFeedback,
-} from "../src/services/interviews";
+  submitFeedback } from "../src/services/interviews";
 import {
   INTERVIEW_RECS,
   Interview,
-  InterviewRecommendation,
-} from "../src/types";
-
-const STATUS_COLOR: Record<string, string> = {
-  SCHEDULED: "#3b82f6",
-  COMPLETED: "#16a34a",
-  CANCELLED: "#64748b",
-};
-
-const REC_COLOR: Record<InterviewRecommendation, string> = {
-  STRONG_HIRE: "#16a34a",
-  HIRE: "#3b82f6",
-  NO_HIRE: "#f59e0b",
-  STRONG_NO_HIRE: "#dc2626",
-};
+  InterviewRecommendation } from "../src/types";
 
 const fmtTime = (iso: string) => {
   try {
@@ -54,6 +41,9 @@ const fmtTime = (iso: string) => {
 
 export default function MyInterviews() {
   const router = useRouter();
+  const { theme } = useTheme();
+  const c = theme.colors;
+  const styles = useMemo(() => makeStyles(c), [c]);
   const [items, setItems] = useState<Interview[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -78,7 +68,10 @@ export default function MyInterviews() {
       const data = await listMyInterviews(token);
       setItems(data || []);
     } catch (err: any) {
-      console.log("my-interviews load error", err);
+      Alert.alert(
+        "Couldn't load interviews",
+        err?.message || "Pull down to retry."
+      );
     } finally {
       setLoading(false);
       setRefreshing(false);
@@ -114,8 +107,7 @@ export default function MyInterviews() {
         recommendation,
         strengths: strengths.trim() || undefined,
         concerns: concerns.trim() || undefined,
-        notes: notes.trim() || undefined,
-      });
+        notes: notes.trim() || undefined });
       setTarget(null);
       load();
     } catch (err: any) {
@@ -128,7 +120,7 @@ export default function MyInterviews() {
   if (loading) {
     return (
       <View style={styles.loader}>
-        <ActivityIndicator size="large" color="#3b82f6" />
+        <ActivityIndicator size="large" color={c.accent} />
       </View>
     );
   }
@@ -136,8 +128,8 @@ export default function MyInterviews() {
   return (
     <SafeAreaView style={styles.safe}>
       <View style={styles.header}>
-        <TouchableOpacity onPress={() => router.back()}>
-          <Ionicons name="arrow-back" size={24} color="#fff" />
+        <TouchableOpacity onPress={() => (router.canGoBack() ? router.back() : router.replace("/"))}>
+          <Ionicons name="arrow-back" size={24} color={c.text} />
         </TouchableOpacity>
         <Text style={styles.title}>My Interviews</Text>
         <View style={{ width: 24 }} />
@@ -153,8 +145,8 @@ export default function MyInterviews() {
           <RefreshControl
             refreshing={refreshing}
             onRefresh={onRefresh}
-            tintColor="#3b82f6"
-            colors={["#3b82f6"]}
+            tintColor={c.accent}
+            colors={[c.accent]}
           />
         }
         ListEmptyComponent={
@@ -162,7 +154,7 @@ export default function MyInterviews() {
             <Ionicons
               name="chatbubbles-outline"
               size={42}
-              color="#475569"
+              color={c.textFaint}
             />
             <Text style={styles.emptyText}>
               No interviews assigned to you
@@ -171,6 +163,7 @@ export default function MyInterviews() {
         }
         renderItem={({ item }) => {
           const canFeedback = item.status === "SCHEDULED";
+          const sc = interviewStatusColor(item.status, c);
           return (
             <View style={styles.card}>
               <View style={styles.cardTop}>
@@ -180,13 +173,10 @@ export default function MyInterviews() {
                 <View
                   style={[
                     styles.pill,
-                    {
-                      backgroundColor:
-                        STATUS_COLOR[item.status] || "#64748b",
-                    },
+                    { backgroundColor: sc.bg },
                   ]}
                 >
-                  <Text style={styles.pillText}>{item.status}</Text>
+                  <Text style={[styles.pillText, { color: sc.fg }]}>{item.status}</Text>
                 </View>
               </View>
               <Text style={styles.row}>
@@ -236,7 +226,7 @@ export default function MyInterviews() {
             <View style={styles.modalHeader}>
               <Text style={styles.modalTitle}>Interview feedback</Text>
               <TouchableOpacity onPress={() => setTarget(null)}>
-                <Ionicons name="close" size={24} color="#94a3b8" />
+                <Ionicons name="close" size={24} color={c.textMuted} />
               </TouchableOpacity>
             </View>
 
@@ -268,28 +258,30 @@ export default function MyInterviews() {
 
                 <Text style={styles.label}>Recommendation</Text>
                 <View style={styles.chipRow}>
-                  {INTERVIEW_RECS.map((r) => (
-                    <TouchableOpacity
-                      key={r}
-                      style={[
-                        styles.chip,
-                        recommendation === r && {
-                          backgroundColor: REC_COLOR[r],
-                          borderColor: REC_COLOR[r],
-                        },
-                      ]}
-                      onPress={() => setRecommendation(r)}
-                    >
-                      <Text
+                  {INTERVIEW_RECS.map((r) => {
+                    const sc = recommendationColor(r, c);
+                    return (
+                      <TouchableOpacity
+                        key={r}
                         style={[
-                          styles.chipText,
-                          recommendation === r && styles.chipTextActive,
+                          styles.chip,
+                          recommendation === r && {
+                            backgroundColor: sc.bg,
+                            borderColor: sc.solid },
                         ]}
+                        onPress={() => setRecommendation(r)}
                       >
-                        {r.replace("_", " ")}
-                      </Text>
-                    </TouchableOpacity>
-                  ))}
+                        <Text
+                          style={[
+                            styles.chipText,
+                            recommendation === r && { color: sc.fg },
+                          ]}
+                        >
+                          {r.replace("_", " ")}
+                        </Text>
+                      </TouchableOpacity>
+                    );
+                  })}
                 </View>
 
                 <Text style={styles.label}>Strengths</Text>
@@ -298,7 +290,7 @@ export default function MyInterviews() {
                   value={strengths}
                   onChangeText={setStrengths}
                   placeholder="What went well..."
-                  placeholderTextColor="#475569"
+                  placeholderTextColor={c.textFaint}
                   multiline
                   textAlignVertical="top"
                 />
@@ -308,7 +300,7 @@ export default function MyInterviews() {
                   value={concerns}
                   onChangeText={setConcerns}
                   placeholder="Any red flags..."
-                  placeholderTextColor="#475569"
+                  placeholderTextColor={c.textFaint}
                   multiline
                   textAlignVertical="top"
                 />
@@ -318,7 +310,7 @@ export default function MyInterviews() {
                   value={notes}
                   onChangeText={setNotes}
                   placeholder="Additional context"
-                  placeholderTextColor="#475569"
+                  placeholderTextColor={c.textFaint}
                   multiline
                   textAlignVertical="top"
                 />
@@ -350,126 +342,112 @@ export default function MyInterviews() {
   );
 }
 
-const styles = StyleSheet.create({
-  safe: { flex: 1, backgroundColor: "#0b1220" },
+const makeStyles = (c: any) => StyleSheet.create({
+  safe: { flex: 1, backgroundColor: c.bg },
   loader: {
     flex: 1,
-    backgroundColor: "#0b1220",
+    backgroundColor: c.bg,
     justifyContent: "center",
-    alignItems: "center",
-  },
+    alignItems: "center" },
   header: {
     flexDirection: "row",
     alignItems: "center",
     paddingHorizontal: 16,
     paddingVertical: 14,
     borderBottomWidth: 1,
-    borderBottomColor: "#1f2937",
-    gap: 12,
-  },
-  title: { color: "#fff", fontSize: 18, fontWeight: "800", flex: 1 },
+    borderBottomColor: c.surfaceBorder,
+    gap: 12 },
+  title: { color: c.text, fontSize: 18, fontWeight: "800", flex: 1 },
   card: {
-    backgroundColor: "#111827",
+    backgroundColor: c.surface,
     padding: 14,
     borderRadius: 14,
     marginBottom: 8,
     borderWidth: 1,
-    borderColor: "#1f2937",
-  },
+    borderColor: c.surfaceBorder },
   cardTop: {
     flexDirection: "row",
     alignItems: "center",
-    justifyContent: "space-between",
-  },
-  who: { color: "#fff", fontSize: 15, fontWeight: "700" },
+    justifyContent: "space-between" },
+  who: { color: c.text, fontSize: 15, fontWeight: "700" },
   pill: {
     paddingHorizontal: 8,
     paddingVertical: 3,
-    borderRadius: 6,
-  },
-  pillText: { color: "#fff", fontSize: 10, fontWeight: "800" },
-  row: { color: "#94a3b8", fontSize: 12, marginTop: 6 },
+    borderRadius: 6 },
+  pillText: { color: c.text, fontSize: 10, fontWeight: "800" },
+  row: { color: c.textMuted, fontSize: 12, marginTop: 6 },
   round: { color: "#8b5cf6", fontSize: 11, marginTop: 4 },
   feedbackBtn: {
     flexDirection: "row",
     alignItems: "center",
-    backgroundColor: "#3b82f6",
+    backgroundColor: c.accent,
     alignSelf: "flex-start",
     paddingHorizontal: 12,
     paddingVertical: 7,
     borderRadius: 10,
     marginTop: 10,
-    gap: 6,
-  },
+    gap: 6 },
   feedbackBtnText: {
     color: "#fff",
     fontSize: 12,
-    fontWeight: "800",
-  },
+    fontWeight: "800" },
   emptyWrap: { flex: 1, justifyContent: "center" },
   empty: { alignItems: "center", gap: 10 },
-  emptyText: { color: "#475569", fontSize: 14 },
+  emptyText: { color: c.textMuted, fontSize: 14 },
   modalWrap: {
     flex: 1,
     justifyContent: "flex-end",
-    backgroundColor: "rgba(0,0,0,0.5)",
-  },
+    backgroundColor: c.overlay },
   modal: {
-    backgroundColor: "#0f172a",
+    backgroundColor: c.surfaceMuted,
     padding: 20,
     borderTopLeftRadius: 18,
     borderTopRightRadius: 18,
     borderTopWidth: 1,
-    borderTopColor: "#1e293b",
-    maxHeight: "92%",
-  },
+    borderTopColor: c.surfaceBorder,
+    maxHeight: "92%" },
   modalHeader: {
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
-    marginBottom: 10,
-  },
-  modalTitle: { color: "#fff", fontSize: 17, fontWeight: "800" },
-  candidate: { color: "#fff", fontSize: 16, fontWeight: "800" },
-  hint: { color: "#64748b", fontSize: 12, marginTop: 2 },
+    marginBottom: 10 },
+  modalTitle: { color: c.text, fontSize: 17, fontWeight: "800" },
+  candidate: { color: c.text, fontSize: 16, fontWeight: "800" },
+  hint: { color: c.textMuted, fontSize: 12, marginTop: 2 },
   label: {
-    color: "#94a3b8",
+    color: c.textMuted,
     fontSize: 11,
     letterSpacing: 1.2,
     fontWeight: "700",
     marginTop: 14,
-    marginBottom: 6,
-  },
+    marginBottom: 6 },
   input: {
-    backgroundColor: "#111827",
-    color: "#fff",
+    backgroundColor: c.surface,
+    color: c.text,
     paddingHorizontal: 12,
     paddingVertical: 10,
     borderRadius: 10,
     borderWidth: 1,
-    borderColor: "#1f2937",
-  },
+    borderColor: c.surfaceBorder },
   starsRow: { flexDirection: "row", gap: 10, marginTop: 6 },
   chipRow: { flexDirection: "row", flexWrap: "wrap", gap: 6 },
   chip: {
     paddingHorizontal: 10,
     paddingVertical: 6,
     borderRadius: 999,
-    backgroundColor: "#111827",
+    backgroundColor: c.surface,
     borderWidth: 1,
-    borderColor: "#1f2937",
-  },
-  chipText: { color: "#94a3b8", fontSize: 11, fontWeight: "700" },
-  chipTextActive: { color: "#fff" },
+    borderColor: c.surfaceBorder },
+  chipText: { color: c.textMuted, fontSize: 11, fontWeight: "700" },
+  chipTextActive: { color: c.text },
   actions: { flexDirection: "row", gap: 10, marginTop: 18 },
   btn: {
     flex: 1,
     paddingVertical: 14,
     borderRadius: 12,
-    alignItems: "center",
-  },
-  btnGhost: { backgroundColor: "#1e293b" },
-  btnGhostText: { color: "#94a3b8", fontWeight: "700" },
-  btnPrimary: { backgroundColor: "#3b82f6" },
-  btnPrimaryText: { color: "#fff", fontWeight: "800" },
-});
+    alignItems: "center" },
+  btnGhost: { backgroundColor: c.surfaceMuted },
+  btnGhostText: { color: c.textMuted, fontWeight: "700" },
+  btnPrimary: { backgroundColor: c.accent },
+  btnPrimaryText: { color: "#fff", fontWeight: "800" } });
+

@@ -1,7 +1,7 @@
-import React, {
+﻿import React, {
   useEffect,
-  useState,
-} from "react";
+  useMemo,
+  useState } from "react";
 
 import {
   View,
@@ -9,9 +9,8 @@ import {
   StyleSheet,
   ScrollView,
   TouchableOpacity,
-  ActivityIndicator,
-  SafeAreaView,
-} from "react-native";
+  ActivityIndicator } from "react-native";
+import { SafeAreaView } from "react-native-safe-area-context";
 
 import AsyncStorage from "@react-native-async-storage/async-storage";
 
@@ -21,32 +20,36 @@ import { Ionicons } from "@expo/vector-icons";
 
 import {
   myPayslips,
-  myPayslipPdfUrl,
-} from "../src/services/payroll";
+  myPayslipPdfUrl } from "../src/services/payroll";
+
+import { getMe } from "../src/services/api";
 
 import { downloadPdfWithAuth } from "../src/utils/download";
 
-import { Payslip } from "../src/types";
+import { Payslip, User, isIntern } from "../src/types";
+import { useTheme } from "../src/theme/ThemeProvider";
 
 const monthLabel = (year: number, month: number) =>
   new Date(year, month - 1, 1).toLocaleDateString("en-US", {
     month: "long",
-    year: "numeric",
-  });
+    year: "numeric" });
 
 export default function MyPayroll() {
 
   const router = useRouter();
+  const { theme } = useTheme();
+  const c = theme.colors;
+  const s = useMemo(() => makeStyles(c), [c]);
 
   const [items, setItems] = useState<Payslip[]>([]);
   const [loading, setLoading] = useState(true);
   const [downloadingId, setDownloadingId] = useState<string | null>(null);
+  const [me, setMe] = useState<User | null>(null);
 
   const [popup, setPopup] = useState({
     visible: false,
     type: "success" as "success" | "error",
-    message: "",
-  });
+    message: "" });
 
   const showPopup = (
     msg: string,
@@ -63,6 +66,15 @@ export default function MyPayroll() {
       const token = await AsyncStorage.getItem("token");
       if (!token) {
         router.replace("/login");
+        return;
+      }
+      // Resolve the caller first so the Intern gate can short-circuit
+      // before we hit the (unauthorized for interns) payslips endpoint.
+      const meRes = await getMe(token).catch(() => null);
+      setMe(meRes);
+      if (isIntern(meRes)) {
+        setItems([]);
+        setLoading(false);
         return;
       }
       const res = await myPayslips(token);
@@ -98,7 +110,7 @@ export default function MyPayroll() {
   if (loading) {
     return (
       <View style={s.loader}>
-        <ActivityIndicator size="large" color="#2563eb" />
+        <ActivityIndicator size="large" color={c.accent} />
       </View>
     );
   }
@@ -125,9 +137,9 @@ export default function MyPayroll() {
         <View style={s.header}>
           <TouchableOpacity
             style={s.backBtn}
-            onPress={() => router.back()}
+            onPress={() => (router.canGoBack() ? router.back() : router.replace("/"))}
           >
-            <Ionicons name="chevron-back" size={22} color="#fff" />
+            <Ionicons name="chevron-back" size={22} color={c.text} />
           </TouchableOpacity>
           <View style={{ flex: 1 }}>
             <Text style={s.title}>Payslips</Text>
@@ -137,12 +149,27 @@ export default function MyPayroll() {
           </View>
         </View>
 
-        {items.length === 0 && (
+        {isIntern(me) && (
+          <View style={s.empty}>
+            <Ionicons
+              name="lock-closed-outline"
+              size={48}
+              color={c.textFaint}
+            />
+            <Text style={s.emptyTitle}>Payslips not available</Text>
+            <Text style={s.emptySub}>
+              Payslip visibility is restricted for interns. Please reach
+              out to HR for stipend or compensation details.
+            </Text>
+          </View>
+        )}
+
+        {!isIntern(me) && items.length === 0 && (
           <View style={s.empty}>
             <Ionicons
               name="document-text-outline"
               size={48}
-              color="#475569"
+              color={c.textFaint}
             />
             <Text style={s.emptyTitle}>No payslips yet</Text>
             <Text style={s.emptySub}>
@@ -169,17 +196,19 @@ export default function MyPayroll() {
             </View>
 
             <View style={s.breakdown}>
-              <Row label="Gross" value={p.totalGross} />
+              <Row label="Gross" value={p.totalGross} s={s} />
               <Row
                 label="Deductions"
                 value={-p.totalDeductions}
                 colorize="red"
+                s={s}
               />
               {p.lopDeduction > 0 && (
                 <Row
                   label="LOP"
                   value={-p.lopDeduction}
                   colorize="red"
+                  s={s}
                 />
               )}
             </View>
@@ -217,10 +246,11 @@ const Row = ({
   label,
   value,
   colorize,
-}: {
+  s }: {
   label: string;
   value: number;
   colorize?: "red" | "green";
+  s: any;
 }) => (
   <View style={s.row}>
     <Text style={s.rowLabel}>{label}</Text>
@@ -236,36 +266,36 @@ const Row = ({
   </View>
 );
 
-const s = StyleSheet.create({
-  safe: { flex: 1, backgroundColor: "#0b1220" },
+const makeStyles = (c: any) => StyleSheet.create({
+  safe: { flex: 1, backgroundColor: c.bg },
   container: { flex: 1 },
   content: { padding: 20, paddingBottom: 60 },
-  loader: { flex: 1, backgroundColor: "#0b1220", justifyContent: "center", alignItems: "center" },
+  loader: { flex: 1, backgroundColor: c.bg, justifyContent: "center", alignItems: "center" },
   popup: { position: "absolute", top: 60, left: 20, right: 20, padding: 14, borderRadius: 14, zIndex: 999 },
   popupOk: { backgroundColor: "#16a34a" },
   popupErr: { backgroundColor: "#dc2626" },
-  popupText: { color: "#fff", fontWeight: "700", textAlign: "center" },
+  popupText: { color: c.text, fontWeight: "700", textAlign: "center" },
 
   header: { flexDirection: "row", alignItems: "center", marginBottom: 18, marginTop: 10, gap: 12 },
-  backBtn: { width: 42, height: 42, borderRadius: 12, backgroundColor: "#111827", justifyContent: "center", alignItems: "center", borderWidth: 1, borderColor: "#1f2937" },
-  title: { color: "#fff", fontSize: 24, fontWeight: "800" },
-  subtitle: { color: "#94a3b8", fontSize: 13, marginTop: 3 },
+  backBtn: { width: 42, height: 42, borderRadius: 12, backgroundColor: c.surface, justifyContent: "center", alignItems: "center", borderWidth: 1, borderColor: c.surfaceBorder },
+  title: { color: c.text, fontSize: 24, fontWeight: "800" },
+  subtitle: { color: c.textMuted, fontSize: 13, marginTop: 3 },
 
-  empty: { padding: 40, backgroundColor: "#111827", borderRadius: 18, borderWidth: 1, borderColor: "#1f2937", alignItems: "center", marginTop: 20 },
-  emptyTitle: { color: "#fff", fontSize: 17, fontWeight: "700", marginTop: 14 },
-  emptySub: { color: "#94a3b8", fontSize: 13, marginTop: 6, textAlign: "center" },
+  empty: { padding: 40, backgroundColor: c.surface, borderRadius: 18, borderWidth: 1, borderColor: c.surfaceBorder, alignItems: "center", marginTop: 20 },
+  emptyTitle: { color: c.text, fontSize: 17, fontWeight: "700", marginTop: 14 },
+  emptySub: { color: c.textMuted, fontSize: 13, marginTop: 6, textAlign: "center" },
 
-  card: { backgroundColor: "#111827", borderRadius: 16, padding: 16, marginBottom: 12, borderWidth: 1, borderColor: "#1f2937" },
+  card: { backgroundColor: c.surface, borderRadius: 16, padding: 16, marginBottom: 12, borderWidth: 1, borderColor: c.surfaceBorder },
   cardTop: { flexDirection: "row", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 14 },
-  cardMonth: { color: "#fff", fontSize: 16, fontWeight: "800" },
-  cardMeta: { color: "#94a3b8", fontSize: 11, marginTop: 4 },
-  netPay: { color: "#16a34a", fontSize: 22, fontWeight: "800" },
+  cardMonth: { color: c.text, fontSize: 16, fontWeight: "800" },
+  cardMeta: { color: c.textMuted, fontSize: 11, marginTop: 4 },
+  netPay: { color: c.successText, fontSize: 22, fontWeight: "800" },
 
-  breakdown: { backgroundColor: "#0f172a", borderRadius: 10, padding: 10, borderWidth: 1, borderColor: "#1e293b" },
+  breakdown: { backgroundColor: c.surfaceMuted, borderRadius: 10, padding: 10, borderWidth: 1, borderColor: c.surfaceBorder },
   row: { flexDirection: "row", justifyContent: "space-between", paddingVertical: 3 },
-  rowLabel: { color: "#94a3b8", fontSize: 12 },
-  rowVal: { color: "#fff", fontSize: 13, fontWeight: "700" },
+  rowLabel: { color: c.textMuted, fontSize: 12 },
+  rowVal: { color: c.text, fontSize: 13, fontWeight: "700" },
 
-  downloadBtn: { marginTop: 12, backgroundColor: "#2563eb", paddingVertical: 10, borderRadius: 10, flexDirection: "row", justifyContent: "center", alignItems: "center", gap: 6 },
-  downloadText: { color: "#fff", fontWeight: "700", fontSize: 13 },
-});
+  downloadBtn: { marginTop: 12, backgroundColor: c.accent, paddingVertical: 10, borderRadius: 10, flexDirection: "row", justifyContent: "center", alignItems: "center", gap: 6 },
+  downloadText: { color: c.text, fontWeight: "700", fontSize: 13 } });
+

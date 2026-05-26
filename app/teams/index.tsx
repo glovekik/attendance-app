@@ -1,7 +1,6 @@
-import React, {
+﻿import React, {
   useState,
-  useCallback,
-} from "react";
+  useCallback, useMemo} from "react";
 
 import {
   View,
@@ -11,9 +10,8 @@ import {
   TouchableOpacity,
   TextInput,
   ActivityIndicator,
-  Modal,
-  SafeAreaView,
-} from "react-native";
+  Modal } from "react-native";
+import { SafeAreaView } from "react-native-safe-area-context";
 
 import AsyncStorage from "@react-native-async-storage/async-storage";
 
@@ -24,21 +22,26 @@ import { Ionicons } from "@expo/vector-icons";
 import {
   listTeams,
   createTeam,
-  listMyLedTeams,
-} from "../../src/services/teams";
+  listMyLedTeams } from "../../src/services/teams";
 
 import { listUsers } from "../../src/services/users";
 import { getMe } from "../../src/services/api";
 
+import { useTheme } from "../../src/theme/ThemeProvider";
 import {
   Team,
   User,
-  hasRole,
-} from "../../src/types";
+  hasRole } from "../../src/types";
 
 export default function Teams() {
 
   const router = useRouter();
+
+  const { theme } = useTheme();
+
+  const c = theme.colors;
+
+  const styles = useMemo(() => makeStyles(c), [c]);
 
   const [me, setMe] = useState<User | null>(null);
   const [teams, setTeams] = useState<Team[]>([]);
@@ -54,8 +57,7 @@ export default function Teams() {
   const [popup, setPopup] = useState({
     visible: false,
     type: "success" as "success" | "error",
-    message: "",
-  });
+    message: "" });
 
   const showPopup = (
     msg: string,
@@ -87,7 +89,11 @@ export default function Teams() {
           listUsers(token),
         ]);
         setTeams(teamsRes || []);
-        setUsers(usersRes || []);
+        // Drop terminated users so they don't appear in team-lead /
+        // member pickers downstream.
+        setUsers(
+          (usersRes || []).filter((u) => u.status !== "Terminated")
+        );
       } else {
         const ledTeams = await listMyLedTeams(token);
         setTeams(ledTeams || []);
@@ -148,8 +154,7 @@ export default function Teams() {
       await createTeam(token, {
         name: name.trim(),
         teamLeadId: leadId,
-        memberIds,
-      });
+        memberIds });
 
       showPopup("Team created");
       setModalVisible(false);
@@ -165,7 +170,7 @@ export default function Teams() {
   if (loading) {
     return (
       <View style={styles.loader}>
-        <ActivityIndicator size="large" color="#2563eb" />
+        <ActivityIndicator size="large" color={c.accent} />
       </View>
     );
   }
@@ -194,9 +199,9 @@ export default function Teams() {
         <View style={styles.header}>
           <TouchableOpacity
             style={styles.backBtn}
-            onPress={() => router.back()}
+            onPress={() => (router.canGoBack() ? router.back() : router.replace("/"))}
           >
-            <Ionicons name="chevron-back" size={22} color="#fff" />
+            <Ionicons name="chevron-back" size={22} color={c.text} />
           </TouchableOpacity>
 
           <View style={{ flex: 1 }}>
@@ -251,7 +256,7 @@ export default function Teams() {
               <Ionicons
                 name="chevron-forward"
                 size={20}
-                color="#64748b"
+                color={c.textMuted}
               />
             </TouchableOpacity>
           );
@@ -289,7 +294,7 @@ export default function Teams() {
                 value={name}
                 onChangeText={setName}
                 placeholder="e.g. Backend Squad"
-                placeholderTextColor="#64748b"
+                placeholderTextColor={c.textFaint}
               />
 
               <Text style={styles.label}>Team Lead</Text>
@@ -370,16 +375,15 @@ export default function Teams() {
   );
 }
 
-const styles = StyleSheet.create({
-  safe: { flex: 1, backgroundColor: "#0b1220" },
+const makeStyles = (c: any) => StyleSheet.create({
+  safe: { flex: 1, backgroundColor: c.bg },
   container: { flex: 1 },
   content: { padding: 20, paddingBottom: 60 },
   loader: {
     flex: 1,
-    backgroundColor: "#0b1220",
+    backgroundColor: c.bg,
     justifyContent: "center",
-    alignItems: "center",
-  },
+    alignItems: "center" },
 
   popup: {
     position: "absolute",
@@ -388,146 +392,127 @@ const styles = StyleSheet.create({
     right: 20,
     padding: 14,
     borderRadius: 14,
-    zIndex: 999,
-  },
+    zIndex: 999 },
   successPopup: { backgroundColor: "#16a34a" },
   errorPopup: { backgroundColor: "#dc2626" },
-  popupText: { color: "#fff", fontWeight: "700", textAlign: "center" },
+  popupText: { color: c.text, fontWeight: "700", textAlign: "center" },
 
   header: {
     flexDirection: "row",
     alignItems: "center",
     marginBottom: 18,
     marginTop: 10,
-    gap: 12,
-  },
+    gap: 12 },
   backBtn: {
     width: 42,
     height: 42,
     borderRadius: 12,
-    backgroundColor: "#111827",
+    backgroundColor: c.surface,
     justifyContent: "center",
     alignItems: "center",
     borderWidth: 1,
-    borderColor: "#1f2937",
-  },
+    borderColor: c.surfaceBorder },
   addBtn: {
     width: 42,
     height: 42,
     borderRadius: 12,
-    backgroundColor: "#2563eb",
+    backgroundColor: c.accent,
     justifyContent: "center",
-    alignItems: "center",
-  },
-  title: { color: "#fff", fontSize: 24, fontWeight: "800" },
-  subtitle: { color: "#94a3b8", fontSize: 13, marginTop: 3 },
+    alignItems: "center" },
+  title: { color: c.text, fontSize: 24, fontWeight: "800" },
+  subtitle: { color: c.textMuted, fontSize: 13, marginTop: 3 },
 
   card: {
     flexDirection: "row",
     alignItems: "center",
-    backgroundColor: "#111827",
+    backgroundColor: c.surface,
     borderRadius: 14,
     padding: 14,
     marginBottom: 10,
     borderWidth: 1,
-    borderColor: "#1f2937",
-    gap: 12,
-  },
+    borderColor: c.surfaceBorder,
+    gap: 12 },
   iconBox: {
     width: 44,
     height: 44,
     borderRadius: 12,
     justifyContent: "center",
-    alignItems: "center",
-  },
-  cardName: { color: "#fff", fontSize: 15, fontWeight: "700" },
-  cardMeta: { color: "#94a3b8", fontSize: 12, marginTop: 3 },
+    alignItems: "center" },
+  cardName: { color: c.text, fontSize: 15, fontWeight: "700" },
+  cardMeta: { color: c.textMuted, fontSize: 12, marginTop: 3 },
 
   emptyBox: {
     alignItems: "center",
     padding: 40,
-    backgroundColor: "#111827",
+    backgroundColor: c.surface,
     borderRadius: 18,
     borderWidth: 1,
-    borderColor: "#1f2937",
-    marginTop: 20,
-  },
-  emptyTitle: { color: "#fff", fontSize: 16, fontWeight: "700" },
+    borderColor: c.surfaceBorder,
+    marginTop: 20 },
+  emptyTitle: { color: c.text, fontSize: 16, fontWeight: "700" },
   emptySub: {
-    color: "#94a3b8",
+    color: c.textMuted,
     fontSize: 13,
     marginTop: 6,
-    textAlign: "center",
-  },
+    textAlign: "center" },
 
   modalOverlay: {
     flex: 1,
-    backgroundColor: "rgba(0,0,0,0.7)",
+    backgroundColor: "rgba(29,24,56,0.35)",
     justifyContent: "center",
-    padding: 20,
-  },
+    padding: 20 },
   modalCard: {
-    backgroundColor: "#111827",
+    backgroundColor: c.surface,
     borderRadius: 18,
     padding: 20,
-    maxHeight: "90%",
-  },
+    maxHeight: "90%" },
   modalTitle: {
-    color: "#fff",
+    color: c.text,
     fontSize: 22,
     fontWeight: "800",
-    marginBottom: 16,
-  },
+    marginBottom: 16 },
 
   label: {
-    color: "#94a3b8",
+    color: c.textMuted,
     fontSize: 13,
     fontWeight: "600",
     marginBottom: 6,
-    marginTop: 12,
-  },
+    marginTop: 12 },
   input: {
-    backgroundColor: "#0f172a",
-    color: "#fff",
+    backgroundColor: c.surfaceMuted,
+    color: c.text,
     borderRadius: 12,
     padding: 13,
     borderWidth: 1,
     borderColor: "#1e293b",
-    fontSize: 14,
-  },
+    fontSize: 14 },
 
   userPicker: {
     flexDirection: "row",
     gap: 8,
-    flexWrap: "wrap",
-  },
+    flexWrap: "wrap" },
   userPickBtn: {
     paddingHorizontal: 12,
     paddingVertical: 8,
     borderRadius: 10,
-    backgroundColor: "#1e293b",
-  },
-  userPickActive: { backgroundColor: "#2563eb" },
-  userPickText: { color: "#94a3b8", fontWeight: "600", fontSize: 13 },
+    backgroundColor: "#1e293b" },
+  userPickActive: { backgroundColor: c.accent },
+  userPickText: { color: c.textMuted, fontWeight: "600", fontSize: 13 },
 
   modalActions: {
     flexDirection: "row",
     gap: 10,
-    marginTop: 22,
-  },
+    marginTop: 22 },
   cancelBtn: {
     flex: 1,
-    backgroundColor: "#374151",
+    backgroundColor: c.surfaceMuted,
     padding: 14,
     borderRadius: 12,
-    alignItems: "center",
-  },
+    alignItems: "center" },
   saveBtn: {
     flex: 1,
     backgroundColor: "#16a34a",
     padding: 14,
     borderRadius: 12,
-    alignItems: "center",
-  },
-  modalBtnText: { color: "#fff", fontWeight: "700" },
-});
+    alignItems: "center" },
+  modalBtnText: { color: c.text, fontWeight: "700" } });

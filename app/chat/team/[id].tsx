@@ -1,8 +1,7 @@
 import React, {
   useEffect,
   useState,
-  useCallback,
-} from "react";
+  useCallback, useMemo} from "react";
 
 import {
   View,
@@ -27,6 +26,7 @@ import {
   listTeamMessages,
   sendTeamMessage,
   deleteTeamMessage,
+  markChatRead,
 } from "../../../src/services/chat";
 
 import {
@@ -36,6 +36,7 @@ import {
 
 import { getMe } from "../../../src/services/api";
 
+import { useTheme } from "../../../src/theme/ThemeProvider";
 import {
   User,
   Team,
@@ -45,6 +46,12 @@ import {
 export default function TeamChat() {
 
   const router = useRouter();
+
+  const { theme } = useTheme();
+
+  const c = theme.colors;
+
+  const styles = useMemo(() => makeStyles(c), [c]);
 
   const params = useLocalSearchParams();
   const teamId = params.id as string;
@@ -59,6 +66,8 @@ export default function TeamChat() {
         router.replace("/login");
         return;
       }
+      // Opening a team chat clears the dashboard unread badge.
+      markChatRead(token).catch(() => {});
       try {
         const user = await getMe(token);
         setMe(user);
@@ -115,9 +124,9 @@ export default function TeamChat() {
       <View style={styles.header}>
         <TouchableOpacity
           style={styles.backBtn}
-          onPress={() => router.back()}
+          onPress={() => (router.canGoBack() ? router.back() : router.replace("/"))}
         >
-          <Ionicons name="chevron-back" size={22} color="#fff" />
+          <Ionicons name="chevron-back" size={22} color={c.text} />
         </TouchableOpacity>
 
         <View style={{ flex: 1 }}>
@@ -144,8 +153,8 @@ export default function TeamChat() {
   );
 }
 
-const styles = StyleSheet.create({
-  safe: { flex: 1, backgroundColor: "#0b1220" },
+const makeStyles = (c: any) => StyleSheet.create({
+  safe: { flex: 1, backgroundColor: c.bg },
   header: {
     flexDirection: "row",
     alignItems: "center",
@@ -154,25 +163,25 @@ const styles = StyleSheet.create({
     paddingBottom: 12,
     gap: 10,
     borderBottomWidth: 1,
-    borderBottomColor: "#1f2937",
+    borderBottomColor: c.surfaceBorder,
   },
   backBtn: {
     width: 38,
     height: 38,
     borderRadius: 10,
-    backgroundColor: "#111827",
+    backgroundColor: c.surface,
     justifyContent: "center",
     alignItems: "center",
     borderWidth: 1,
-    borderColor: "#1f2937",
+    borderColor: c.surfaceBorder,
   },
   title: {
-    color: "#fff",
+    color: c.text,
     fontSize: 18,
     fontWeight: "800",
   },
   subtitle: {
-    color: "#94a3b8",
+    color: c.textMuted,
     fontSize: 12,
     marginTop: 2,
   },

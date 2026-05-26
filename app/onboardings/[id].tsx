@@ -1,7 +1,6 @@
 import React, {
   useEffect,
-  useState,
-} from "react";
+  useState, useMemo} from "react";
 
 import {
   View,
@@ -24,6 +23,7 @@ import {
 
 import { Ionicons } from "@expo/vector-icons";
 
+import { useTheme } from "../../src/theme/ThemeProvider";
 import {
   hrGetOnboarding,
   hrSendWelcomeEmail,
@@ -41,6 +41,12 @@ import {
 export default function HROnboardingDetail() {
 
   const router = useRouter();
+
+  const { theme } = useTheme();
+
+  const c = theme.colors;
+
+  const s = useMemo(() => makeStyles(c), [c]);
   const params = useLocalSearchParams();
   const id = params.id as string;
 
@@ -196,7 +202,7 @@ export default function HROnboardingDetail() {
   if (loading) {
     return (
       <View style={s.loader}>
-        <ActivityIndicator size="large" color="#2563eb" />
+        <ActivityIndicator size="large" color={c.accent} />
       </View>
     );
   }
@@ -204,7 +210,7 @@ export default function HROnboardingDetail() {
   if (!data) {
     return (
       <View style={s.loader}>
-        <Text style={{ color: "#fff" }}>Not found</Text>
+        <Text style={{ color: c.text }}>Not found</Text>
       </View>
     );
   }
@@ -238,9 +244,9 @@ export default function HROnboardingDetail() {
         <View style={s.header}>
           <TouchableOpacity
             style={s.backBtn}
-            onPress={() => router.back()}
+            onPress={() => (router.canGoBack() ? router.back() : router.replace("/"))}
           >
-            <Ionicons name="chevron-back" size={22} color="#fff" />
+            <Ionicons name="chevron-back" size={22} color={c.text} />
           </TouchableOpacity>
           <View style={{ flex: 1 }}>
             <Text style={s.title}>
@@ -255,7 +261,7 @@ export default function HROnboardingDetail() {
                 backgroundColor: "#16a34a",
               },
               data.status === "IN_PROGRESS" && {
-                backgroundColor: "#2563eb",
+                backgroundColor: c.accent,
               },
               data.status === "PENDING" && {
                 backgroundColor: "#f59e0b",
@@ -273,7 +279,7 @@ export default function HROnboardingDetail() {
           <Ionicons
             name="mail-outline"
             size={20}
-            color="#94a3b8"
+            color={c.textMuted}
           />
           <View style={{ flex: 1, marginLeft: 10 }}>
             <Text style={s.cardName}>Welcome Email</Text>
@@ -353,7 +359,7 @@ export default function HROnboardingDetail() {
                   <Ionicons
                     name="close-outline"
                     size={14}
-                    color="#fff"
+                    color={c.text}
                   />
                 </TouchableOpacity>
               </View>
@@ -386,7 +392,7 @@ export default function HROnboardingDetail() {
                     s.cardName,
                     done && {
                       textDecorationLine: "line-through",
-                      color: "#94a3b8",
+                      color: c.textMuted,
                     },
                   ]}
                 >
@@ -445,37 +451,37 @@ export default function HROnboardingDetail() {
   );
 }
 
-const s = StyleSheet.create({
-  safe: { flex: 1, backgroundColor: "#0b1220" },
+const makeStyles = (c: any) => StyleSheet.create({
+  safe: { flex: 1, backgroundColor: c.bg },
   container: { flex: 1 },
   content: { padding: 20, paddingBottom: 60 },
-  loader: { flex: 1, backgroundColor: "#0b1220", justifyContent: "center", alignItems: "center" },
+  loader: { flex: 1, backgroundColor: c.bg, justifyContent: "center", alignItems: "center" },
   popup: { position: "absolute", top: 60, left: 20, right: 20, padding: 14, borderRadius: 14, zIndex: 999 },
   popupOk: { backgroundColor: "#16a34a" },
   popupErr: { backgroundColor: "#dc2626" },
-  popupText: { color: "#fff", fontWeight: "700", textAlign: "center" },
+  popupText: { color: c.text, fontWeight: "700", textAlign: "center" },
 
   header: { flexDirection: "row", alignItems: "center", marginBottom: 14, marginTop: 10, gap: 12 },
-  backBtn: { width: 42, height: 42, borderRadius: 12, backgroundColor: "#111827", justifyContent: "center", alignItems: "center", borderWidth: 1, borderColor: "#1f2937" },
-  title: { color: "#fff", fontSize: 22, fontWeight: "800" },
-  subtitle: { color: "#94a3b8", fontSize: 12, marginTop: 3 },
+  backBtn: { width: 42, height: 42, borderRadius: 12, backgroundColor: c.surface, justifyContent: "center", alignItems: "center", borderWidth: 1, borderColor: c.surfaceBorder },
+  title: { color: c.text, fontSize: 22, fontWeight: "800" },
+  subtitle: { color: c.textMuted, fontSize: 12, marginTop: 3 },
 
   statusChip: { paddingHorizontal: 9, paddingVertical: 4, borderRadius: 999 },
-  statusText: { color: "#fff", fontSize: 9, fontWeight: "800", letterSpacing: 0.5 },
+  statusText: { color: c.text, fontSize: 9, fontWeight: "800", letterSpacing: 0.5 },
 
-  section: { color: "#64748b", fontSize: 12, letterSpacing: 1.5, fontWeight: "700", marginBottom: 10 },
+  section: { color: c.textMuted, fontSize: 12, letterSpacing: 1.5, fontWeight: "700", marginBottom: 10 },
 
-  card: { flexDirection: "row", alignItems: "center", backgroundColor: "#111827", borderRadius: 12, padding: 12, marginBottom: 8, borderWidth: 1, borderColor: "#1f2937", gap: 10 },
-  cardName: { color: "#fff", fontSize: 14, fontWeight: "700" },
-  cardMeta: { color: "#94a3b8", fontSize: 11, marginTop: 3 },
+  card: { flexDirection: "row", alignItems: "center", backgroundColor: c.surface, borderRadius: 12, padding: 12, marginBottom: 8, borderWidth: 1, borderColor: c.surfaceBorder, gap: 10 },
+  cardName: { color: c.text, fontSize: 14, fontWeight: "700" },
+  cardMeta: { color: c.textMuted, fontSize: 11, marginTop: 3 },
   linkText: { color: "#60a5fa", fontSize: 11, marginTop: 4 },
 
-  sendBtn: { backgroundColor: "#2563eb", paddingHorizontal: 12, paddingVertical: 7, borderRadius: 8 },
-  sendText: { color: "#fff", fontWeight: "700", fontSize: 12 },
+  sendBtn: { backgroundColor: c.accent, paddingHorizontal: 12, paddingVertical: 7, borderRadius: 8 },
+  sendText: { color: c.text, fontWeight: "700", fontSize: 12 },
 
   actionsCol: { flexDirection: "column", gap: 5 },
   smallBtn: { width: 30, height: 30, borderRadius: 8, backgroundColor: "#16a34a", justifyContent: "center", alignItems: "center" },
 
   completeBtn: { marginTop: 22, backgroundColor: "#16a34a", paddingVertical: 14, borderRadius: 14, flexDirection: "row", justifyContent: "center", alignItems: "center", gap: 8 },
-  completeText: { color: "#fff", fontWeight: "700", fontSize: 15 },
+  completeText: { color: c.text, fontWeight: "700", fontSize: 15 },
 });

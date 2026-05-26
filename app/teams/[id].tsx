@@ -1,7 +1,6 @@
 import React, {
   useState,
-  useCallback,
-} from "react";
+  useCallback, useMemo} from "react";
 
 import {
   View,
@@ -40,6 +39,7 @@ import { getMe } from "../../src/services/api";
 
 import { cancelTaskReminder } from "../../src/services/reminders";
 
+import { useTheme } from "../../src/theme/ThemeProvider";
 import {
   Team,
   Task,
@@ -50,6 +50,12 @@ import {
 export default function TeamDetail() {
 
   const router = useRouter();
+
+  const { theme } = useTheme();
+
+  const c = theme.colors;
+
+  const styles = useMemo(() => makeStyles(c), [c]);
 
   const params = useLocalSearchParams();
   const teamId = params.id as string;
@@ -97,7 +103,10 @@ export default function TeamDetail() {
           listUsers(token),
         ]);
         t = hrTeam;
-        setUsers(hrUsers || []);
+        // Filter terminated users from the member-picker pool.
+        setUsers(
+          (hrUsers || []).filter((u) => u.status !== "Terminated")
+        );
       } else {
         const myTeams = await listMyLedTeams(token);
         const found = myTeams.find((x) => x.id === teamId);
@@ -134,6 +143,15 @@ export default function TeamDetail() {
   const isLead = !!me && !!team && me.id === team.teamLeadId;
 
   const userName = (id: string) => {
+    // The team lead is returned as `team.teamLead` separately from the
+    // members list — check that first so the header shows the real name
+    // instead of a truncated id slice.
+    if (team?.teamLead && team.teamLead.id === id) {
+      return team.teamLead.name;
+    }
+    if (team?.leadName && team.teamLeadId === id) {
+      return team.leadName;
+    }
     if (isHR) {
       const u = users.find((x) => x.id === id);
       return u?.name || id.slice(-6);
@@ -146,6 +164,9 @@ export default function TeamDetail() {
   };
 
   const userEmail = (id: string) => {
+    if (team?.teamLead && team.teamLead.id === id) {
+      return team.teamLead.email || "";
+    }
     if (isHR) {
       return users.find((x) => x.id === id)?.email || "";
     }
@@ -199,7 +220,7 @@ export default function TeamDetail() {
   if (loading) {
     return (
       <View style={styles.loader}>
-        <ActivityIndicator size="large" color="#2563eb" />
+        <ActivityIndicator size="large" color={c.accent} />
       </View>
     );
   }
@@ -207,7 +228,7 @@ export default function TeamDetail() {
   if (!team) {
     return (
       <View style={styles.loader}>
-        <Text style={{ color: "#fff" }}>Team not found</Text>
+        <Text style={{ color: c.text }}>Team not found</Text>
       </View>
     );
   }
@@ -239,9 +260,9 @@ export default function TeamDetail() {
         <View style={styles.header}>
           <TouchableOpacity
             style={styles.backBtn}
-            onPress={() => router.back()}
+            onPress={() => (router.canGoBack() ? router.back() : router.replace("/"))}
           >
-            <Ionicons name="chevron-back" size={22} color="#fff" />
+            <Ionicons name="chevron-back" size={22} color={c.text} />
           </TouchableOpacity>
 
           <View style={{ flex: 1 }}>
@@ -323,6 +344,8 @@ export default function TeamDetail() {
                 assigneeName={userName(t.assigneeId)}
                 onDelete={() => removeTask(t)}
                 onOpen={() => router.push(`/tasks/${t.id}`)}
+                styles={styles}
+                c={c}
               />
             ))}
 
@@ -341,6 +364,8 @@ export default function TeamDetail() {
                 assigneeName={userName(t.assigneeId)}
                 onDelete={() => removeTask(t)}
                 onOpen={() => router.push(`/tasks/${t.id}`)}
+                styles={styles}
+                c={c}
               />
             ))}
 
@@ -358,7 +383,7 @@ export default function TeamDetail() {
         {!isLead && isHR && (
           <View style={styles.emptyBox}>
             <Text style={styles.emptySub}>
-              Only the team lead can view and manage this team's tasks.
+              Only the team lead can view and manage this team&apos;s tasks.
             </Text>
           </View>
         )}
@@ -374,6 +399,8 @@ interface TaskCardProps {
   assigneeName: string;
   onDelete: () => void;
   onOpen: () => void;
+  styles: any;
+  c: any;
 }
 
 const TaskCard = ({
@@ -381,6 +408,8 @@ const TaskCard = ({
   assigneeName,
   onDelete,
   onOpen,
+  styles,
+  c,
 }: TaskCardProps) => {
 
   const done = task.status === "COMPLETED";
@@ -397,7 +426,7 @@ const TaskCard = ({
             styles.taskTitle,
             done && {
               textDecorationLine: "line-through",
-              color: "#94a3b8",
+              color: c.textMuted,
             },
           ]}
         >
@@ -423,12 +452,12 @@ const TaskCard = ({
             <Ionicons
               name="calendar-outline"
               size={11}
-              color="#94a3b8"
+              color={c.textMuted}
             />
             <Text
               style={[
                 styles.taskChipText,
-                { color: "#94a3b8" },
+                { color: c.textMuted },
               ]}
             >
               {task.dueDate}
@@ -447,13 +476,13 @@ const TaskCard = ({
   );
 };
 
-const styles = StyleSheet.create({
-  safe: { flex: 1, backgroundColor: "#0b1220" },
+const makeStyles = (c: any) => StyleSheet.create({
+  safe: { flex: 1, backgroundColor: c.bg },
   container: { flex: 1 },
   content: { padding: 20, paddingBottom: 60 },
   loader: {
     flex: 1,
-    backgroundColor: "#0b1220",
+    backgroundColor: c.bg,
     justifyContent: "center",
     alignItems: "center",
   },
@@ -469,7 +498,7 @@ const styles = StyleSheet.create({
   },
   successPopup: { backgroundColor: "#16a34a" },
   errorPopup: { backgroundColor: "#dc2626" },
-  popupText: { color: "#fff", fontWeight: "700", textAlign: "center" },
+  popupText: { color: c.text, fontWeight: "700", textAlign: "center" },
 
   header: {
     flexDirection: "row",
@@ -482,11 +511,11 @@ const styles = StyleSheet.create({
     width: 42,
     height: 42,
     borderRadius: 12,
-    backgroundColor: "#111827",
+    backgroundColor: c.surface,
     justifyContent: "center",
     alignItems: "center",
     borderWidth: 1,
-    borderColor: "#1f2937",
+    borderColor: c.surfaceBorder,
   },
   chatBtn: {
     width: 42,
@@ -496,11 +525,11 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     alignItems: "center",
   },
-  title: { color: "#fff", fontSize: 24, fontWeight: "800" },
-  subtitle: { color: "#94a3b8", fontSize: 13, marginTop: 3 },
+  title: { color: c.text, fontSize: 24, fontWeight: "800" },
+  subtitle: { color: c.textMuted, fontSize: 13, marginTop: 3 },
 
   section: {
-    color: "#64748b",
+    color: c.textMuted,
     fontSize: 12,
     letterSpacing: 1.5,
     fontWeight: "700",
@@ -508,7 +537,7 @@ const styles = StyleSheet.create({
     marginTop: 14,
   },
   subSection: {
-    color: "#475569",
+    color: c.textMuted,
     fontSize: 11,
     letterSpacing: 1,
     fontWeight: "700",
@@ -517,11 +546,11 @@ const styles = StyleSheet.create({
   },
 
   membersBox: {
-    backgroundColor: "#111827",
+    backgroundColor: c.surface,
     borderRadius: 14,
     padding: 12,
     borderWidth: 1,
-    borderColor: "#1f2937",
+    borderColor: c.surfaceBorder,
     marginBottom: 6,
   },
 
@@ -536,7 +565,7 @@ const styles = StyleSheet.create({
     width: 36,
     height: 36,
     borderRadius: 18,
-    backgroundColor: "#2563eb",
+    backgroundColor: c.accent,
     justifyContent: "center",
     alignItems: "center",
   },
@@ -545,10 +574,10 @@ const styles = StyleSheet.create({
     fontWeight: "700",
     fontSize: 14,
   },
-  memberName: { color: "#fff", fontSize: 14, fontWeight: "700" },
-  memberEmail: { color: "#94a3b8", fontSize: 12, marginTop: 2 },
+  memberName: { color: c.text, fontSize: 14, fontWeight: "700" },
+  memberEmail: { color: c.textMuted, fontSize: 12, marginTop: 2 },
 
-  emptyText: { color: "#94a3b8", fontSize: 13, padding: 8 },
+  emptyText: { color: c.textMuted, fontSize: 13, padding: 8 },
 
   tasksHeader: {
     flexDirection: "row",
@@ -559,32 +588,32 @@ const styles = StyleSheet.create({
   addTaskBtn: {
     flexDirection: "row",
     alignItems: "center",
-    backgroundColor: "#2563eb",
+    backgroundColor: c.accent,
     paddingHorizontal: 12,
     paddingVertical: 7,
     borderRadius: 10,
     gap: 4,
   },
-  addTaskText: { color: "#fff", fontWeight: "700", fontSize: 13 },
+  addTaskText: { color: c.text, fontWeight: "700", fontSize: 13 },
 
   taskCard: {
     flexDirection: "row",
     alignItems: "flex-start",
-    backgroundColor: "#111827",
+    backgroundColor: c.surface,
     borderRadius: 12,
     padding: 12,
     marginBottom: 8,
     borderWidth: 1,
-    borderColor: "#1f2937",
+    borderColor: c.surfaceBorder,
     gap: 10,
   },
-  taskTitle: { color: "#fff", fontSize: 14, fontWeight: "700" },
-  taskMeta: { color: "#94a3b8", fontSize: 12, marginTop: 4 },
+  taskTitle: { color: c.text, fontSize: 14, fontWeight: "700" },
+  taskMeta: { color: c.textMuted, fontSize: 12, marginTop: 4 },
 
   taskChip: {
     flexDirection: "row",
     alignItems: "center",
-    backgroundColor: "#0f172a",
+    backgroundColor: c.surfaceMuted,
     paddingHorizontal: 8,
     paddingVertical: 4,
     borderRadius: 999,
@@ -610,15 +639,15 @@ const styles = StyleSheet.create({
   emptyBox: {
     alignItems: "center",
     padding: 30,
-    backgroundColor: "#111827",
+    backgroundColor: c.surface,
     borderRadius: 14,
     borderWidth: 1,
-    borderColor: "#1f2937",
+    borderColor: c.surfaceBorder,
     marginTop: 8,
   },
-  emptyTitle: { color: "#fff", fontSize: 15, fontWeight: "700" },
+  emptyTitle: { color: c.text, fontSize: 15, fontWeight: "700" },
   emptySub: {
-    color: "#94a3b8",
+    color: c.textMuted,
     fontSize: 12,
     marginTop: 4,
     textAlign: "center",

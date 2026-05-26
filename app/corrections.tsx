@@ -1,7 +1,6 @@
-import React, {
+﻿import React, {
   useEffect,
-  useState,
-} from "react";
+  useState, useMemo} from "react";
 
 import {
   View,
@@ -10,12 +9,11 @@ import {
   ScrollView,
   TouchableOpacity,
   ActivityIndicator,
-  SafeAreaView,
   Modal,
   TextInput,
   Platform,
-  Alert,
-} from "react-native";
+  Alert } from "react-native";
+import { SafeAreaView } from "react-native-safe-area-context";
 
 import AsyncStorage from "@react-native-async-storage/async-storage";
 
@@ -25,14 +23,20 @@ import { Ionicons } from "@expo/vector-icons";
 
 import {
   listPendingCorrections,
-  decideCorrection,
-} from "../src/services/corrections";
+  decideCorrection } from "../src/services/corrections";
 
 import { AttendanceCorrection } from "../src/types";
 
+import { useTheme } from "../src/theme/ThemeProvider";
 export default function Corrections() {
 
   const router = useRouter();
+
+  const { theme } = useTheme();
+
+  const c = theme.colors;
+
+  const styles = useMemo(() => makeStyles(c), [c]);
 
   const [items, setItems] = useState<AttendanceCorrection[]>([]);
   const [loading, setLoading] = useState(true);
@@ -46,8 +50,7 @@ export default function Corrections() {
   const [popup, setPopup] = useState({
     visible: false,
     type: "success" as "success" | "error",
-    message: "",
-  });
+    message: "" });
 
   const showPopup = (
     msg: string,
@@ -133,8 +136,7 @@ export default function Corrections() {
       if (!token) return;
       await decideCorrection(token, rejectTarget.id, {
         action: "REJECT",
-        note: rejectReason.trim() || undefined,
-      });
+        note: rejectReason.trim() || undefined });
       showPopup("Rejected");
       setRejectVisible(false);
       await load();
@@ -150,14 +152,13 @@ export default function Corrections() {
     return new Date(iso).toLocaleTimeString([], {
       hour: "numeric",
       minute: "2-digit",
-      hour12: true,
-    });
+      hour12: true });
   };
 
   if (loading) {
     return (
       <View style={styles.loader}>
-        <ActivityIndicator size="large" color="#2563eb" />
+        <ActivityIndicator size="large" color={c.accent} />
       </View>
     );
   }
@@ -186,9 +187,9 @@ export default function Corrections() {
         <View style={styles.header}>
           <TouchableOpacity
             style={styles.backBtn}
-            onPress={() => router.back()}
+            onPress={() => (router.canGoBack() ? router.back() : router.replace("/"))}
           >
-            <Ionicons name="chevron-back" size={22} color="#fff" />
+            <Ionicons name="chevron-back" size={22} color={c.text} />
           </TouchableOpacity>
 
           <View style={{ flex: 1 }}>
@@ -204,7 +205,7 @@ export default function Corrections() {
             <Ionicons
               name="checkmark-done-outline"
               size={48}
-              color="#475569"
+              color={c.textFaint}
             />
             <Text style={styles.emptyTitle}>All clear</Text>
             <Text style={styles.emptySub}>
@@ -213,33 +214,33 @@ export default function Corrections() {
           </View>
         )}
 
-        {items.map((c) => (
-          <View key={c.id} style={styles.card}>
+        {items.map((corr) => (
+          <View key={corr.id} style={styles.card}>
 
             <View style={styles.cardHead}>
               <View style={styles.avatar}>
                 <Text style={styles.avatarText}>
-                  {(c.user?.name || "U").charAt(0).toUpperCase()}
+                  {(corr.user?.name || "U").charAt(0).toUpperCase()}
                 </Text>
               </View>
               <View style={{ flex: 1 }}>
                 <Text style={styles.cardName}>
-                  {c.user?.name || "User"}
+                  {corr.user?.name || "User"}
                 </Text>
                 <Text style={styles.cardMeta}>
-                  {c.attendanceDate || c.requestedAt.slice(0, 10)}
+                  {corr.attendanceDate || corr.requestedAt.slice(0, 10)}
                 </Text>
               </View>
             </View>
 
             <View style={styles.timeBox}>
-              {c.requestedCheckIn && (
+              {corr.requestedCheckIn && (
                 <View style={styles.timeRow}>
                   <Text style={styles.timeLabel}>
                     Requested check-in
                   </Text>
                   <Text style={styles.timeValue}>
-                    {formatTime(c.requestedCheckIn)}
+                    {formatTime(corr.requestedCheckIn)}
                   </Text>
                 </View>
               )}
@@ -248,22 +249,22 @@ export default function Corrections() {
                   Requested check-out
                 </Text>
                 <Text style={styles.timeValue}>
-                  {formatTime(c.requestedCheckOut)}
+                  {formatTime(corr.requestedCheckOut)}
                 </Text>
               </View>
             </View>
 
             <Text style={styles.reasonLabel}>Reason</Text>
-            <Text style={styles.reasonText}>{c.reason}</Text>
+            <Text style={styles.reasonText}>{corr.reason}</Text>
 
             <View style={styles.actions}>
               <TouchableOpacity
                 style={[
                   styles.rejectBtn,
-                  busyId === c.id && { opacity: 0.6 },
+                  busyId === corr.id && { opacity: 0.6 },
                 ]}
-                onPress={() => openReject(c)}
-                disabled={busyId === c.id}
+                onPress={() => openReject(corr)}
+                disabled={busyId === corr.id}
               >
                 <Ionicons
                   name="close-outline"
@@ -276,12 +277,12 @@ export default function Corrections() {
               <TouchableOpacity
                 style={[
                   styles.approveBtn,
-                  busyId === c.id && { opacity: 0.6 },
+                  busyId === corr.id && { opacity: 0.6 },
                 ]}
-                onPress={() => doApprove(c)}
-                disabled={busyId === c.id}
+                onPress={() => doApprove(corr)}
+                disabled={busyId === corr.id}
               >
-                {busyId === c.id ? (
+                {busyId === corr.id ? (
                   <ActivityIndicator color="#fff" />
                 ) : (
                   <>
@@ -324,7 +325,7 @@ export default function Corrections() {
               value={rejectReason}
               onChangeText={setRejectReason}
               placeholder="Optional"
-              placeholderTextColor="#64748b"
+              placeholderTextColor={c.textFaint}
               multiline
             />
 
@@ -347,7 +348,7 @@ export default function Corrections() {
                 {busyId ? (
                   <ActivityIndicator color="#fff" />
                 ) : (
-                  <Text style={styles.modalBtnText}>Reject</Text>
+                  <Text style={[styles.modalBtnText, { color: "#fff" }]}>Reject</Text>
                 )}
               </TouchableOpacity>
             </View>
@@ -360,18 +361,17 @@ export default function Corrections() {
   );
 }
 
-const styles = StyleSheet.create({
+const makeStyles = (c: any) => StyleSheet.create({
 
-  safe: { flex: 1, backgroundColor: "#0b1220" },
+  safe: { flex: 1, backgroundColor: c.bg },
   container: { flex: 1 },
   content: { padding: 20, paddingBottom: 60 },
 
   loader: {
     flex: 1,
-    backgroundColor: "#0b1220",
+    backgroundColor: c.bg,
     justifyContent: "center",
-    alignItems: "center",
-  },
+    alignItems: "center" },
 
   popup: {
     position: "absolute",
@@ -380,133 +380,114 @@ const styles = StyleSheet.create({
     right: 20,
     padding: 14,
     borderRadius: 14,
-    zIndex: 999,
-  },
+    zIndex: 999 },
   successPopup: { backgroundColor: "#16a34a" },
   errorPopup: { backgroundColor: "#dc2626" },
-  popupText: { color: "#fff", fontWeight: "700", textAlign: "center" },
+  popupText: { color: c.text, fontWeight: "700", textAlign: "center" },
 
   header: {
     flexDirection: "row",
     alignItems: "center",
     marginBottom: 18,
     marginTop: 10,
-    gap: 12,
-  },
+    gap: 12 },
   backBtn: {
     width: 42,
     height: 42,
     borderRadius: 12,
-    backgroundColor: "#111827",
+    backgroundColor: c.surface,
     justifyContent: "center",
     alignItems: "center",
     borderWidth: 1,
-    borderColor: "#1f2937",
-  },
-  title: { color: "#fff", fontSize: 24, fontWeight: "800" },
-  subtitle: { color: "#94a3b8", fontSize: 13, marginTop: 3 },
+    borderColor: c.surfaceBorder },
+  title: { color: c.text, fontSize: 24, fontWeight: "800" },
+  subtitle: { color: c.textMuted, fontSize: 13, marginTop: 3 },
 
   emptyBox: {
     alignItems: "center",
     padding: 40,
-    backgroundColor: "#111827",
+    backgroundColor: c.surface,
     borderRadius: 18,
     borderWidth: 1,
-    borderColor: "#1f2937",
-    marginTop: 20,
-  },
+    borderColor: c.surfaceBorder,
+    marginTop: 20 },
   emptyTitle: {
-    color: "#fff",
+    color: c.text,
     fontSize: 17,
     fontWeight: "700",
-    marginTop: 14,
-  },
+    marginTop: 14 },
   emptySub: {
-    color: "#94a3b8",
+    color: c.textMuted,
     fontSize: 13,
     marginTop: 6,
-    textAlign: "center",
-  },
+    textAlign: "center" },
 
   card: {
-    backgroundColor: "#111827",
+    backgroundColor: c.surface,
     borderRadius: 16,
     padding: 14,
     marginBottom: 12,
     borderWidth: 1,
-    borderColor: "#1f2937",
-  },
+    borderColor: c.surfaceBorder },
   cardHead: {
     flexDirection: "row",
     alignItems: "center",
     gap: 12,
-    marginBottom: 12,
-  },
+    marginBottom: 12 },
   avatar: {
     width: 40,
     height: 40,
     borderRadius: 20,
-    backgroundColor: "#2563eb",
+    backgroundColor: c.accent,
     justifyContent: "center",
-    alignItems: "center",
-  },
+    alignItems: "center" },
   avatarText: {
     color: "#fff",
     fontWeight: "800",
-    fontSize: 15,
-  },
+    fontSize: 15 },
   cardName: {
-    color: "#fff",
+    color: c.text,
     fontSize: 15,
-    fontWeight: "700",
-  },
+    fontWeight: "700" },
   cardMeta: {
-    color: "#94a3b8",
+    color: c.textMuted,
     fontSize: 12,
-    marginTop: 2,
-  },
+    marginTop: 2 },
 
   timeBox: {
-    backgroundColor: "#0f172a",
+    backgroundColor: c.surfaceMuted,
     borderRadius: 12,
     padding: 12,
     borderWidth: 1,
-    borderColor: "#1e293b",
-    marginBottom: 12,
-  },
+    borderColor: c.surfaceBorder,
+    marginBottom: 12 },
   timeRow: {
     flexDirection: "row",
     justifyContent: "space-between",
-    paddingVertical: 4,
-  },
+    paddingVertical: 4 },
   timeLabel: {
-    color: "#94a3b8",
+    color: c.textMuted,
     fontSize: 12,
-    fontWeight: "600",
-  },
+    fontWeight: "600" },
   timeValue: {
-    color: "#fff",
+    color: c.text,
     fontSize: 13,
-    fontWeight: "700",
-  },
+    fontWeight: "700" },
 
   reasonLabel: {
-    color: "#94a3b8",
+    color: c.textMuted,
     fontSize: 12,
     fontWeight: "600",
-    marginBottom: 6,
-  },
+    marginBottom: 6 },
   reasonText: {
-    color: "#e2e8f0",
+    color: c.text,
     fontSize: 14,
-    lineHeight: 20,
-  },
+    lineHeight: 20 },
 
   actions: {
     flexDirection: "row",
     gap: 10,
-    marginTop: 14,
-  },
+    marginTop: 14 },
   rejectBtn: {
     flex: 1,
     flexDirection: "row",
@@ -515,8 +496,7 @@ const styles = StyleSheet.create({
     backgroundColor: "#dc2626",
     paddingVertical: 11,
     borderRadius: 10,
-    gap: 5,
-  },
+    gap: 5 },
   approveBtn: {
     flex: 1,
     flexDirection: "row",
@@ -525,66 +505,56 @@ const styles = StyleSheet.create({
     backgroundColor: "#16a34a",
     paddingVertical: 11,
     borderRadius: 10,
-    gap: 5,
-  },
+    gap: 5 },
   actionText: {
-    color: "#fff",
+    color: c.text,
     fontWeight: "700",
-    fontSize: 14,
-  },
+    fontSize: 14 },
 
   modalOverlay: {
     flex: 1,
-    backgroundColor: "rgba(0,0,0,0.7)",
+    backgroundColor: c.overlay,
     justifyContent: "center",
-    padding: 20,
-  },
+    padding: 20 },
   modalCard: {
-    backgroundColor: "#111827",
+    backgroundColor: c.surface,
     borderRadius: 18,
-    padding: 20,
-  },
+    padding: 20 },
   modalTitle: {
-    color: "#fff",
+    color: c.text,
     fontSize: 20,
     fontWeight: "800",
-    marginBottom: 16,
-  },
+    marginBottom: 16 },
   modalLabel: {
-    color: "#94a3b8",
+    color: c.textMuted,
     fontSize: 13,
     fontWeight: "600",
-    marginBottom: 6,
-  },
+    marginBottom: 6 },
   input: {
-    backgroundColor: "#0f172a",
-    color: "#fff",
+    backgroundColor: c.surfaceMuted,
+    color: c.text,
     borderRadius: 12,
     padding: 13,
     minHeight: 80,
     textAlignVertical: "top",
     borderWidth: 1,
-    borderColor: "#1e293b",
-    fontSize: 14,
-  },
+    borderColor: c.surfaceBorder,
+    fontSize: 14 },
   modalActions: {
     flexDirection: "row",
     gap: 10,
-    marginTop: 18,
-  },
+    marginTop: 18 },
   cancelBtn: {
     flex: 1,
-    backgroundColor: "#374151",
+    backgroundColor: c.surfaceMuted,
     padding: 13,
     borderRadius: 11,
-    alignItems: "center",
-  },
+    alignItems: "center" },
   rejectConfirm: {
     flex: 1,
     backgroundColor: "#dc2626",
     padding: 13,
     borderRadius: 11,
-    alignItems: "center",
-  },
-  modalBtnText: { color: "#fff", fontWeight: "700" },
-});
+    alignItems: "center" },
+  modalBtnText: { color: c.text, fontWeight: "700" } });
+

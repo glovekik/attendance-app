@@ -1,7 +1,6 @@
 import React, {
   useState,
-  useCallback,
-} from "react";
+  useCallback, useMemo} from "react";
 
 import {
   View,
@@ -41,6 +40,7 @@ import {
 
 import { getMe } from "../../src/services/api";
 
+import { useTheme } from "../../src/theme/ThemeProvider";
 import {
   scheduleTaskReminder,
   cancelTaskReminder,
@@ -55,6 +55,12 @@ import {
 export default function TaskDetail() {
 
   const router = useRouter();
+
+  const { theme } = useTheme();
+
+  const c = theme.colors;
+
+  const styles = useMemo(() => makeStyles(c), [c]);
 
   const params = useLocalSearchParams();
   const taskId = params.id as string;
@@ -259,7 +265,7 @@ export default function TaskDetail() {
   if (loading) {
     return (
       <View style={styles.loader}>
-        <ActivityIndicator size="large" color="#2563eb" />
+        <ActivityIndicator size="large" color={c.accent} />
       </View>
     );
   }
@@ -267,7 +273,7 @@ export default function TaskDetail() {
   if (!task) {
     return (
       <View style={styles.loader}>
-        <Text style={{ color: "#fff" }}>Task not found</Text>
+        <Text style={{ color: c.text }}>Task not found</Text>
       </View>
     );
   }
@@ -306,9 +312,9 @@ export default function TaskDetail() {
           <View style={styles.headerRow}>
             <TouchableOpacity
               style={styles.backBtn}
-              onPress={() => router.back()}
+              onPress={() => (router.canGoBack() ? router.back() : router.replace("/"))}
             >
-              <Ionicons name="chevron-back" size={22} color="#fff" />
+              <Ionicons name="chevron-back" size={22} color={c.text} />
             </TouchableOpacity>
             <Text style={styles.headerTitle}>Task</Text>
             <View style={{ width: 42 }} />
@@ -323,7 +329,7 @@ export default function TaskDetail() {
                   styles.title,
                   done && {
                     textDecorationLine: "line-through",
-                    color: "#94a3b8",
+                    color: c.textMuted,
                   },
                 ]}
               >
@@ -335,7 +341,7 @@ export default function TaskDetail() {
                   styles.statusChip,
                   done
                     ? { backgroundColor: "#16a34a" }
-                    : { backgroundColor: "#2563eb" },
+                    : { backgroundColor: c.accent },
                 ]}
               >
                 <Text style={styles.statusChipText}>
@@ -356,7 +362,7 @@ export default function TaskDetail() {
                   <Ionicons
                     name="calendar-outline"
                     size={11}
-                    color="#94a3b8"
+                    color={c.textMuted}
                   />
                   <Text style={styles.metaText}>
                     Due {task.dueDate}
@@ -388,7 +394,7 @@ export default function TaskDetail() {
                 style={[
                   styles.toggleBtn,
                   done
-                    ? { backgroundColor: "#374151" }
+                    ? { backgroundColor: c.surfaceMuted }
                     : { backgroundColor: "#16a34a" },
                   toggling && { opacity: 0.7 },
                 ]}
@@ -420,10 +426,10 @@ export default function TaskDetail() {
                 <Ionicons
                   name="eye-outline"
                   size={14}
-                  color="#94a3b8"
+                  color={c.textMuted}
                 />
                 <Text style={styles.viewerHintText}>
-                  Only the assignee can change this task's status.
+                  Only the assignee can change this task&apos;s status.
                 </Text>
               </View>
             )}
@@ -442,13 +448,13 @@ export default function TaskDetail() {
               </Text>
             </View>
           ) : (
-            comments.map((c) => {
-              const mine = c.userId === me?.id;
+            comments.map((cm) => {
+              const mine = cm.userId === me?.id;
               const displayName =
-                c.user?.name || (mine ? "You" : "User");
+                cm.user?.name || (mine ? "You" : "User");
               return (
                 <View
-                  key={c.id}
+                  key={cm.id}
                   style={[
                     styles.commentBox,
                     mine && styles.commentMine,
@@ -459,7 +465,7 @@ export default function TaskDetail() {
                       {displayName}
                     </Text>
                     <Text style={styles.commentTime}>
-                      {new Date(c.createdAt).toLocaleString([], {
+                      {new Date(cm.createdAt).toLocaleString([], {
                         month: "short",
                         day: "numeric",
                         hour: "numeric",
@@ -467,16 +473,16 @@ export default function TaskDetail() {
                       })}
                     </Text>
                   </View>
-                  <Text style={styles.commentText}>{c.text}</Text>
+                  <Text style={styles.commentText}>{cm.text}</Text>
                   {mine && (
                     <TouchableOpacity
                       style={styles.commentDelete}
-                      onPress={() => removeComment(c)}
+                      onPress={() => removeComment(cm)}
                     >
                       <Ionicons
                         name="trash-outline"
                         size={14}
-                        color="#94a3b8"
+                        color={c.textMuted}
                       />
                     </TouchableOpacity>
                   )}
@@ -492,7 +498,7 @@ export default function TaskDetail() {
           <TextInput
             style={styles.composerInput}
             placeholder="Write a comment…"
-            placeholderTextColor="#64748b"
+            placeholderTextColor={c.textFaint}
             value={draft}
             onChangeText={setDraft}
             multiline
@@ -519,15 +525,15 @@ export default function TaskDetail() {
   );
 }
 
-const styles = StyleSheet.create({
+const makeStyles = (c: any) => StyleSheet.create({
 
-  safe: { flex: 1, backgroundColor: "#0b1220" },
+  safe: { flex: 1, backgroundColor: c.bg },
   container: { flex: 1 },
   content: { padding: 20, paddingBottom: 30 },
 
   loader: {
     flex: 1,
-    backgroundColor: "#0b1220",
+    backgroundColor: c.bg,
     justifyContent: "center",
     alignItems: "center",
   },
@@ -544,7 +550,7 @@ const styles = StyleSheet.create({
   successPopup: { backgroundColor: "#16a34a" },
   errorPopup: { backgroundColor: "#dc2626" },
   popupText: {
-    color: "#fff",
+    color: c.text,
     fontWeight: "700",
     textAlign: "center",
   },
@@ -557,7 +563,7 @@ const styles = StyleSheet.create({
     marginBottom: 14,
   },
   headerTitle: {
-    color: "#fff",
+    color: c.text,
     fontSize: 18,
     fontWeight: "700",
   },
@@ -565,19 +571,19 @@ const styles = StyleSheet.create({
     width: 42,
     height: 42,
     borderRadius: 12,
-    backgroundColor: "#111827",
+    backgroundColor: c.surface,
     justifyContent: "center",
     alignItems: "center",
     borderWidth: 1,
-    borderColor: "#1f2937",
+    borderColor: c.surfaceBorder,
   },
 
   titleCard: {
-    backgroundColor: "#111827",
+    backgroundColor: c.surface,
     borderRadius: 16,
     padding: 16,
     borderWidth: 1,
-    borderColor: "#1f2937",
+    borderColor: c.surfaceBorder,
   },
   titleRow: {
     flexDirection: "row",
@@ -586,7 +592,7 @@ const styles = StyleSheet.create({
     gap: 10,
   },
   title: {
-    color: "#fff",
+    color: c.text,
     fontSize: 18,
     fontWeight: "800",
     flex: 1,
@@ -597,13 +603,13 @@ const styles = StyleSheet.create({
     borderRadius: 999,
   },
   statusChipText: {
-    color: "#fff",
+    color: c.text,
     fontSize: 10,
     fontWeight: "800",
     letterSpacing: 0.5,
   },
   description: {
-    color: "#cbd5e1",
+    color: c.text,
     fontSize: 14,
     lineHeight: 20,
     marginTop: 10,
@@ -618,14 +624,14 @@ const styles = StyleSheet.create({
   metaChip: {
     flexDirection: "row",
     alignItems: "center",
-    backgroundColor: "#0f172a",
+    backgroundColor: c.surfaceMuted,
     paddingHorizontal: 8,
     paddingVertical: 4,
     borderRadius: 999,
     gap: 4,
   },
   metaText: {
-    color: "#94a3b8",
+    color: c.textMuted,
     fontSize: 11,
     fontWeight: "600",
   },
@@ -640,7 +646,7 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   toggleText: {
-    color: "#fff",
+    color: c.text,
     fontWeight: "700",
     fontSize: 15,
   },
@@ -649,23 +655,23 @@ const styles = StyleSheet.create({
     marginTop: 14,
     paddingVertical: 10,
     paddingHorizontal: 12,
-    backgroundColor: "#0f172a",
+    backgroundColor: c.surfaceMuted,
     borderRadius: 12,
     borderWidth: 1,
-    borderColor: "#1e293b",
+    borderColor: c.surfaceBorder,
     flexDirection: "row",
     alignItems: "center",
     gap: 8,
   },
 
   viewerHintText: {
-    color: "#94a3b8",
+    color: c.textMuted,
     fontSize: 12,
     flex: 1,
   },
 
   section: {
-    color: "#64748b",
+    color: c.textMuted,
     fontSize: 12,
     letterSpacing: 1.5,
     fontWeight: "700",
@@ -674,26 +680,26 @@ const styles = StyleSheet.create({
   },
 
   emptyBox: {
-    backgroundColor: "#111827",
+    backgroundColor: c.surface,
     borderRadius: 14,
     padding: 18,
     borderWidth: 1,
-    borderColor: "#1f2937",
+    borderColor: c.surfaceBorder,
     alignItems: "center",
   },
   emptyText: {
-    color: "#94a3b8",
+    color: c.textMuted,
     fontSize: 13,
     textAlign: "center",
   },
 
   commentBox: {
-    backgroundColor: "#111827",
+    backgroundColor: c.surface,
     borderRadius: 14,
     padding: 12,
     marginBottom: 8,
     borderWidth: 1,
-    borderColor: "#1f2937",
+    borderColor: c.surfaceBorder,
   },
   commentMine: {
     backgroundColor: "#172554",
@@ -705,16 +711,16 @@ const styles = StyleSheet.create({
     marginBottom: 4,
   },
   commentAuthor: {
-    color: "#fff",
+    color: c.text,
     fontWeight: "700",
     fontSize: 13,
   },
   commentTime: {
-    color: "#64748b",
+    color: c.textMuted,
     fontSize: 11,
   },
   commentText: {
-    color: "#e2e8f0",
+    color: c.text,
     fontSize: 14,
     lineHeight: 20,
   },
@@ -729,29 +735,29 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "flex-end",
     padding: 12,
-    backgroundColor: "#0f172a",
+    backgroundColor: c.surfaceMuted,
     borderTopWidth: 1,
-    borderTopColor: "#1f2937",
+    borderTopColor: c.surfaceBorder,
     gap: 8,
   },
   composerInput: {
     flex: 1,
-    backgroundColor: "#111827",
-    color: "#fff",
+    backgroundColor: c.surface,
+    color: c.text,
     borderRadius: 14,
     paddingVertical: 10,
     paddingHorizontal: 14,
     minHeight: 40,
     maxHeight: 120,
     borderWidth: 1,
-    borderColor: "#1f2937",
+    borderColor: c.surfaceBorder,
     fontSize: 14,
   },
   sendBtn: {
     width: 40,
     height: 40,
     borderRadius: 14,
-    backgroundColor: "#2563eb",
+    backgroundColor: c.accent,
     justifyContent: "center",
     alignItems: "center",
   },

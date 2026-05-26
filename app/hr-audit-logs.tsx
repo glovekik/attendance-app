@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useCallback } from "react";
+﻿import React, { useEffect, useState, useCallback, useMemo} from "react";
 
 import {
   View,
@@ -7,12 +7,12 @@ import {
   FlatList,
   TouchableOpacity,
   ActivityIndicator,
-  SafeAreaView,
   RefreshControl,
   TextInput,
   Modal,
   ScrollView,
-} from "react-native";
+  Alert } from "react-native";
+import { SafeAreaView } from "react-native-safe-area-context";
 
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useRouter } from "expo-router";
@@ -22,6 +22,7 @@ import { listAuditLogs, AuditFilters } from "../src/services/audit";
 import { listUsers } from "../src/services/users";
 import { AuditLog, User } from "../src/types";
 
+import { useTheme } from "../src/theme/ThemeProvider";
 // Quick action filter chips — covers the most common audit prefixes.
 const ACTION_FILTERS: { key: string; label: string }[] = [
   { key: "", label: "All" },
@@ -40,16 +41,26 @@ const ACTION_FILTERS: { key: string; label: string }[] = [
   { key: "document.", label: "Documents" },
 ];
 
-const actionColor = (action: string): string => {
-  if (action.includes("approve")) return "#16a34a";
-  if (action.includes("reject")) return "#dc2626";
-  if (action.includes("delete") || action.includes("revoke"))
-    return "#dc2626";
+// Tone for action category. Dot indicator wants the SOLID semantic
+// color (saturated reads at small sizes), pill prefers the soft `bg`
+// with semantic `fg` so the chip is calm against the page.
+const actionTone = (
+  action: string,
+  c: any
+): { solid: string; bg: string; fg: string } => {
+  if (action.includes("approve"))
+    return { solid: c.successText, bg: c.successBg, fg: c.successText };
+  if (
+    action.includes("reject") ||
+    action.includes("delete") ||
+    action.includes("revoke")
+  )
+    return { solid: c.dangerText, bg: c.dangerBg, fg: c.dangerText };
   if (action.includes("create") || action.includes("add"))
-    return "#3b82f6";
+    return { solid: c.infoText, bg: c.infoBg, fg: c.infoText };
   if (action.includes("update") || action.includes("change"))
-    return "#f59e0b";
-  return "#64748b";
+    return { solid: c.warningText, bg: c.warningBg, fg: c.warningText };
+  return { solid: c.textMuted, bg: c.surfaceMuted, fg: c.textMuted };
 };
 
 const formatTime = (iso: string): string => {
@@ -80,6 +91,9 @@ const relativeTime = (iso: string): string => {
 
 export default function HrAuditLogs() {
   const router = useRouter();
+  const { theme } = useTheme();
+  const c = theme.colors;
+  const styles = useMemo(() => makeStyles(c), [c]);
   const [items, setItems] = useState<AuditLog[]>([]);
   const [users, setUsers] = useState<User[]>([]);
   const [loading, setLoading] = useState(true);
@@ -104,8 +118,7 @@ export default function HrAuditLogs() {
         action: actionFilter || undefined,
         fromDate: fromDate.trim() || undefined,
         toDate: toDate.trim() || undefined,
-        limit: 200,
-      };
+        limit: 200 };
       const [logs, allUsers] = await Promise.all([
         listAuditLogs(token, filters),
         users.length > 0
@@ -115,7 +128,10 @@ export default function HrAuditLogs() {
       setItems(logs || []);
       if (users.length === 0) setUsers(allUsers || []);
     } catch (err: any) {
-      console.log("audit load error", err);
+      Alert.alert(
+        "Couldn't load audit logs",
+        err?.message || "Pull down to retry."
+      );
     } finally {
       setLoading(false);
       setRefreshing(false);
@@ -139,8 +155,8 @@ export default function HrAuditLogs() {
   return (
     <SafeAreaView style={styles.safe}>
       <View style={styles.header}>
-        <TouchableOpacity onPress={() => router.back()}>
-          <Ionicons name="arrow-back" size={24} color="#fff" />
+        <TouchableOpacity onPress={() => (router.canGoBack() ? router.back() : router.replace("/"))}>
+          <Ionicons name="arrow-back" size={24} color={c.text} />
         </TouchableOpacity>
         <Text style={styles.title}>Audit Logs</Text>
         <View style={{ width: 24 }} />
@@ -178,25 +194,25 @@ export default function HrAuditLogs() {
 
         <View style={styles.dateRow}>
           <View style={styles.dateField}>
-            <Ionicons name="calendar-outline" size={14} color="#64748b" />
+            <Ionicons name="calendar-outline" size={14} color={c.textMuted} />
             <TextInput
               style={styles.dateInput}
               value={fromDate}
               onChangeText={setFromDate}
               placeholder="From YYYY-MM-DD"
-              placeholderTextColor="#475569"
+              placeholderTextColor={c.textFaint}
               autoCapitalize="none"
               onSubmitEditing={() => setLoading(true)}
             />
           </View>
           <View style={styles.dateField}>
-            <Ionicons name="calendar-outline" size={14} color="#64748b" />
+            <Ionicons name="calendar-outline" size={14} color={c.textMuted} />
             <TextInput
               style={styles.dateInput}
               value={toDate}
               onChangeText={setToDate}
               placeholder="To YYYY-MM-DD"
-              placeholderTextColor="#475569"
+              placeholderTextColor={c.textFaint}
               autoCapitalize="none"
               onSubmitEditing={() => setLoading(true)}
             />
@@ -209,7 +225,7 @@ export default function HrAuditLogs() {
                 setLoading(true);
               }}
             >
-              <Ionicons name="close-circle" size={20} color="#64748b" />
+              <Ionicons name="close-circle" size={20} color={c.textMuted} />
             </TouchableOpacity>
           )}
         </View>
@@ -217,7 +233,7 @@ export default function HrAuditLogs() {
 
       {loading ? (
         <View style={styles.loader}>
-          <ActivityIndicator size="large" color="#3b82f6" />
+          <ActivityIndicator size="large" color={c.accent} />
         </View>
       ) : (
         <FlatList
@@ -230,8 +246,8 @@ export default function HrAuditLogs() {
             <RefreshControl
               refreshing={refreshing}
               onRefresh={onRefresh}
-              tintColor="#3b82f6"
-              colors={["#3b82f6"]}
+              tintColor={c.accent}
+              colors={[c.accent]}
             />
           }
           ListEmptyComponent={
@@ -239,7 +255,7 @@ export default function HrAuditLogs() {
               <Ionicons
                 name="document-text-outline"
                 size={42}
-                color="#475569"
+                color={c.textFaint}
               />
               <Text style={styles.emptyText}>
                 No audit entries match
@@ -255,7 +271,7 @@ export default function HrAuditLogs() {
               <View
                 style={[
                   styles.dot,
-                  { backgroundColor: actionColor(item.action) },
+                  { backgroundColor: actionTone(item.action, c).solid },
                 ]}
               />
               <View style={{ flex: 1 }}>
@@ -268,7 +284,7 @@ export default function HrAuditLogs() {
               <Ionicons
                 name="chevron-forward"
                 size={18}
-                color="#64748b"
+                color={c.textMuted}
               />
             </TouchableOpacity>
           )}
@@ -287,7 +303,7 @@ export default function HrAuditLogs() {
             <View style={styles.modalHeader}>
               <Text style={styles.modalTitle}>Audit detail</Text>
               <TouchableOpacity onPress={() => setSelected(null)}>
-                <Ionicons name="close" size={24} color="#94a3b8" />
+                <Ionicons name="close" size={24} color={c.textMuted} />
               </TouchableOpacity>
             </View>
 
@@ -295,18 +311,21 @@ export default function HrAuditLogs() {
               <ScrollView style={{ maxHeight: 520 }}>
                 <View style={styles.detailRow}>
                   <Text style={styles.detailLabel}>Action</Text>
-                  <View
-                    style={[
-                      styles.actionPill,
-                      {
-                        backgroundColor: actionColor(selected.action),
-                      },
-                    ]}
-                  >
-                    <Text style={styles.actionPillText}>
-                      {selected.action}
-                    </Text>
-                  </View>
+                  {(() => {
+                    const tone = actionTone(selected.action, c);
+                    return (
+                      <View
+                        style={[
+                          styles.actionPill,
+                          { backgroundColor: tone.bg },
+                        ]}
+                      >
+                        <Text style={[styles.actionPillText, { color: tone.fg }]}>
+                          {selected.action}
+                        </Text>
+                      </View>
+                    );
+                  })()}
                 </View>
                 <View style={styles.detailRow}>
                   <Text style={styles.detailLabel}>Actor</Text>
@@ -367,144 +386,126 @@ export default function HrAuditLogs() {
   );
 }
 
-const styles = StyleSheet.create({
-  safe: { flex: 1, backgroundColor: "#0b1220" },
+const makeStyles = (c: any) => StyleSheet.create({
+  safe: { flex: 1, backgroundColor: c.bg },
   loader: {
     flex: 1,
-    backgroundColor: "#0b1220",
+    backgroundColor: c.bg,
     justifyContent: "center",
-    alignItems: "center",
-  },
+    alignItems: "center" },
   header: {
     flexDirection: "row",
     alignItems: "center",
     paddingHorizontal: 16,
     paddingVertical: 14,
     borderBottomWidth: 1,
-    borderBottomColor: "#1f2937",
-    gap: 12,
-  },
-  title: { color: "#fff", fontSize: 18, fontWeight: "800", flex: 1 },
+    borderBottomColor: c.surfaceBorder,
+    gap: 12 },
+  title: { color: c.text, fontSize: 18, fontWeight: "800", flex: 1 },
   filtersWrap: { paddingVertical: 8, gap: 8 },
   chip: {
     paddingHorizontal: 12,
     paddingVertical: 6,
     borderRadius: 999,
-    backgroundColor: "#111827",
+    backgroundColor: c.surface,
     borderWidth: 1,
-    borderColor: "#1f2937",
-  },
-  chipActive: { backgroundColor: "#3b82f6", borderColor: "#3b82f6" },
-  chipText: { color: "#94a3b8", fontSize: 11, fontWeight: "700" },
-  chipTextActive: { color: "#fff" },
+    borderColor: c.surfaceBorder },
+  chipActive: { backgroundColor: c.accent, borderColor: c.accent },
+  chipText: { color: c.textMuted, fontSize: 11, fontWeight: "700" },
+  chipTextActive: { color: c.text },
   dateRow: {
     flexDirection: "row",
     alignItems: "center",
     gap: 8,
     paddingHorizontal: 12,
-    marginTop: 8,
-  },
+    marginTop: 8 },
   dateField: {
     flex: 1,
     flexDirection: "row",
     alignItems: "center",
-    backgroundColor: "#111827",
+    backgroundColor: c.surface,
     paddingHorizontal: 10,
     borderRadius: 10,
     borderWidth: 1,
-    borderColor: "#1f2937",
-    gap: 6,
-  },
+    borderColor: c.surfaceBorder,
+    gap: 6 },
   dateInput: {
     flex: 1,
-    color: "#fff",
+    color: c.text,
     paddingVertical: 7,
-    fontSize: 11,
-  },
+    fontSize: 11 },
   card: {
     flexDirection: "row",
     alignItems: "center",
-    backgroundColor: "#111827",
+    backgroundColor: c.surface,
     padding: 12,
     borderRadius: 12,
     marginBottom: 6,
     borderWidth: 1,
-    borderColor: "#1f2937",
-    gap: 10,
-  },
+    borderColor: c.surfaceBorder,
+    gap: 10 },
   dot: { width: 8, height: 8, borderRadius: 4 },
   action: {
-    color: "#fff",
+    color: c.text,
     fontSize: 13,
     fontWeight: "700",
-    fontFamily: "monospace",
-  },
-  meta: { color: "#94a3b8", fontSize: 11, marginTop: 2 },
-  time: { color: "#64748b", fontSize: 10, marginTop: 2 },
+    fontFamily: "monospace" },
+  meta: { color: c.textMuted, fontSize: 11, marginTop: 2 },
+  time: { color: c.textMuted, fontSize: 10, marginTop: 2 },
   emptyWrap: { flex: 1, justifyContent: "center" },
   empty: { alignItems: "center", gap: 10 },
-  emptyText: { color: "#475569", fontSize: 14 },
+  emptyText: { color: c.textMuted, fontSize: 14 },
   modalWrap: {
     flex: 1,
     justifyContent: "flex-end",
-    backgroundColor: "rgba(0,0,0,0.5)",
-  },
+    backgroundColor: c.overlay },
   modal: {
-    backgroundColor: "#0f172a",
+    backgroundColor: c.surfaceMuted,
     padding: 20,
     borderTopLeftRadius: 18,
     borderTopRightRadius: 18,
     borderTopWidth: 1,
-    borderTopColor: "#1e293b",
-    maxHeight: "92%",
-  },
+    borderTopColor: c.surfaceBorder,
+    maxHeight: "92%" },
   modalHeader: {
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
-    marginBottom: 10,
-  },
-  modalTitle: { color: "#fff", fontSize: 17, fontWeight: "800" },
+    marginBottom: 10 },
+  modalTitle: { color: c.text, fontSize: 17, fontWeight: "800" },
   detailRow: {
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
-    paddingVertical: 6,
-  },
-  detailLabel: { color: "#94a3b8", fontSize: 12 },
-  detailValue: { color: "#fff", fontSize: 13, fontWeight: "600" },
+    paddingVertical: 6 },
+  detailLabel: { color: c.textMuted, fontSize: 12 },
+  detailValue: { color: c.text, fontSize: 13, fontWeight: "600" },
   detailMono: {
-    color: "#cbd5e1",
+    color: c.text,
     fontSize: 11,
-    fontFamily: "monospace",
-  },
+    fontFamily: "monospace" },
   actionPill: {
     paddingHorizontal: 10,
     paddingVertical: 4,
-    borderRadius: 6,
-  },
+    borderRadius: 6 },
   actionPillText: {
-    color: "#fff",
     fontSize: 11,
     fontWeight: "800",
-    fontFamily: "monospace",
-  },
+    fontFamily: "monospace" },
   sectionLabel: {
-    color: "#64748b",
+    color: c.textMuted,
     fontSize: 10,
     letterSpacing: 1.5,
     fontWeight: "800",
     marginTop: 14,
-    marginBottom: 6,
-  },
+    marginBottom: 6 },
   json: {
-    color: "#cbd5e1",
+    color: c.text,
     fontSize: 11,
     fontFamily: "monospace",
-    backgroundColor: "#0b1220",
+    backgroundColor: c.bg,
     padding: 10,
     borderRadius: 8,
     borderWidth: 1,
-    borderColor: "#1f2937",
-  },
-});
+    borderColor: c.surfaceBorder } });
+

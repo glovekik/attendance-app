@@ -1,7 +1,6 @@
-import React, {
+﻿import React, {
   useEffect,
-  useState,
-} from "react";
+  useState, useMemo} from "react";
 
 import {
   View,
@@ -12,10 +11,9 @@ import {
   TextInput,
   ActivityIndicator,
   Modal,
-  SafeAreaView,
   Platform,
-  Alert,
-} from "react-native";
+  Alert } from "react-native";
+import { SafeAreaView } from "react-native-safe-area-context";
 
 import AsyncStorage from "@react-native-async-storage/async-storage";
 
@@ -29,16 +27,15 @@ import {
   hrUpdateAsset,
   hrDeleteAsset,
   hrAssignAsset,
-  hrReturnAsset,
-} from "../src/services/assets";
+  hrReturnAsset } from "../src/services/assets";
 
 import { listUsers } from "../src/services/users";
 
+import { useTheme } from "../src/theme/ThemeProvider";
 import {
   Asset,
   AssetStatus,
-  User,
-} from "../src/types";
+  User } from "../src/types";
 
 const STATUS_FILTERS: (AssetStatus | "ALL")[] = [
   "ALL",
@@ -69,6 +66,12 @@ export default function HRAssets() {
 
   const router = useRouter();
 
+  const { theme } = useTheme();
+
+  const c = theme.colors;
+
+  const styles = useMemo(() => makeStyles(c), [c]);
+
   const [assets, setAssets] = useState<Asset[]>([]);
   const [users, setUsers] = useState<User[]>([]);
   const [loading, setLoading] = useState(true);
@@ -78,8 +81,7 @@ export default function HRAssets() {
   const [popup, setPopup] = useState({
     visible: false,
     type: "success" as "success" | "error",
-    message: "",
-  });
+    message: "" });
 
   // ===== form state =====
   const [formVisible, setFormVisible] = useState(false);
@@ -144,6 +146,17 @@ export default function HRAssets() {
     return users.find((u) => u.id === id)?.name || `…${id.slice(-4)}`;
   };
 
+  // Inactive/terminated employees must not show up in the assign picker.
+  // The full `users` list is still kept above so userName() can resolve
+  // the name of someone an asset was assigned to before they left.
+  const assignableUsers = useMemo(
+    () =>
+      users.filter(
+        (u) => u.status !== "Inactive" && u.status !== "Terminated"
+      ),
+    [users]
+  );
+
   // ===== form (create/edit) =====
   const resetForm = () => {
     setEditingId(null);
@@ -194,8 +207,7 @@ export default function HRAssets() {
           name: name.trim(),
           category: category.trim(),
           serialNumber: serialNumber.trim() || undefined,
-          notes: notes.trim() || undefined,
-        });
+          notes: notes.trim() || undefined });
         showPopup("Asset updated");
       } else {
         await hrCreateAsset(token, {
@@ -203,8 +215,7 @@ export default function HRAssets() {
           name: name.trim(),
           category: category.trim(),
           serialNumber: serialNumber.trim() || undefined,
-          notes: notes.trim() || undefined,
-        });
+          notes: notes.trim() || undefined });
         showPopup("Asset created");
       }
 
@@ -221,7 +232,7 @@ export default function HRAssets() {
   // ===== assign =====
   const openAssign = (a: Asset) => {
     setAssignTarget(a);
-    setAssignUserId(users[0]?.id || "");
+    setAssignUserId(assignableUsers[0]?.id || "");
     setAssignNotes("");
     setAssignVisible(true);
   };
@@ -238,8 +249,7 @@ export default function HRAssets() {
       if (!token) return;
       await hrAssignAsset(token, assignTarget.id, {
         userId: assignUserId,
-        notes: assignNotes.trim() || undefined,
-      });
+        notes: assignNotes.trim() || undefined });
       showPopup("Assigned");
       setAssignVisible(false);
       await load();
@@ -266,8 +276,7 @@ export default function HRAssets() {
       if (!token) return;
       await hrReturnAsset(token, returnTarget.id, {
         status: returnStatus,
-        notes: returnNotes.trim() || undefined,
-      });
+        notes: returnNotes.trim() || undefined });
       showPopup("Returned");
       setReturnVisible(false);
       await load();
@@ -297,8 +306,7 @@ export default function HRAssets() {
         {
           text: "Delete",
           style: "destructive",
-          onPress: () => doDelete(a.id),
-        },
+          onPress: () => doDelete(a.id) },
       ]
     );
   };
@@ -318,7 +326,7 @@ export default function HRAssets() {
   if (loading) {
     return (
       <View style={styles.loader}>
-        <ActivityIndicator size="large" color="#2563eb" />
+        <ActivityIndicator size="large" color={c.accent} />
       </View>
     );
   }
@@ -347,9 +355,9 @@ export default function HRAssets() {
         <View style={styles.header}>
           <TouchableOpacity
             style={styles.backBtn}
-            onPress={() => router.back()}
+            onPress={() => (router.canGoBack() ? router.back() : router.replace("/"))}
           >
-            <Ionicons name="chevron-back" size={22} color="#fff" />
+            <Ionicons name="chevron-back" size={22} color={c.text} />
           </TouchableOpacity>
 
           <View style={{ flex: 1 }}>
@@ -395,13 +403,13 @@ export default function HRAssets() {
         </ScrollView>
 
         <View style={styles.searchBox}>
-          <Ionicons name="search" size={16} color="#64748b" />
+          <Ionicons name="search" size={16} color={c.textMuted} />
           <TextInput
             style={styles.searchInput}
             value={search}
             onChangeText={setSearch}
             placeholder="Search by name, code, serial, category"
-            placeholderTextColor="#64748b"
+            placeholderTextColor={c.textFaint}
             autoCapitalize="none"
           />
           {search.length > 0 && (
@@ -409,7 +417,7 @@ export default function HRAssets() {
               <Ionicons
                 name="close-circle"
                 size={16}
-                color="#64748b"
+                color={c.textMuted}
               />
             </TouchableOpacity>
           )}
@@ -556,7 +564,7 @@ export default function HRAssets() {
                 value={code}
                 onChangeText={setCode}
                 placeholder="e.g. LAP-001"
-                placeholderTextColor="#64748b"
+                placeholderTextColor={c.textFaint}
                 editable={!editingId}
               />
 
@@ -566,7 +574,7 @@ export default function HRAssets() {
                 value={name}
                 onChangeText={setName}
                 placeholder="MacBook Pro 14"
-                placeholderTextColor="#64748b"
+                placeholderTextColor={c.textFaint}
               />
 
               <Text style={styles.label}>Category</Text>
@@ -575,7 +583,7 @@ export default function HRAssets() {
                 value={category}
                 onChangeText={setCategory}
                 placeholder="Laptop / Phone / Monitor"
-                placeholderTextColor="#64748b"
+                placeholderTextColor={c.textFaint}
               />
 
               <Text style={styles.label}>Serial Number</Text>
@@ -584,7 +592,7 @@ export default function HRAssets() {
                 value={serialNumber}
                 onChangeText={setSerialNumber}
                 placeholder="Optional"
-                placeholderTextColor="#64748b"
+                placeholderTextColor={c.textFaint}
               />
 
               <Text style={styles.label}>Notes</Text>
@@ -593,7 +601,7 @@ export default function HRAssets() {
                 value={notes}
                 onChangeText={setNotes}
                 placeholder="Optional"
-                placeholderTextColor="#64748b"
+                placeholderTextColor={c.textFaint}
                 multiline
               />
 
@@ -646,27 +654,32 @@ export default function HRAssets() {
 
               <Text style={styles.label}>Pick User</Text>
               <View style={styles.chipPicker}>
-                {users.map((u) => (
-                  <TouchableOpacity
-                    key={u.id}
-                    style={[
-                      styles.pickBtn,
-                      assignUserId === u.id && styles.pickActive,
-                    ]}
-                    onPress={() => setAssignUserId(u.id)}
-                  >
-                    <Text
+                {assignableUsers.length === 0 ? (
+                  <Text style={styles.hint}>
+                    No active employees to assign.
+                  </Text>
+                ) : (
+                  assignableUsers.map((u) => (
+                    <TouchableOpacity
+                      key={u.id}
                       style={[
-                        styles.pickText,
-                        assignUserId === u.id && {
-                          color: "#fff",
-                        },
+                        styles.pickBtn,
+                        assignUserId === u.id && styles.pickActive,
                       ]}
+                      onPress={() => setAssignUserId(u.id)}
                     >
-                      {u.name}
-                    </Text>
-                  </TouchableOpacity>
-                ))}
+                      <Text
+                        style={[
+                          styles.pickText,
+                          assignUserId === u.id && {
+                            color: "#fff" },
+                        ]}
+                      >
+                        {u.name}
+                      </Text>
+                    </TouchableOpacity>
+                  ))
+                )}
               </View>
 
               <Text style={styles.label}>Notes</Text>
@@ -675,7 +688,7 @@ export default function HRAssets() {
                 value={assignNotes}
                 onChangeText={setAssignNotes}
                 placeholder="Optional"
-                placeholderTextColor="#64748b"
+                placeholderTextColor={c.textFaint}
                 multiline
               />
 
@@ -758,7 +771,7 @@ export default function HRAssets() {
                 value={returnNotes}
                 onChangeText={setReturnNotes}
                 placeholder="Optional"
-                placeholderTextColor="#64748b"
+                placeholderTextColor={c.textFaint}
                 multiline
               />
 
@@ -794,16 +807,15 @@ export default function HRAssets() {
   );
 }
 
-const styles = StyleSheet.create({
-  safe: { flex: 1, backgroundColor: "#0b1220" },
+const makeStyles = (c: any) => StyleSheet.create({
+  safe: { flex: 1, backgroundColor: c.bg },
   container: { flex: 1 },
   content: { padding: 20, paddingBottom: 60 },
   loader: {
     flex: 1,
-    backgroundColor: "#0b1220",
+    backgroundColor: c.bg,
     justifyContent: "center",
-    alignItems: "center",
-  },
+    alignItems: "center" },
 
   popup: {
     position: "absolute",
@@ -812,253 +824,217 @@ const styles = StyleSheet.create({
     right: 20,
     padding: 14,
     borderRadius: 14,
-    zIndex: 999,
-  },
+    zIndex: 999 },
   successPopup: { backgroundColor: "#16a34a" },
   errorPopup: { backgroundColor: "#dc2626" },
-  popupText: { color: "#fff", fontWeight: "700", textAlign: "center" },
+  popupText: { color: c.text, fontWeight: "700", textAlign: "center" },
 
   header: {
     flexDirection: "row",
     alignItems: "center",
     marginBottom: 12,
     marginTop: 10,
-    gap: 12,
-  },
+    gap: 12 },
   backBtn: {
     width: 42,
     height: 42,
     borderRadius: 12,
-    backgroundColor: "#111827",
+    backgroundColor: c.surface,
     justifyContent: "center",
     alignItems: "center",
     borderWidth: 1,
-    borderColor: "#1f2937",
-  },
+    borderColor: c.surfaceBorder },
   addBtn: {
     width: 42,
     height: 42,
     borderRadius: 12,
-    backgroundColor: "#2563eb",
+    backgroundColor: c.accent,
     justifyContent: "center",
-    alignItems: "center",
-  },
-  title: { color: "#fff", fontSize: 24, fontWeight: "800" },
-  subtitle: { color: "#94a3b8", fontSize: 13, marginTop: 3 },
+    alignItems: "center" },
+  title: { color: c.text, fontSize: 24, fontWeight: "800" },
+  subtitle: { color: c.textMuted, fontSize: 13, marginTop: 3 },
 
   filterRow: {
     gap: 6,
-    paddingBottom: 14,
-  },
+    paddingBottom: 14 },
 
   searchBox: {
     flexDirection: "row",
     alignItems: "center",
-    backgroundColor: "#111827",
+    backgroundColor: c.surface,
     borderRadius: 12,
     paddingHorizontal: 12,
     marginBottom: 12,
     borderWidth: 1,
-    borderColor: "#1f2937",
-    gap: 8,
-  },
+    borderColor: c.surfaceBorder,
+    gap: 8 },
 
   searchInput: {
     flex: 1,
-    color: "#fff",
+    color: c.text,
     paddingVertical: 10,
-    fontSize: 14,
-  },
+    fontSize: 14 },
   filterBtn: {
     paddingHorizontal: 12,
     paddingVertical: 7,
-    backgroundColor: "#111827",
+    backgroundColor: c.surface,
     borderRadius: 999,
     borderWidth: 1,
-    borderColor: "#1f2937",
-  },
+    borderColor: c.surfaceBorder },
   filterActive: {
-    backgroundColor: "#2563eb",
-    borderColor: "#2563eb",
-  },
+    backgroundColor: c.accent,
+    borderColor: c.accent },
   filterText: {
-    color: "#94a3b8",
+    color: c.textMuted,
     fontSize: 11,
     fontWeight: "700",
-    letterSpacing: 0.5,
-  },
+    letterSpacing: 0.5 },
 
   emptyBox: {
     alignItems: "center",
     padding: 40,
-    backgroundColor: "#111827",
+    backgroundColor: c.surface,
     borderRadius: 18,
     borderWidth: 1,
-    borderColor: "#1f2937",
-    marginTop: 20,
-  },
-  emptyTitle: { color: "#fff", fontSize: 16, fontWeight: "700" },
+    borderColor: c.surfaceBorder,
+    marginTop: 20 },
+  emptyTitle: { color: c.text, fontSize: 16, fontWeight: "700" },
   emptySub: {
-    color: "#94a3b8",
+    color: c.textMuted,
     fontSize: 13,
     marginTop: 6,
-    textAlign: "center",
-  },
+    textAlign: "center" },
 
   card: {
-    backgroundColor: "#111827",
+    backgroundColor: c.surface,
     borderRadius: 14,
     padding: 14,
     marginBottom: 10,
     borderWidth: 1,
-    borderColor: "#1f2937",
-  },
+    borderColor: c.surfaceBorder },
   cardTopRow: {
     flexDirection: "row",
     alignItems: "flex-start",
-    gap: 10,
-  },
-  cardName: { color: "#fff", fontSize: 15, fontWeight: "700" },
-  cardMeta: { color: "#94a3b8", fontSize: 12, marginTop: 4 },
+    gap: 10 },
+  cardName: { color: c.text, fontSize: 15, fontWeight: "700" },
+  cardMeta: { color: c.textMuted, fontSize: 12, marginTop: 4 },
 
   statusChip: {
     paddingHorizontal: 8,
     paddingVertical: 3,
-    borderRadius: 999,
-  },
+    borderRadius: 999 },
   statusChipText: {
-    color: "#fff",
+    color: c.text,
     fontSize: 10,
     fontWeight: "800",
-    letterSpacing: 0.5,
-  },
+    letterSpacing: 0.5 },
 
   assignedLine: {
-    color: "#94a3b8",
+    color: c.textMuted,
     fontSize: 12,
-    marginTop: 8,
-  },
+    marginTop: 8 },
   notesLine: {
-    color: "#cbd5e1",
+    color: c.text,
     fontSize: 12,
     marginTop: 6,
-    lineHeight: 17,
-  },
+    lineHeight: 17 },
 
   actions: {
     flexDirection: "row",
     gap: 6,
     marginTop: 12,
-    flexWrap: "wrap",
-  },
+    flexWrap: "wrap" },
   actionBtn: {
     flexDirection: "row",
     alignItems: "center",
     paddingHorizontal: 10,
     paddingVertical: 6,
     borderRadius: 8,
-    gap: 4,
-  },
-  assignBtn: { backgroundColor: "#2563eb" },
+    gap: 4 },
+  assignBtn: { backgroundColor: c.accent },
   returnBtn: { backgroundColor: "#0d9488" },
-  editBtn: { backgroundColor: "#374151" },
+  editBtn: { backgroundColor: c.surfaceMuted },
   deleteBtn: {
     backgroundColor: "#dc2626",
-    paddingHorizontal: 10,
-  },
+    paddingHorizontal: 10 },
   actionText: {
-    color: "#fff",
+    color: c.text,
     fontSize: 12,
-    fontWeight: "700",
-  },
+    fontWeight: "700" },
 
   modalOverlay: {
     flex: 1,
-    backgroundColor: "rgba(0,0,0,0.7)",
+    backgroundColor: c.overlay,
     justifyContent: "center",
-    padding: 20,
-  },
+    padding: 20 },
   modalCard: {
-    backgroundColor: "#111827",
+    backgroundColor: c.surface,
     borderRadius: 18,
     padding: 20,
-    maxHeight: "92%",
-  },
+    maxHeight: "92%" },
   modalTitle: {
-    color: "#fff",
+    color: c.text,
     fontSize: 22,
-    fontWeight: "800",
-  },
+    fontWeight: "800" },
   hint: {
-    color: "#94a3b8",
+    color: c.textMuted,
     fontSize: 12,
     marginTop: 4,
-    marginBottom: 8,
-  },
+    marginBottom: 8 },
 
   label: {
-    color: "#94a3b8",
+    color: c.textMuted,
     fontSize: 13,
     fontWeight: "600",
     marginBottom: 6,
-    marginTop: 14,
-  },
+    marginTop: 14 },
   input: {
-    backgroundColor: "#0f172a",
-    color: "#fff",
+    backgroundColor: c.surfaceMuted,
+    color: c.text,
     borderRadius: 12,
     padding: 13,
     borderWidth: 1,
-    borderColor: "#1e293b",
-    fontSize: 14,
-  },
+    borderColor: c.surfaceBorder,
+    fontSize: 14 },
   inputDisabled: { opacity: 0.55 },
   multiline: {
     minHeight: 70,
-    textAlignVertical: "top",
-  },
+    textAlignVertical: "top" },
 
   chipPicker: {
     flexDirection: "row",
     flexWrap: "wrap",
-    gap: 6,
-  },
+    gap: 6 },
   pickBtn: {
     paddingHorizontal: 12,
     paddingVertical: 8,
-    backgroundColor: "#0f172a",
+    backgroundColor: c.surfaceMuted,
     borderRadius: 10,
     borderWidth: 1,
-    borderColor: "#1e293b",
-  },
+    borderColor: c.surfaceBorder },
   pickActive: {
-    backgroundColor: "#2563eb",
-    borderColor: "#2563eb",
-  },
+    backgroundColor: c.accent,
+    borderColor: c.accent },
   pickText: {
-    color: "#94a3b8",
+    color: c.textMuted,
     fontSize: 12,
-    fontWeight: "700",
-  },
+    fontWeight: "700" },
 
   modalActions: {
     flexDirection: "row",
     gap: 10,
-    marginTop: 22,
-  },
+    marginTop: 22 },
   cancelBtn: {
     flex: 1,
-    backgroundColor: "#374151",
+    backgroundColor: c.surfaceMuted,
     padding: 14,
     borderRadius: 12,
-    alignItems: "center",
-  },
+    alignItems: "center" },
   saveBtn: {
     flex: 1,
     backgroundColor: "#16a34a",
     padding: 14,
     borderRadius: 12,
-    alignItems: "center",
-  },
-  modalBtnText: { color: "#fff", fontWeight: "700" },
-});
+    alignItems: "center" },
+  modalBtnText: { color: c.text, fontWeight: "700" } });
+

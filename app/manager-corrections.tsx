@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useCallback } from "react";
+﻿import React, { useEffect, useState, useCallback, useMemo} from "react";
 
 import {
   View,
@@ -7,14 +7,13 @@ import {
   FlatList,
   TouchableOpacity,
   ActivityIndicator,
-  SafeAreaView,
   RefreshControl,
   Modal,
   TextInput,
   Alert,
   KeyboardAvoidingView,
-  Platform,
-} from "react-native";
+  Platform } from "react-native";
+import { SafeAreaView } from "react-native-safe-area-context";
 
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useRouter } from "expo-router";
@@ -22,10 +21,10 @@ import { Ionicons } from "@expo/vector-icons";
 
 import {
   listManagerCorrections,
-  decideManagerCorrection,
-} from "../src/services/manager";
+  decideManagerCorrection } from "../src/services/manager";
 import { AttendanceCorrection } from "../src/types";
-
+
+import { useTheme } from "../src/theme/ThemeProvider";
 const fmtTime = (iso?: string | null): string => {
   if (!iso) return "—";
   try {
@@ -37,6 +36,9 @@ const fmtTime = (iso?: string | null): string => {
 
 export default function ManagerCorrections() {
   const router = useRouter();
+  const { theme } = useTheme();
+  const c = theme.colors;
+  const styles = useMemo(() => makeStyles(c), [c]);
   const [items, setItems] = useState<AttendanceCorrection[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -58,7 +60,10 @@ export default function ManagerCorrections() {
       const data = await listManagerCorrections(token, "PENDING");
       setItems(data || []);
     } catch (err: any) {
-      console.log("manager-corrections load error", err);
+      Alert.alert(
+        "Couldn't load corrections",
+        err?.message || "Pull down to retry."
+      );
     } finally {
       setLoading(false);
       setRefreshing(false);
@@ -103,8 +108,7 @@ export default function ManagerCorrections() {
         overrideCheckOut:
           action === "APPROVE" && overrideOut.trim()
             ? overrideOut.trim()
-            : undefined,
-      });
+            : undefined });
       setItems((prev) => prev.filter((x) => x.id !== selected.id));
       close();
     } catch (err: any) {
@@ -120,7 +124,7 @@ export default function ManagerCorrections() {
   if (loading) {
     return (
       <View style={styles.loader}>
-        <ActivityIndicator size="large" color="#3b82f6" />
+        <ActivityIndicator size="large" color={c.accent} />
       </View>
     );
   }
@@ -128,8 +132,8 @@ export default function ManagerCorrections() {
   return (
     <SafeAreaView style={styles.safe}>
       <View style={styles.header}>
-        <TouchableOpacity onPress={() => router.back()}>
-          <Ionicons name="arrow-back" size={24} color="#fff" />
+        <TouchableOpacity onPress={() => (router.canGoBack() ? router.back() : router.replace("/"))}>
+          <Ionicons name="arrow-back" size={24} color={c.text} />
         </TouchableOpacity>
         <Text style={styles.title}>Attendance Corrections</Text>
         <View style={{ width: 24 }} />
@@ -145,13 +149,13 @@ export default function ManagerCorrections() {
           <RefreshControl
             refreshing={refreshing}
             onRefresh={onRefresh}
-            tintColor="#3b82f6"
-            colors={["#3b82f6"]}
+            tintColor={c.accent}
+            colors={[c.accent]}
           />
         }
         ListEmptyComponent={
           <View style={styles.empty}>
-            <Ionicons name="checkmark-done" size={42} color="#475569" />
+            <Ionicons name="checkmark-done" size={42} color={c.textFaint} />
             <Text style={styles.emptyText}>No pending corrections</Text>
           </View>
         }
@@ -189,7 +193,7 @@ export default function ManagerCorrections() {
               <Ionicons
                 name="chevron-forward"
                 size={18}
-                color="#64748b"
+                color={c.textMuted}
               />
             </View>
           </TouchableOpacity>
@@ -210,7 +214,7 @@ export default function ManagerCorrections() {
             <View style={styles.modalHeader}>
               <Text style={styles.modalTitle}>Decide correction</Text>
               <TouchableOpacity onPress={close}>
-                <Ionicons name="close" size={24} color="#94a3b8" />
+                <Ionicons name="close" size={24} color={c.textMuted} />
               </TouchableOpacity>
             </View>
 
@@ -255,7 +259,7 @@ export default function ManagerCorrections() {
                   value={overrideOut}
                   onChangeText={setOverrideOut}
                   placeholder="2026-05-10T18:30:00+05:30"
-                  placeholderTextColor="#475569"
+                  placeholderTextColor={c.textFaint}
                   autoCapitalize="none"
                 />
 
@@ -267,7 +271,7 @@ export default function ManagerCorrections() {
                   value={note}
                   onChangeText={setNote}
                   placeholder="..."
-                  placeholderTextColor="#475569"
+                  placeholderTextColor={c.textFaint}
                   multiline
                 />
 
@@ -300,112 +304,99 @@ export default function ManagerCorrections() {
   );
 }
 
-const styles = StyleSheet.create({
-  safe: { flex: 1, backgroundColor: "#0b1220" },
+const makeStyles = (c: any) => StyleSheet.create({
+  safe: { flex: 1, backgroundColor: c.bg },
   loader: {
     flex: 1,
-    backgroundColor: "#0b1220",
+    backgroundColor: c.bg,
     justifyContent: "center",
-    alignItems: "center",
-  },
+    alignItems: "center" },
   header: {
     flexDirection: "row",
     alignItems: "center",
     paddingHorizontal: 16,
     paddingVertical: 14,
     borderBottomWidth: 1,
-    borderBottomColor: "#1f2937",
-    gap: 12,
-  },
-  title: { color: "#fff", fontSize: 18, fontWeight: "800", flex: 1 },
+    borderBottomColor: c.surfaceBorder,
+    gap: 12 },
+  title: { color: c.text, fontSize: 18, fontWeight: "800", flex: 1 },
   card: {
-    backgroundColor: "#111827",
+    backgroundColor: c.surface,
     padding: 14,
     borderRadius: 14,
     marginBottom: 8,
     borderWidth: 1,
-    borderColor: "#1f2937",
-  },
+    borderColor: c.surfaceBorder },
   cardTop: {
     flexDirection: "row",
     justifyContent: "space-between",
-    alignItems: "center",
-  },
-  who: { color: "#fff", fontSize: 15, fontWeight: "700" },
+    alignItems: "center" },
+  who: { color: c.text, fontSize: 15, fontWeight: "700" },
   pill: {
     backgroundColor: "#f59e0b",
     paddingHorizontal: 8,
     paddingVertical: 2,
-    borderRadius: 6,
-  },
+    borderRadius: 6 },
   pillText: { color: "#fff", fontSize: 10, fontWeight: "800" },
-  row: { color: "#cbd5e1", fontSize: 13, marginTop: 6 },
-  reason: { color: "#94a3b8", fontSize: 12, marginTop: 6 },
+  row: { color: c.text, fontSize: 13, marginTop: 6 },
+  reason: { color: c.textMuted, fontSize: 12, marginTop: 6 },
   cardFooter: {
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
-    marginTop: 10,
-  },
-  meta: { color: "#64748b", fontSize: 11 },
+    marginTop: 10 },
+  meta: { color: c.textMuted, fontSize: 11 },
   emptyWrap: { flex: 1, justifyContent: "center" },
   empty: { alignItems: "center", gap: 10 },
-  emptyText: { color: "#475569", fontSize: 14 },
+  emptyText: { color: c.textMuted, fontSize: 14 },
   modalWrap: {
     flex: 1,
     justifyContent: "flex-end",
-    backgroundColor: "rgba(0,0,0,0.5)",
-  },
+    backgroundColor: c.overlay },
   modal: {
-    backgroundColor: "#0f172a",
+    backgroundColor: c.surfaceMuted,
     padding: 20,
     borderTopLeftRadius: 18,
     borderTopRightRadius: 18,
     borderTopWidth: 1,
-    borderTopColor: "#1e293b",
-  },
+    borderTopColor: c.surfaceBorder },
   modalHeader: {
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
-    marginBottom: 14,
-  },
-  modalTitle: { color: "#fff", fontSize: 18, fontWeight: "800" },
+    marginBottom: 14 },
+  modalTitle: { color: c.text, fontSize: 18, fontWeight: "800" },
   detailRow: {
     flexDirection: "row",
     justifyContent: "space-between",
-    paddingVertical: 6,
-  },
-  detailValueLabel: { color: "#94a3b8", fontSize: 12 },
-  detailValue: { color: "#fff", fontSize: 14, fontWeight: "600" },
+    paddingVertical: 6 },
+  detailValueLabel: { color: c.textMuted, fontSize: 12 },
+  detailValue: { color: c.text, fontSize: 14, fontWeight: "600" },
   detailLabel: {
-    color: "#94a3b8",
+    color: c.textMuted,
     fontSize: 11,
     letterSpacing: 1.2,
     fontWeight: "700",
     marginTop: 12,
-    marginBottom: 6,
-  },
-  detailBody: { color: "#cbd5e1", fontSize: 13 },
+    marginBottom: 6 },
+  detailBody: { color: c.text, fontSize: 13 },
   input: {
-    backgroundColor: "#111827",
-    color: "#fff",
+    backgroundColor: c.surface,
+    color: c.text,
     paddingHorizontal: 12,
     paddingVertical: 10,
     borderRadius: 10,
     borderWidth: 1,
-    borderColor: "#1f2937",
+    borderColor: c.surfaceBorder,
     minHeight: 50,
-    textAlignVertical: "top",
-  },
+    textAlignVertical: "top" },
   actions: { flexDirection: "row", gap: 10, marginTop: 18 },
   btn: {
     flex: 1,
     paddingVertical: 14,
     borderRadius: 12,
-    alignItems: "center",
-  },
+    alignItems: "center" },
   btnReject: { backgroundColor: "#dc2626" },
   btnApprove: { backgroundColor: "#16a34a" },
-  btnText: { color: "#fff", fontWeight: "800" },
-});
+  btnText: { color: c.text, fontWeight: "800" } });
+

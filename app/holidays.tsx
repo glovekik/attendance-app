@@ -1,7 +1,6 @@
-import React, {
+﻿import React, {
   useEffect,
-  useState,
-} from "react";
+  useState, useMemo} from "react";
 
 import {
   View,
@@ -12,10 +11,9 @@ import {
   TextInput,
   ActivityIndicator,
   Modal,
-  SafeAreaView,
   Platform,
-  Alert,
-} from "react-native";
+  Alert } from "react-native";
+import { SafeAreaView } from "react-native-safe-area-context";
 
 import AsyncStorage from "@react-native-async-storage/async-storage";
 
@@ -28,25 +26,30 @@ import DateTimePicker from "@react-native-community/datetimepicker";
 import {
   WebDateField,
   dateToYMD,
-  ymdToDate,
-} from "../src/components/WebDateField";
+  ymdToDate } from "../src/components/WebDateField";
 
 import {
   listHolidays,
   hrCreateHoliday,
   hrUpdateHoliday,
-  hrDeleteHoliday,
-} from "../src/services/holidays";
+  hrDeleteHoliday } from "../src/services/holidays";
 
 import { getMe } from "../src/services/api";
 
 import { Holiday, hasRole, User } from "../src/types";
-
+
+import { useTheme } from "../src/theme/ThemeProvider";
 const isWeb = Platform.OS === "web";
 
 export default function Holidays() {
 
   const router = useRouter();
+
+  const { theme } = useTheme();
+
+  const c = theme.colors;
+
+  const s = useMemo(() => makeStyles(c), [c]);
 
   const now = new Date();
 
@@ -66,8 +69,7 @@ export default function Holidays() {
   const [popup, setPopup] = useState({
     visible: false,
     type: "success" as "success" | "error",
-    message: "",
-  });
+    message: "" });
 
   const showPopup = (
     msg: string,
@@ -127,6 +129,10 @@ export default function Holidays() {
 
   const submit = async () => {
     if (saving) return;
+    if (!isHR) {
+      showPopup("Only HR can add or edit holidays", "error");
+      return;
+    }
     if (!name.trim()) {
       showPopup("Name required", "error");
       return;
@@ -138,8 +144,7 @@ export default function Holidays() {
       const payload = {
         date: dateToYMD(date),
         name: name.trim(),
-        description: description.trim() || undefined,
-      };
+        description: description.trim() || undefined };
       if (editingId) {
         await hrUpdateHoliday(token, editingId, payload);
         showPopup("Holiday updated");
@@ -173,8 +178,7 @@ export default function Holidays() {
       {
         text: "Delete",
         style: "destructive",
-        onPress: () => doDelete(h.id),
-      },
+        onPress: () => doDelete(h.id) },
     ]);
   };
 
@@ -193,7 +197,7 @@ export default function Holidays() {
   if (loading) {
     return (
       <View style={s.loader}>
-        <ActivityIndicator size="large" color="#2563eb" />
+        <ActivityIndicator size="large" color={c.accent} />
       </View>
     );
   }
@@ -233,9 +237,9 @@ export default function Holidays() {
         <View style={s.header}>
           <TouchableOpacity
             style={s.backBtn}
-            onPress={() => router.back()}
+            onPress={() => (router.canGoBack() ? router.back() : router.replace("/"))}
           >
-            <Ionicons name="chevron-back" size={22} color="#fff" />
+            <Ionicons name="chevron-back" size={22} color={c.text} />
           </TouchableOpacity>
           <View style={{ flex: 1 }}>
             <Text style={s.title}>Holiday Calendar</Text>
@@ -259,7 +263,7 @@ export default function Holidays() {
             <Ionicons
               name="chevron-back"
               size={20}
-              color="#94a3b8"
+              color={c.textMuted}
             />
           </TouchableOpacity>
           <Text style={s.yearLabel}>{year}</Text>
@@ -267,7 +271,7 @@ export default function Holidays() {
             <Ionicons
               name="chevron-forward"
               size={20}
-              color="#94a3b8"
+              color={c.textMuted}
             />
           </TouchableOpacity>
         </View>
@@ -297,8 +301,7 @@ export default function Holidays() {
                   const d = new Date(`${h.date}T00:00:00`);
                   const day = d.getDate();
                   const weekday = d.toLocaleDateString("en-US", {
-                    weekday: "short",
-                  });
+                    weekday: "short" });
                   return (
                     <TouchableOpacity
                       key={h.id}
@@ -325,7 +328,7 @@ export default function Holidays() {
                         <Ionicons
                           name="chevron-forward"
                           size={16}
-                          color="#64748b"
+                          color={c.textMuted}
                         />
                       )}
                     </TouchableOpacity>
@@ -356,7 +359,7 @@ export default function Holidays() {
                   <Ionicons
                     name="calendar-outline"
                     size={18}
-                    color="#94a3b8"
+                    color={c.textMuted}
                   />
                   <WebDateField
                     mode="date"
@@ -376,15 +379,14 @@ export default function Holidays() {
                     <Ionicons
                       name="calendar-outline"
                       size={18}
-                      color="#94a3b8"
+                      color={c.textMuted}
                     />
                     <Text style={s.dateText}>
                       {date.toLocaleDateString("en-US", {
                         weekday: "short",
                         month: "short",
                         day: "numeric",
-                        year: "numeric",
-                      })}
+                        year: "numeric" })}
                     </Text>
                   </TouchableOpacity>
                   {showPicker && (
@@ -406,7 +408,7 @@ export default function Holidays() {
                 value={name}
                 onChangeText={setName}
                 placeholder="Independence Day"
-                placeholderTextColor="#64748b"
+                placeholderTextColor={c.textFaint}
               />
 
               <Text style={s.label}>Description</Text>
@@ -415,7 +417,7 @@ export default function Holidays() {
                 value={description}
                 onChangeText={setDescription}
                 placeholder="Optional"
-                placeholderTextColor="#64748b"
+                placeholderTextColor={c.textFaint}
                 multiline
               />
 
@@ -450,21 +452,21 @@ export default function Holidays() {
   );
 }
 
-const s = StyleSheet.create({
-  safe: { flex: 1, backgroundColor: "#0b1220" },
+const makeStyles = (c: any) => StyleSheet.create({
+  safe: { flex: 1, backgroundColor: c.bg },
   container: { flex: 1 },
   content: { padding: 20, paddingBottom: 60 },
-  loader: { flex: 1, backgroundColor: "#0b1220", justifyContent: "center", alignItems: "center" },
+  loader: { flex: 1, backgroundColor: c.bg, justifyContent: "center", alignItems: "center" },
   popup: { position: "absolute", top: 60, left: 20, right: 20, padding: 14, borderRadius: 14, zIndex: 999 },
   popupOk: { backgroundColor: "#16a34a" },
   popupErr: { backgroundColor: "#dc2626" },
-  popupText: { color: "#fff", fontWeight: "700", textAlign: "center" },
+  popupText: { color: c.text, fontWeight: "700", textAlign: "center" },
 
   header: { flexDirection: "row", alignItems: "center", marginBottom: 14, marginTop: 10, gap: 12 },
-  backBtn: { width: 42, height: 42, borderRadius: 12, backgroundColor: "#111827", justifyContent: "center", alignItems: "center", borderWidth: 1, borderColor: "#1f2937" },
-  addBtn: { width: 42, height: 42, borderRadius: 12, backgroundColor: "#2563eb", justifyContent: "center", alignItems: "center" },
-  title: { color: "#fff", fontSize: 24, fontWeight: "800" },
-  subtitle: { color: "#94a3b8", fontSize: 13, marginTop: 3 },
+  backBtn: { width: 42, height: 42, borderRadius: 12, backgroundColor: c.surface, justifyContent: "center", alignItems: "center", borderWidth: 1, borderColor: c.surfaceBorder },
+  addBtn: { width: 42, height: 42, borderRadius: 12, backgroundColor: c.accent, justifyContent: "center", alignItems: "center" },
+  title: { color: c.text, fontSize: 24, fontWeight: "800" },
+  subtitle: { color: c.textMuted, fontSize: 13, marginTop: 3 },
 
   yearNav: {
     flexDirection: "row",
@@ -472,59 +474,56 @@ const s = StyleSheet.create({
     justifyContent: "space-between",
     paddingHorizontal: 20,
     paddingVertical: 12,
-    backgroundColor: "#111827",
+    backgroundColor: c.surface,
     borderRadius: 12,
     borderWidth: 1,
-    borderColor: "#1f2937",
-    marginBottom: 16,
-  },
-  yearLabel: { color: "#fff", fontSize: 15, fontWeight: "800" },
+    borderColor: c.surfaceBorder,
+    marginBottom: 16 },
+  yearLabel: { color: c.text, fontSize: 15, fontWeight: "800" },
 
-  empty: { padding: 30, backgroundColor: "#111827", borderRadius: 14, borderWidth: 1, borderColor: "#1f2937", alignItems: "center" },
-  emptyTitle: { color: "#fff", fontSize: 15, fontWeight: "700" },
-  emptySub: { color: "#94a3b8", fontSize: 12, marginTop: 4, textAlign: "center" },
+  empty: { padding: 30, backgroundColor: c.surface, borderRadius: 14, borderWidth: 1, borderColor: c.surfaceBorder, alignItems: "center" },
+  emptyTitle: { color: c.text, fontSize: 15, fontWeight: "700" },
+  emptySub: { color: c.textMuted, fontSize: 12, marginTop: 4, textAlign: "center" },
 
-  monthLabel: { color: "#64748b", fontSize: 11, fontWeight: "700", letterSpacing: 1.5, marginBottom: 8 },
+  monthLabel: { color: c.textMuted, fontSize: 11, fontWeight: "700", letterSpacing: 1.5, marginBottom: 8 },
 
   row: {
     flexDirection: "row",
     alignItems: "center",
-    backgroundColor: "#111827",
+    backgroundColor: c.surface,
     borderRadius: 12,
     padding: 12,
     marginBottom: 8,
     borderWidth: 1,
-    borderColor: "#1f2937",
-    gap: 12,
-  },
+    borderColor: c.surfaceBorder,
+    gap: 12 },
   dateBox: {
     width: 44,
     height: 44,
     borderRadius: 10,
-    backgroundColor: "#0f172a",
+    backgroundColor: c.surfaceMuted,
     borderWidth: 1,
-    borderColor: "#1e293b",
+    borderColor: c.surfaceBorder,
     justifyContent: "center",
-    alignItems: "center",
-  },
-  dayNum: { color: "#fff", fontSize: 16, fontWeight: "800" },
-  weekday: { color: "#64748b", fontSize: 9, fontWeight: "700" },
-  rowName: { color: "#fff", fontSize: 14, fontWeight: "700" },
-  rowDesc: { color: "#94a3b8", fontSize: 12, marginTop: 2 },
+    alignItems: "center" },
+  dayNum: { color: c.text, fontSize: 16, fontWeight: "800" },
+  weekday: { color: c.textMuted, fontSize: 9, fontWeight: "700" },
+  rowName: { color: c.text, fontSize: 14, fontWeight: "700" },
+  rowDesc: { color: c.textMuted, fontSize: 12, marginTop: 2 },
 
-  modalOverlay: { flex: 1, backgroundColor: "rgba(0,0,0,0.7)", justifyContent: "center", padding: 20 },
-  modalCard: { backgroundColor: "#111827", borderRadius: 18, padding: 20, maxHeight: "90%" },
-  modalTitle: { color: "#fff", fontSize: 22, fontWeight: "800", marginBottom: 8 },
+  modalOverlay: { flex: 1, backgroundColor: c.overlay, justifyContent: "center", padding: 20 },
+  modalCard: { backgroundColor: c.surface, borderRadius: 18, padding: 20, maxHeight: "90%" },
+  modalTitle: { color: c.text, fontSize: 22, fontWeight: "800", marginBottom: 8 },
 
-  label: { color: "#94a3b8", fontSize: 13, fontWeight: "600", marginBottom: 6, marginTop: 14 },
-  input: { backgroundColor: "#0f172a", color: "#fff", borderRadius: 12, padding: 13, borderWidth: 1, borderColor: "#1e293b", fontSize: 14 },
+  label: { color: c.textMuted, fontSize: 13, fontWeight: "600", marginBottom: 6, marginTop: 14 },
+  input: { backgroundColor: c.surfaceMuted, color: c.text, borderRadius: 12, padding: 13, borderWidth: 1, borderColor: c.surfaceBorder, fontSize: 14 },
   multi: { minHeight: 70, textAlignVertical: "top" },
 
-  dateRow: { flexDirection: "row", alignItems: "center", backgroundColor: "#0f172a", borderRadius: 12, padding: 13, borderWidth: 1, borderColor: "#1e293b", gap: 10 },
-  dateText: { color: "#fff", fontWeight: "700", fontSize: 14 },
+  dateRow: { flexDirection: "row", alignItems: "center", backgroundColor: c.surfaceMuted, borderRadius: 12, padding: 13, borderWidth: 1, borderColor: c.surfaceBorder, gap: 10 },
+  dateText: { color: c.text, fontWeight: "700", fontSize: 14 },
 
   modalActions: { flexDirection: "row", gap: 10, marginTop: 22 },
-  cancelBtn: { flex: 1, backgroundColor: "#374151", padding: 14, borderRadius: 12, alignItems: "center" },
+  cancelBtn: { flex: 1, backgroundColor: c.surfaceMuted, padding: 14, borderRadius: 12, alignItems: "center" },
   saveBtn: { flex: 1, backgroundColor: "#16a34a", padding: 14, borderRadius: 12, alignItems: "center" },
-  modalBtnText: { color: "#fff", fontWeight: "700" },
-});
+  modalBtnText: { color: c.text, fontWeight: "700" } });
+

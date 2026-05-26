@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useCallback } from "react";
+﻿import React, { useCallback, useEffect, useState, useMemo} from "react";
 
 import {
   View,
@@ -7,70 +7,34 @@ import {
   ScrollView,
   TouchableOpacity,
   ActivityIndicator,
-  SafeAreaView,
   RefreshControl,
-} from "react-native";
+  Alert } from "react-native";
+import { SafeAreaView } from "react-native-safe-area-context";
 
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useRouter, useFocusEffect } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 
-import {
-  listManagerLeaves,
-  listManagerCorrections,
-  listManagerReimbursements,
-  listManagerTimesheets,
-} from "../src/services/manager";
 import { getDashboardManager } from "../src/services/dashboard";
-import { DashboardManager } from "../src/types";
+import { getMe } from "../src/services/api";
+import { DashboardManager, User } from "../src/types";
+import { useTheme } from "../src/theme/ThemeProvider";
+import {
+  BottomTabBar,
+  BOTTOM_BAR_RESERVED_HEIGHT } from "../src/components/BottomTabBar";
 
-interface CountTileProps {
-  icon: keyof typeof Ionicons.glyphMap;
-  color: string;
-  title: string;
-  desc: string;
-  count: number;
-  onPress: () => void;
-}
-
-const CountTile = ({
-  icon,
-  color,
-  title,
-  desc,
-  count,
-  onPress,
-}: CountTileProps) => (
-  <TouchableOpacity
-    style={styles.card}
-    onPress={onPress}
-    activeOpacity={0.85}
-  >
-    <View style={[styles.iconBox, { backgroundColor: color }]}>
-      <Ionicons name={icon} size={22} color="#fff" />
-    </View>
-    <View style={styles.cardBody}>
-      <Text style={styles.cardTitle}>{title}</Text>
-      <Text style={styles.cardDesc}>{desc}</Text>
-    </View>
-    {count > 0 && (
-      <View style={styles.countPill}>
-        <Text style={styles.countText}>{count}</Text>
-      </View>
-    )}
-    <Ionicons name="chevron-forward" size={22} color="#64748b" />
-  </TouchableOpacity>
-);
-
+/**
+ * Manager hub — KPI strip, approval queues, team management entry points.
+ * White cards with pastel icon containers and badge counts.
+ */
 export default function ManagerHub() {
   const router = useRouter();
+  const { theme } = useTheme();
+
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
-  const [pendingLeave, setPendingLeave] = useState(0);
-  const [pendingCorrection, setPendingCorrection] = useState(0);
-  const [pendingReimb, setPendingReimb] = useState(0);
-  const [pendingTimesheet, setPendingTimesheet] = useState(0);
   const [dash, setDash] = useState<DashboardManager | null>(null);
+  const [me, setMe] = useState<User | null>(null);
 
   const load = useCallback(async () => {
     try {
@@ -79,29 +43,14 @@ export default function ManagerHub() {
         router.replace("/login");
         return;
       }
-      // Try dashboard first — it gives leave + correction counts in one call.
-      try {
-        const d = await getDashboardManager(token);
-        setDash(d);
-        setPendingLeave(d.pendingLeaveApprovals || 0);
-        setPendingCorrection(d.pendingCorrectionApprovals || 0);
-      } catch {
-        // Fall back to raw lists if dashboard endpoint fails.
-        const [leaves, corrections] = await Promise.all([
-          listManagerLeaves(token).catch(() => []),
-          listManagerCorrections(token).catch(() => []),
-        ]);
-        setPendingLeave(leaves.length);
-        setPendingCorrection(corrections.length);
-      }
-      const [reimb, timesheets] = await Promise.all([
-        listManagerReimbursements(token).catch(() => []),
-        listManagerTimesheets(token).catch(() => []),
+      const [d, meRes] = await Promise.all([
+        getDashboardManager(token).catch(() => null),
+        getMe(token).catch(() => null),
       ]);
-      setPendingReimb(reimb.length);
-      setPendingTimesheet(timesheets.length);
-    } catch (err) {
-      console.log("manager hub load error", err);
+      if (d) setDash(d);
+      setMe(meRes);
+    } catch (err: any) {
+      Alert.alert("Couldn't load manager hub", err?.message || "");
     } finally {
       setLoading(false);
       setRefreshing(false);
@@ -123,214 +72,514 @@ export default function ManagerHub() {
     load();
   };
 
+  const c = theme.colors;
+
+  const styles = useMemo(() => makeStyles(c), [c]);
+
   if (loading) {
     return (
-      <View style={styles.loader}>
-        <ActivityIndicator size="large" color="#3b82f6" />
+      <View style={[styles.loader, { backgroundColor: c.bg }]}>
+        <ActivityIndicator size="large" color={c.accent} />
       </View>
     );
   }
 
   return (
-    <SafeAreaView style={styles.safe}>
-      <View style={styles.header}>
-        <TouchableOpacity onPress={() => router.back()}>
-          <Ionicons name="arrow-back" size={24} color="#fff" />
-        </TouchableOpacity>
-        <Text style={styles.title}>Manager Approvals</Text>
-        <View style={{ width: 24 }} />
-      </View>
-
+    <SafeAreaView style={[styles.safe, { backgroundColor: c.bg }]}>
       <ScrollView
-        contentContainerStyle={styles.content}
+        contentContainerStyle={{
+          padding: 20,
+          paddingBottom: BOTTOM_BAR_RESERVED_HEIGHT + 24 }}
         refreshControl={
           <RefreshControl
             refreshing={refreshing}
             onRefresh={onRefresh}
-            tintColor="#3b82f6"
-            colors={["#3b82f6"]}
+            tintColor={c.accent}
+            colors={[c.accent]}
           />
         }
+        showsVerticalScrollIndicator={false}
       >
+        {/* HEADER */}
+        <View style={styles.headerRow}>
+          <TouchableOpacity
+            onPress={() =>
+              router.canGoBack() ? router.back() : router.replace("/")
+            }
+            style={[
+              styles.iconBtn,
+              {
+                backgroundColor: c.surface,
+                borderColor: c.surfaceBorder },
+            ]}
+          >
+            <Ionicons name="chevron-back" size={22} color={c.text} />
+          </TouchableOpacity>
+          <View style={{ flex: 1, marginLeft: 12 }}>
+            <Text style={[styles.title, { color: c.text }]}>
+              Manager Hub
+            </Text>
+            <Text style={[styles.subtitle, { color: c.textMuted }]}>
+              Approvals · Team · Tasks
+            </Text>
+          </View>
+        </View>
+
+        {/* TEAM SUMMARY */}
         {dash && (
-          <View style={styles.summary}>
-            <View style={styles.summaryRow}>
-              <View style={styles.summaryItem}>
-                <Text style={styles.summaryValue}>
-                  {dash.directReports}
-                </Text>
-                <Text style={styles.summaryLabel}>Direct reports</Text>
-              </View>
-              <View style={styles.summaryItem}>
-                <Text style={styles.summaryValue}>
-                  {dash.openTasksForReports}
-                </Text>
-                <Text style={styles.summaryLabel}>Open tasks</Text>
-              </View>
+          <View
+            style={[
+              styles.summaryCard,
+              {
+                backgroundColor: c.surface,
+                borderColor: c.surfaceBorder,
+                shadowColor: c.shadow },
+            ]}
+          >
+            <View style={styles.summaryItem}>
+              <Text style={[styles.summaryValue, { color: c.text }]}>
+                {dash.directReports}
+              </Text>
+              <Text style={[styles.summaryLabel, { color: c.textMuted }]}>
+                Direct reports
+              </Text>
+            </View>
+            <View
+              style={[
+                styles.summaryDivider,
+                { backgroundColor: c.surfaceBorder },
+              ]}
+            />
+            <View style={styles.summaryItem}>
+              <Text style={[styles.summaryValue, { color: c.text }]}>
+                {dash.openTasksForReports ?? 0}
+              </Text>
+              <Text style={[styles.summaryLabel, { color: c.textMuted }]}>
+                Open tasks
+              </Text>
+            </View>
+            <View
+              style={[
+                styles.summaryDivider,
+                { backgroundColor: c.surfaceBorder },
+              ]}
+            />
+            <View style={styles.summaryItem}>
+              <Text style={[styles.summaryValue, { color: c.text }]}>
+                {dash.pendingApprovalsTotal ?? 0}
+              </Text>
+              <Text style={[styles.summaryLabel, { color: c.textMuted }]}>
+                Pending
+              </Text>
             </View>
           </View>
         )}
 
-        <Text style={styles.section}>PENDING APPROVALS</Text>
-        <CountTile
-          icon="airplane-outline"
-          color="#0d9488"
-          title="Leave requests"
-          desc="Approve or reject team leaves"
-          count={pendingLeave}
-          onPress={() => router.push("/manager-leaves" as any)}
-        />
-        <CountTile
-          icon="create-outline"
-          color="#f59e0b"
-          title="Attendance corrections"
-          desc="Approve corrected check-out times"
-          count={pendingCorrection}
-          onPress={() =>
-            router.push("/manager-corrections" as any)
-          }
-        />
-        <CountTile
-          icon="card-outline"
-          color="#3b82f6"
-          title="Reimbursements"
-          desc="Approve expense reimbursements"
-          count={pendingReimb}
-          onPress={() =>
-            router.push("/manager-reimbursements" as any)
-          }
-        />
-        <CountTile
-          icon="time-outline"
-          color="#6366f1"
-          title="Timesheets"
-          desc="Approve weekly timesheets"
-          count={pendingTimesheet}
-          onPress={() =>
-            router.push("/manager-timesheets" as any)
-          }
-        />
-
-        <Text style={styles.section}>PERFORMANCE</Text>
-        <CountTile
-          icon="flag-outline"
-          color="#f59e0b"
-          title="Goals"
-          desc="Set & track goals for your reports"
-          count={0}
-          onPress={() => router.push("/manager-goals" as any)}
-        />
-        <CountTile
-          icon="star-outline"
-          color="#eab308"
-          title="Reviews"
-          desc="Create & complete performance reviews"
-          count={0}
-          onPress={() => router.push("/manager-reviews" as any)}
-        />
-
-        {dash?.upcomingDeadlines && dash.upcomingDeadlines.length > 0 && (
+        {/* KPIs */}
+        {dash && (
           <>
-            <Text style={styles.section}>UPCOMING DEADLINES</Text>
-            {dash.upcomingDeadlines.map((t) => (
-              <View key={t.id} style={styles.card}>
-                <View
-                  style={[
-                    styles.iconBox,
-                    { backgroundColor: "#7c3aed" },
-                  ]}
-                >
-                  <Ionicons
-                    name="alert-circle-outline"
-                    size={22}
-                    color="#fff"
-                  />
-                </View>
-                <View style={styles.cardBody}>
-                  <Text style={styles.cardTitle}>{t.title}</Text>
-                  <Text style={styles.cardDesc}>
-                    {t.dueDate ? `Due ${t.dueDate}` : "No due date"}
-                    {t.priority ? ` · ${t.priority}` : ""}
-                  </Text>
-                </View>
-              </View>
-            ))}
+            <Text style={[styles.section, { color: c.textMuted }]}>
+              KPIs
+            </Text>
+            <View style={styles.kpiGrid}>
+              <SimpleKpi
+                label="Team Attendance"
+                value={fmtPct(dash.teamAttendanceRatePctMTD)}
+                sub="month-to-date"
+                icon="calendar-outline"
+                tint={c.pastelLavender}
+                iconColor="#6d28d9"
+                theme={theme}
+          styles={styles}
+              />
+              <SimpleKpi
+                label="WFH Today"
+                value={fmtPct(dash.teamWfhRatioPctToday)}
+                sub="of team"
+                icon="home-outline"
+                tint={c.pastelMint}
+                iconColor="#15803d"
+                theme={theme}
+          styles={styles}
+              />
+              <SimpleKpi
+                label="On-time Tasks"
+                value={fmtPct(dash.onTimeTaskDeliveryPct30d)}
+                sub="last 30 days"
+                icon="checkmark-done-outline"
+                tint={c.pastelPink}
+                iconColor="#be185d"
+                theme={theme}
+          styles={styles}
+              />
+              <SimpleKpi
+                label="Avg Hours"
+                value={
+                  dash.teamAvgHoursPerDay7d != null
+                    ? `${dash.teamAvgHoursPerDay7d.toFixed(1)}h`
+                    : "—"
+                }
+                sub="per day, 7d"
+                icon="stopwatch-outline"
+                tint={c.pastelPeach}
+                iconColor="#c2410c"
+                theme={theme}
+          styles={styles}
+              />
+            </View>
           </>
         )}
 
-        <View style={{ height: 40 }} />
+        {/* MY TEAM */}
+        <Text style={[styles.section, { color: c.textMuted }]}>
+          MY TEAM
+        </Text>
+        <View style={styles.tileRow}>
+          <Tile
+            icon="people-outline"
+            label="My Team"
+            sub="Direct reports & assign tasks"
+            tint={c.pastelLavender}
+            iconColor="#6d28d9"
+            count={dash?.directReports}
+            onPress={() => router.push("/manager-team" as any)}
+            theme={theme}
+          styles={styles}
+          />
+          <Tile
+            icon="list-outline"
+            label="My Team Tasks"
+            sub="All tasks you assigned"
+            tint={c.pastelMint}
+            iconColor="#15803d"
+            count={dash?.openTasksForReports}
+            onPress={() => router.push("/manager-tasks" as any)}
+            theme={theme}
+          styles={styles}
+          />
+          <Tile
+            icon="calendar-outline"
+            label="Team Attendance"
+            sub="Day / month view"
+            tint={c.pastelSky}
+            iconColor="#0369a1"
+            onPress={() => router.push("/manager-attendance" as any)}
+            theme={theme}
+          styles={styles}
+          />
+          <Tile
+            icon="airplane-outline"
+            label="Leave Balances"
+            sub="Per report"
+            tint={c.pastelPeach}
+            iconColor="#c2410c"
+            onPress={() => router.push("/manager-leave-balances" as any)}
+            theme={theme}
+          styles={styles}
+          />
+          <Tile
+            icon="bar-chart-outline"
+            label="Productivity"
+            sub="Open tasks · avg hours"
+            tint={c.pastelPink}
+            iconColor="#be185d"
+            onPress={() => router.push("/manager-productivity" as any)}
+            theme={theme}
+          styles={styles}
+          />
+        </View>
+
+        {/* PENDING APPROVALS */}
+        <Text style={[styles.section, { color: c.textMuted }]}>
+          PENDING APPROVALS
+        </Text>
+        <View style={styles.tileRow}>
+          <Tile
+            icon="paper-plane-outline"
+            label="Leave requests"
+            sub="Approve / reject"
+            tint={c.pastelMint}
+            iconColor="#0f766e"
+            count={dash?.pendingLeaveApprovals}
+            onPress={() => router.push("/manager-leaves" as any)}
+            theme={theme}
+          styles={styles}
+          />
+          <Tile
+            icon="alert-circle-outline"
+            label="Corrections"
+            sub="Attendance fixes"
+            tint={c.pastelYellow}
+            iconColor="#a16207"
+            count={dash?.pendingCorrectionApprovals}
+            onPress={() => router.push("/manager-corrections" as any)}
+            theme={theme}
+          styles={styles}
+          />
+          <Tile
+            icon="card-outline"
+            label="Reimbursements"
+            sub="Expense approvals"
+            tint={c.pastelSky}
+            iconColor="#0369a1"
+            count={dash?.pendingReimbursementApprovals}
+            onPress={() => router.push("/manager-reimbursements" as any)}
+            theme={theme}
+          styles={styles}
+          />
+          <Tile
+            icon="document-text-outline"
+            label="Manual attendance"
+            sub="Missed-day requests"
+            tint={c.pastelLavender}
+            iconColor="#6d28d9"
+            count={dash?.pendingManualAttendanceApprovals}
+            onPress={() => router.push("/manager-manual-requests" as any)}
+            theme={theme}
+          styles={styles}
+          />
+          <Tile
+            icon="time-outline"
+            label="Timesheets"
+            sub="Weekly approval"
+            tint={c.pastelPink}
+            iconColor="#be185d"
+            count={dash?.pendingTimesheetApprovals}
+            onPress={() => router.push("/manager-timesheets" as any)}
+            theme={theme}
+          styles={styles}
+          />
+        </View>
+
+        {/* PERFORMANCE */}
+        <Text style={[styles.section, { color: c.textMuted }]}>
+          PERFORMANCE
+        </Text>
+        <View style={styles.tileRow}>
+          <Tile
+            icon="flag-outline"
+            label="Goals"
+            sub="Set & track"
+            tint={c.pastelPeach}
+            iconColor="#c2410c"
+            onPress={() => router.push("/manager-goals" as any)}
+            theme={theme}
+          styles={styles}
+          />
+          <Tile
+            icon="star-outline"
+            label="Reviews"
+            sub="Create & complete"
+            tint={c.pastelYellow}
+            iconColor="#a16207"
+            onPress={() => router.push("/manager-reviews" as any)}
+            theme={theme}
+          styles={styles}
+          />
+        </View>
       </ScrollView>
+
+      <BottomTabBar user={me} />
     </SafeAreaView>
   );
 }
 
-const styles = StyleSheet.create({
-  safe: { flex: 1, backgroundColor: "#0b1220" },
-  loader: {
-    flex: 1,
-    backgroundColor: "#0b1220",
-    justifyContent: "center",
-    alignItems: "center",
-  },
-  header: {
+const fmtPct = (v: number | null | undefined) => {
+  if (v === null || v === undefined || !Number.isFinite(v)) return "—";
+  return `${Math.round(v)}%`;
+};
+
+const Tile = ({
+  icon,
+  label,
+  sub,
+  tint,
+  iconColor,
+  count,
+  onPress,
+  theme,
+  styles }: {
+  icon: keyof typeof Ionicons.glyphMap;
+  label: string;
+  sub?: string;
+  tint: string;
+  iconColor: string;
+  count?: number;
+  onPress: () => void;
+  theme: any;
+  styles: any;
+}) => (
+  <TouchableOpacity
+    onPress={onPress}
+    activeOpacity={0.85}
+    style={[
+      styles.tile,
+      {
+        backgroundColor: theme.colors.surface,
+        borderColor: theme.colors.surfaceBorder,
+        shadowColor: theme.colors.shadow },
+    ]}
+  >
+    <View style={[styles.tileIcon, { backgroundColor: tint }]}>
+      <Ionicons name={icon} size={22} color={iconColor} />
+    </View>
+    <View style={{ flex: 1 }}>
+      <Text style={[styles.tileLabel, { color: theme.colors.text }]}>
+        {label}
+      </Text>
+      {!!sub && (
+        <Text style={[styles.tileSub, { color: theme.colors.textMuted }]}>
+          {sub}
+        </Text>
+      )}
+    </View>
+    {typeof count === "number" && count > 0 && (
+      <View
+        style={[
+          styles.tileBadge,
+          { backgroundColor: theme.colors.dangerText },
+        ]}
+      >
+        <Text style={styles.tileBadgeText}>{count > 99 ? "99+" : count}</Text>
+      </View>
+    )}
+    <Ionicons
+      name="chevron-forward"
+      size={20}
+      color={theme.colors.textMuted}
+    />
+  </TouchableOpacity>
+);
+
+const SimpleKpi = ({
+  label,
+  value,
+  sub,
+  icon,
+  tint,
+  iconColor,
+  theme,
+  styles }: {
+  label: string;
+  value: string;
+  sub: string;
+  icon: keyof typeof Ionicons.glyphMap;
+  tint: string;
+  iconColor: string;
+  theme: any;
+  styles: any;
+}) => (
+  <View
+    style={[
+      styles.kpiCell,
+      {
+        backgroundColor: theme.colors.surface,
+        borderColor: theme.colors.surfaceBorder,
+        shadowColor: theme.colors.shadow },
+    ]}
+  >
+    <View style={[styles.kpiIcon, { backgroundColor: tint }]}>
+      <Ionicons name={icon} size={16} color={iconColor} />
+    </View>
+    <Text style={[styles.kpiValue, { color: theme.colors.text }]}>
+      {value}
+    </Text>
+    <Text style={[styles.kpiLabel, { color: theme.colors.text }]}>
+      {label}
+    </Text>
+    <Text style={[styles.kpiSub, { color: theme.colors.textMuted }]}>
+      {sub}
+    </Text>
+  </View>
+);
+
+const makeStyles = (c: any) => StyleSheet.create({
+  safe: { flex: 1 },
+  loader: { flex: 1, alignItems: "center", justifyContent: "center" },
+  headerRow: {
     flexDirection: "row",
     alignItems: "center",
-    paddingHorizontal: 16,
-    paddingVertical: 14,
-    borderBottomWidth: 1,
-    borderBottomColor: "#1f2937",
-    gap: 12,
-  },
-  title: { color: "#fff", fontSize: 18, fontWeight: "800", flex: 1 },
-  content: { padding: 16 },
-  summary: {
-    backgroundColor: "#0f172a",
-    padding: 16,
+    marginBottom: 18 },
+  iconBtn: {
+    width: 42,
+    height: 42,
     borderRadius: 14,
     borderWidth: 1,
-    borderColor: "#1e293b",
-    marginBottom: 18,
-  },
-  summaryRow: { flexDirection: "row", gap: 18 },
-  summaryItem: { flex: 1 },
-  summaryValue: { color: "#fff", fontSize: 26, fontWeight: "800" },
-  summaryLabel: { color: "#94a3b8", fontSize: 11, marginTop: 4 },
+    alignItems: "center",
+    justifyContent: "center" },
+  title: { fontSize: 26, fontWeight: "800" },
+  subtitle: { fontSize: 13, marginTop: 2 },
+
+  summaryCard: {
+    flexDirection: "row",
+    alignItems: "center",
+    padding: 18,
+    borderRadius: 20,
+    borderWidth: 1,
+    shadowOpacity: 1,
+    shadowRadius: 16,
+    shadowOffset: { width: 0, height: 6 },
+    elevation: 3 },
+  summaryItem: { flex: 1, alignItems: "center" },
+  summaryValue: { fontSize: 24, fontWeight: "800" },
+  summaryLabel: { fontSize: 11, marginTop: 4, letterSpacing: 0.5 },
+  summaryDivider: { width: 1, height: 36 },
+
   section: {
-    color: "#64748b",
     fontSize: 11,
-    letterSpacing: 2,
-    fontWeight: "700",
-    marginTop: 8,
+    fontWeight: "800",
+    letterSpacing: 1.4,
+    marginTop: 24,
     marginBottom: 10,
-  },
-  card: {
-    flexDirection: "row",
-    alignItems: "center",
-    backgroundColor: "#111827",
+    marginLeft: 4 },
+
+  kpiGrid: { flexDirection: "row", flexWrap: "wrap", gap: 10 },
+  kpiCell: {
+    width: "47%",
+    flexGrow: 1,
     padding: 14,
-    borderRadius: 14,
-    marginBottom: 8,
+    borderRadius: 18,
     borderWidth: 1,
-    borderColor: "#1f2937",
-    gap: 12,
-  },
-  iconBox: {
-    width: 40,
-    height: 40,
-    borderRadius: 12,
+    shadowOpacity: 1,
+    shadowRadius: 12,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 2 },
+  kpiIcon: {
+    width: 30,
+    height: 30,
+    borderRadius: 10,
     alignItems: "center",
     justifyContent: "center",
-  },
-  cardBody: { flex: 1 },
-  cardTitle: { color: "#fff", fontSize: 15, fontWeight: "700" },
-  cardDesc: { color: "#94a3b8", fontSize: 12, marginTop: 3 },
-  countPill: {
-    backgroundColor: "#ef4444",
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-    borderRadius: 999,
-    minWidth: 28,
+    marginBottom: 8 },
+  kpiValue: { fontSize: 22, fontWeight: "800", marginBottom: 4 },
+  kpiLabel: { fontSize: 13, fontWeight: "700" },
+  kpiSub: { fontSize: 11, marginTop: 2 },
+
+  tileRow: { gap: 10 },
+  tile: {
+    flexDirection: "row",
     alignItems: "center",
-  },
-  countText: { color: "#fff", fontSize: 12, fontWeight: "800" },
-});
+    padding: 14,
+    borderRadius: 18,
+    borderWidth: 1,
+    gap: 12,
+    shadowOpacity: 1,
+    shadowRadius: 12,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 2 },
+  tileIcon: {
+    width: 44,
+    height: 44,
+    borderRadius: 14,
+    alignItems: "center",
+    justifyContent: "center" },
+  tileLabel: { fontSize: 15, fontWeight: "800" },
+  tileSub: { fontSize: 12, marginTop: 2 },
+  tileBadge: {
+    minWidth: 24,
+    height: 24,
+    borderRadius: 12,
+    paddingHorizontal: 7,
+    alignItems: "center",
+    justifyContent: "center" },
+  tileBadgeText: { color: c.text, fontSize: 11, fontWeight: "800" } });

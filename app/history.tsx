@@ -1,5 +1,6 @@
 import React, {
   useEffect,
+  useMemo,
   useState,
 } from "react";
 
@@ -32,6 +33,7 @@ import {
 
 import {
   getHistory,
+  getMe,
   deleteAttendance,
   updateAttendance,
 } from "../src/services/api";
@@ -41,19 +43,31 @@ import {
   listMyCorrections,
 } from "../src/services/corrections";
 
-import { AttendanceCorrection } from "../src/types";
+import { AttendanceCorrection, User, hasRole } from "../src/types";
+import { useTheme } from "../src/theme/ThemeProvider";
 
 const isWeb = Platform.OS === "web";
 
 export default function History() {
 
   const router = useRouter();
+  const { theme } = useTheme();
+  const c = theme.colors;
+  const styles = useMemo(() => makeStyles(c), [c]);
 
   const [loading, setLoading] =
     useState(true);
 
   const [history, setHistory] =
     useState<any[]>([]);
+
+  const [me, setMe] = useState<User | null>(null);
+
+  // Month filter for the table view — defaults to the current month
+  // so the screen opens on "this month's attendance till date".
+  const todayDate = new Date();
+  const [filterYear, setFilterYear] = useState(todayDate.getFullYear());
+  const [filterMonth, setFilterMonth] = useState(todayDate.getMonth() + 1);
 
   // ================= POPUP =================
   const [popup, setPopup] =
@@ -95,10 +109,26 @@ export default function History() {
   const [corrItem, setCorrItem] =
     useState<any>(null);
 
+  // Editable fields in the correction modal — every attendance field
+  // is now editable. The "original" mirrors the current attendance row
+  // so submit can diff and only send fields that actually changed.
+  const [corrDate, setCorrDate] = useState<string>("");
+  const [corrCheckIn, setCorrCheckIn] =
+    useState<Date | null>(null);
+
   const [corrCheckOut, setCorrCheckOut] =
     useState<Date | null>(null);
 
+  const [corrType, setCorrType] = useState<
+    "OFFICE" | "WFH" | "LEAVE" | "HOLIDAY"
+  >("OFFICE");
+
+  const [corrNotes, setCorrNotes] = useState("");
+
   const [corrShowPicker, setCorrShowPicker] =
+    useState(false);
+
+  const [corrShowInPicker, setCorrShowInPicker] =
     useState(false);
 
   const [corrReason, setCorrReason] =
@@ -120,6 +150,62 @@ export default function History() {
       minute: "2-digit",
       hour12: true,
     });
+
+  const monthLabel = (y: number, m: number) =>
+    new Date(y, m - 1, 1).toLocaleDateString("en-US", {
+      month: "long",
+      year: "numeric",
+    });
+
+  const goPrevMonth = () => {
+    if (filterMonth === 1) {
+      setFilterYear(filterYear - 1);
+      setFilterMonth(12);
+    } else {
+      setFilterMonth(filterMonth - 1);
+    }
+  };
+
+  const goNextMonth = () => {
+    if (filterMonth === 12) {
+      setFilterYear(filterYear + 1);
+      setFilterMonth(1);
+    } else {
+      setFilterMonth(filterMonth + 1);
+    }
+  };
+
+  const inSelectedMonth = (dateStr?: string) => {
+    if (!dateStr) return false;
+    const [yy, mm] = dateStr.split("-").map(Number);
+    return yy === filterYear && mm === filterMonth;
+  };
+
+  const hoursBetween = (
+    ci?: string | null,
+    co?: string | null
+  ): string => {
+    if (!ci || !co) return "—";
+    const diff =
+      (new Date(co).getTime() - new Date(ci).getTime()) / 60000;
+    if (diff <= 0 || Number.isNaN(diff)) return "—";
+    const h = Math.floor(diff / 60);
+    const m = Math.round(diff % 60);
+    return `${h}h ${String(m).padStart(2, "0")}m`;
+  };
+
+  const shortTime = (iso?: string | null) => {
+    if (!iso) return "—";
+    try {
+      return new Date(iso).toLocaleTimeString([], {
+        hour: "numeric",
+        minute: "2-digit",
+        hour12: true,
+      });
+    } catch {
+      return "—";
+    }
+  };
 
   const combine = (
     baseDateStr: string,
@@ -219,13 +305,15 @@ export default function History() {
         return;
       }
 
-      const [histRes, corrRes] = await Promise.all([
+      const [histRes, corrRes, meRes] = await Promise.all([
         getHistory(token),
         listMyCorrections(token).catch(() => []),
+        getMe(token).catch(() => null),
       ]);
 
       setHistory(histRes);
       setCorrections(corrRes || []);
+      setMe(meRes);
 
     } catch (err) {
 
@@ -248,10 +336,14 @@ export default function History() {
   };
 
   const openCorrection = (item: any) => {
+    // Seed every editable field from the existing record so the user
+    // sees the current values and only the ones they change get sent.
     setCorrItem(item);
-    setCorrCheckOut(
-      item.checkOut ? new Date(item.checkOut) : new Date()
-    );
+    setCorrDate(item.date || "");
+    setCorrCheckIn(item.checkIn ? new Date(item.checkIn) : null);
+    setCorrCheckOut(item.checkOut ? new Date(item.checkOut) : null);
+    setCorrType(item.attendanceType || "OFFICE");
+    setCorrNotes(item.workNotes || "");
     setCorrReason("");
     setCorrVisible(true);
   };
@@ -265,29 +357,68 @@ export default function History() {
       return;
     }
 
-    if (!corrCheckOut) {
-      showError({ message: "Pick the actual check-out time" });
-      return;
-    }
-
     try {
       setCorrSaving(true);
       const token = await AsyncStorage.getItem("token");
       if (!token) return;
 
-      // Combine the record's date with the picked time
-      const base = new Date(`${corrItem.date}T00:00:00`);
-      base.setHours(
-        corrCheckOut.getHours(),
-        corrCheckOut.getMinutes(),
-        0,
-        0
-      );
+      // Build the payload by diffing each editable field against the
+      // original record. Only changed fields are sent. The base date
+      // for combining check-in/out times is the corrected date (so
+      // moving a record from one day to another carries the times).
+      const baseDateStr = (corrDate || corrItem.date).trim();
+      const baseDate = new Date(`${baseDateStr}T00:00:00`);
+      const combineTime = (t: Date) => {
+        const d = new Date(baseDate);
+        d.setHours(t.getHours(), t.getMinutes(), 0, 0);
+        return d.toISOString();
+      };
 
-      await requestCorrection(token, corrItem.id, {
-        requestedCheckOut: base.toISOString(),
-        reason: corrReason.trim(),
-      });
+      const body: any = { reason: corrReason.trim() };
+
+      if (baseDateStr && baseDateStr !== corrItem.date) {
+        body.requestedDate = baseDateStr;
+      }
+
+      const origIn = corrItem.checkIn ? new Date(corrItem.checkIn) : null;
+      const origOut = corrItem.checkOut ? new Date(corrItem.checkOut) : null;
+      const timeChanged = (a: Date | null, b: Date | null) => {
+        if (!a && !b) return false;
+        if (!a || !b) return true;
+        return (
+          a.getHours() !== b.getHours() ||
+          a.getMinutes() !== b.getMinutes()
+        );
+      };
+
+      if (corrCheckIn && (timeChanged(corrCheckIn, origIn) || baseDateStr !== corrItem.date)) {
+        body.requestedCheckIn = combineTime(corrCheckIn);
+      }
+      if (corrCheckOut && (timeChanged(corrCheckOut, origOut) || baseDateStr !== corrItem.date)) {
+        body.requestedCheckOut = combineTime(corrCheckOut);
+      }
+
+      if (corrType !== corrItem.attendanceType) {
+        body.requestedAttendanceType = corrType;
+      }
+
+      if ((corrNotes || "") !== (corrItem.workNotes || "")) {
+        body.requestedWorkNotes = corrNotes;
+      }
+
+      // Reason alone isn't a change — the backend will 400. Catch it
+      // here with a friendlier message.
+      const hasChange = Object.keys(body).some((k) => k !== "reason");
+      if (!hasChange) {
+        showError({
+          message:
+            "Change at least one field (date, check-in, check-out, type, or notes) before submitting.",
+        });
+        setCorrSaving(false);
+        return;
+      }
+
+      await requestCorrection(token, corrItem.id, body);
 
       showSuccess("Correction request submitted");
       setCorrVisible(false);
@@ -468,7 +599,7 @@ export default function History() {
       <View style={styles.loader}>
         <ActivityIndicator
           size="large"
-          color="#2563eb"
+          color={c.accent}
         />
       </View>
     );
@@ -506,14 +637,14 @@ export default function History() {
         <TouchableOpacity
           style={styles.headerBtn}
           onPress={() =>
-            router.back()
+            (router.canGoBack() ? router.back() : router.replace("/"))
           }
         >
 
           <Ionicons
             name="chevron-back"
             size={22}
-            color="#fff"
+            color={c.text}
           />
 
         </TouchableOpacity>
@@ -526,25 +657,59 @@ export default function History() {
 
       </View>
 
-      {/* ADD MANUAL ENTRY */}
-      <TouchableOpacity
-        style={styles.manualBtn}
-        onPress={() =>
-          router.push("/manual")
-        }
-      >
+      {/* Manual entry is no longer surfaced here — employees raise a
+          request via /manual-request, and HR/Manager approve from their
+          own consoles. HR can still mark attendance for an employee from
+          the HR Admin → Daily Attendance flow. */}
 
-        <Ionicons
-          name="add-circle-outline"
-          size={20}
-          color="#fff"
-        />
-
-        <Text style={styles.manualBtnText}>
-          Add Manual Entry
+      {/* MONTH FILTER + TABLE */}
+      <View style={styles.monthNav}>
+        <TouchableOpacity onPress={goPrevMonth} hitSlop={10}>
+          <Ionicons name="chevron-back" size={20} color={c.textMuted} />
+        </TouchableOpacity>
+        <Text style={styles.monthLabel}>
+          {monthLabel(filterYear, filterMonth)}
         </Text>
+        <TouchableOpacity onPress={goNextMonth} hitSlop={10}>
+          <Ionicons name="chevron-forward" size={20} color={c.textMuted} />
+        </TouchableOpacity>
+      </View>
 
-      </TouchableOpacity>
+      <View style={styles.tableCard}>
+        <View style={[styles.tableRow, styles.tableHead]}>
+          <Text style={[styles.tableCell, styles.tableCellDate, styles.tableHeadText]}>
+            Date
+          </Text>
+          <Text style={[styles.tableCell, styles.tableHeadText]}>Clock In</Text>
+          <Text style={[styles.tableCell, styles.tableHeadText]}>Clock Out</Text>
+          <Text style={[styles.tableCell, styles.tableHeadText]}>Total</Text>
+        </View>
+
+        {(() => {
+          const monthRows = history.filter((r) => inSelectedMonth(r.date));
+          if (monthRows.length === 0) {
+            return (
+              <View style={styles.tableEmpty}>
+                <Text style={styles.tableEmptyText}>
+                  No attendance recorded for {monthLabel(filterYear, filterMonth)}.
+                </Text>
+              </View>
+            );
+          }
+          return monthRows.map((r) => (
+            <View key={`tbl-${r.id}`} style={styles.tableRow}>
+              <Text style={[styles.tableCell, styles.tableCellDate]}>
+                {r.date}
+              </Text>
+              <Text style={styles.tableCell}>{shortTime(r.checkIn)}</Text>
+              <Text style={styles.tableCell}>{shortTime(r.checkOut)}</Text>
+              <Text style={[styles.tableCell, { color: "#22c55e" }]}>
+                {hoursBetween(r.checkIn, r.checkOut)}
+              </Text>
+            </View>
+          ));
+        })()}
+      </View>
 
       {/* LIST */}
       <FlatList
@@ -633,24 +798,6 @@ export default function History() {
               </View>
             )}
 
-            {showCorrectionBtn && (
-              <TouchableOpacity
-                style={styles.correctionBtn}
-                onPress={() => openCorrection(item)}
-              >
-                <Ionicons
-                  name="time-outline"
-                  size={16}
-                  color="#fff"
-                />
-                <Text style={styles.correctionBtnText}>
-                  {isRejected
-                    ? "Request again"
-                    : "Request correction"}
-                </Text>
-              </TouchableOpacity>
-            )}
-
             {/* CHECKIN */}
             <View style={styles.infoRow}>
 
@@ -707,50 +854,54 @@ export default function History() {
 
             </View>
 
-            {/* ACTIONS */}
-            <View style={styles.actions}>
+            {/* ACTIONS — single bottom action row. HR can edit/delete
+                directly; non-HR can request a correction (unless one is
+                already pending). */}
+            {hasRole(me, "HR") ? (
+              <View style={styles.actions}>
+                <TouchableOpacity
+                  style={styles.editBtn}
+                  onPress={() => openEdit(item)}
+                >
+                  <Ionicons
+                    name="create-outline"
+                    size={18}
+                    color="#fff"
+                  />
+                  <Text style={styles.btnText}>Edit</Text>
+                </TouchableOpacity>
 
+                <TouchableOpacity
+                  style={styles.deleteBtn}
+                  onPress={() => handleDelete(item.id)}
+                >
+                  <Ionicons
+                    name="trash-outline"
+                    size={18}
+                    color="#fff"
+                  />
+                  <Text style={styles.btnText}>Delete</Text>
+                </TouchableOpacity>
+              </View>
+            ) : !isPending ? (
               <TouchableOpacity
-                style={styles.editBtn}
-                onPress={() =>
-                  openEdit(item)
-                }
+                style={styles.correctionBtn}
+                onPress={() => openCorrection(item)}
               >
-
                 <Ionicons
-                  name="create-outline"
-                  size={18}
+                  name="time-outline"
+                  size={16}
                   color="#fff"
                 />
-
-                <Text style={styles.btnText}>
-                  Edit
+                <Text style={styles.correctionBtnText}>
+                  {isRejected
+                    ? "Request again"
+                    : showCorrectionBtn
+                    ? "Request correction"
+                    : "Request correction"}
                 </Text>
-
               </TouchableOpacity>
-
-              <TouchableOpacity
-                style={styles.deleteBtn}
-                onPress={() =>
-                  handleDelete(
-                    item.id
-                  )
-                }
-              >
-
-                <Ionicons
-                  name="trash-outline"
-                  size={18}
-                  color="#fff"
-                />
-
-                <Text style={styles.btnText}>
-                  Delete
-                </Text>
-
-              </TouchableOpacity>
-
-            </View>
+            ) : null}
 
           </View>
           );
@@ -838,13 +989,13 @@ export default function History() {
                       <View
                         style={[
                           styles.timeIcon,
-                          { backgroundColor: "#16a34a" },
+                          { backgroundColor: c.successBg },
                         ]}
                       >
                         <Ionicons
                           name="log-in-outline"
                           size={18}
-                          color="#fff"
+                          color={c.successText}
                         />
                       </View>
 
@@ -880,13 +1031,13 @@ export default function History() {
                         <View
                           style={[
                             styles.timeIcon,
-                            { backgroundColor: "#16a34a" },
+                            { backgroundColor: c.successBg },
                           ]}
                         >
                           <Ionicons
                             name="log-in-outline"
                             size={18}
-                            color="#fff"
+                            color={c.successText}
                           />
                         </View>
 
@@ -910,7 +1061,7 @@ export default function History() {
                         <Ionicons
                           name="chevron-forward"
                           size={18}
-                          color="#64748b"
+                          color={c.textMuted}
                         />
 
                       </TouchableOpacity>
@@ -938,13 +1089,13 @@ export default function History() {
                       <View
                         style={[
                           styles.timeIcon,
-                          { backgroundColor: "#dc2626" },
+                          { backgroundColor: c.dangerBg },
                         ]}
                       >
                         <Ionicons
                           name="log-out-outline"
                           size={18}
-                          color="#fff"
+                          color={c.dangerText}
                         />
                       </View>
 
@@ -980,13 +1131,13 @@ export default function History() {
                         <View
                           style={[
                             styles.timeIcon,
-                            { backgroundColor: "#dc2626" },
+                            { backgroundColor: c.dangerBg },
                           ]}
                         >
                           <Ionicons
                             name="log-out-outline"
                             size={18}
-                            color="#fff"
+                            color={c.dangerText}
                           />
                         </View>
 
@@ -1010,7 +1161,7 @@ export default function History() {
                         <Ionicons
                           name="chevron-forward"
                           size={18}
-                          color="#64748b"
+                          color={c.textMuted}
                         />
 
                       </TouchableOpacity>
@@ -1047,7 +1198,7 @@ export default function History() {
                 }
                 multiline
                 placeholder="Enter notes"
-                placeholderTextColor="#64748b"
+                placeholderTextColor={c.textFaint}
               />
 
               {/* ACTIONS */}
@@ -1116,28 +1267,185 @@ export default function History() {
               </Text>
 
               <Text style={styles.corrHint}>
-                {corrItem?.date}
+                Original: {corrItem?.date}
                 {"  ·  "}
-                Auto-closed at midnight. Tell HR your real
-                check-out time and why.
+                {corrItem?.attendanceType || "—"}
+                {"\n"}
+                Change any field below. Manager/HR approves before the
+                change is applied.
               </Text>
 
-              <Text style={styles.modalLabel}>
-                Actual Check-out Time
-              </Text>
+              {/* DATE */}
+              <Text style={styles.modalLabel}>Date</Text>
+              {isWeb ? (
+                <View style={styles.timeRow}>
+                  <View
+                    style={[
+                      styles.timeIcon,
+                      { backgroundColor: c.infoBg },
+                    ]}
+                  >
+                    <Ionicons
+                      name="calendar-outline"
+                      size={18}
+                      color={c.infoText}
+                    />
+                  </View>
+                  <WebDateField
+                    mode="date"
+                    value={corrDate}
+                    onChange={(v) => v && setCorrDate(v)}
+                  />
+                </View>
+              ) : (
+                <View style={styles.timeRow}>
+                  <View
+                    style={[
+                      styles.timeIcon,
+                      { backgroundColor: c.infoBg },
+                    ]}
+                  >
+                    <Ionicons
+                      name="calendar-outline"
+                      size={18}
+                      color={c.infoText}
+                    />
+                  </View>
+                  <TextInput
+                    style={[styles.input, { flex: 1, marginTop: 0 }]}
+                    value={corrDate}
+                    onChangeText={setCorrDate}
+                    placeholder="YYYY-MM-DD"
+                    placeholderTextColor={c.textFaint}
+                    autoCapitalize="none"
+                  />
+                </View>
+              )}
+
+              {/* TYPE */}
+              <Text style={styles.modalLabel}>Attendance Type</Text>
+              <View style={styles.typeRow}>
+                {(["OFFICE", "WFH", "LEAVE", "HOLIDAY"] as const).map((t) => (
+                  <TouchableOpacity
+                    key={t}
+                    style={[
+                      styles.typeChip,
+                      corrType === t && styles.typeChipActive,
+                    ]}
+                    onPress={() => setCorrType(t)}
+                  >
+                    <Text
+                      style={[
+                        styles.typeChipText,
+                        corrType === t && styles.typeChipTextActive,
+                      ]}
+                    >
+                      {t}
+                    </Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+
+              {/* CHECK-IN */}
+              <Text style={styles.modalLabel}>Check-in Time</Text>
+              {isWeb ? (
+                <View style={styles.timeRow}>
+                  <View
+                    style={[
+                      styles.timeIcon,
+                      { backgroundColor: c.successBg },
+                    ]}
+                  >
+                    <Ionicons
+                      name="log-in-outline"
+                      size={18}
+                      color={c.successText}
+                    />
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.timeLabel}>Check In</Text>
+                    <WebDateField
+                      mode="time"
+                      value={corrCheckIn ? dateToHM(corrCheckIn) : ""}
+                      onChange={(v) => {
+                        const d = hmToDate(v);
+                        if (d) setCorrCheckIn(d);
+                      }}
+                    />
+                  </View>
+                </View>
+              ) : (
+                <>
+                  <TouchableOpacity
+                    style={styles.timeRow}
+                    onPress={() => setCorrShowInPicker(true)}
+                    activeOpacity={0.8}
+                  >
+                    <View
+                      style={[
+                        styles.timeIcon,
+                        { backgroundColor: c.successBg },
+                      ]}
+                    >
+                      <Ionicons
+                        name="log-in-outline"
+                        size={18}
+                        color={c.successText}
+                      />
+                    </View>
+                    <View style={{ flex: 1 }}>
+                      <Text style={styles.timeLabel}>Check In</Text>
+                      <Text
+                        style={[
+                          styles.timeValue,
+                          !corrCheckIn && styles.timePlaceholder,
+                        ]}
+                      >
+                        {corrCheckIn
+                          ? corrCheckIn.toLocaleTimeString([], {
+                              hour: "numeric",
+                              minute: "2-digit",
+                              hour12: true,
+                            })
+                          : "Tap to set"}
+                      </Text>
+                    </View>
+                    <Ionicons
+                      name="chevron-forward"
+                      size={18}
+                      color={c.textMuted}
+                    />
+                  </TouchableOpacity>
+                  {corrShowInPicker && (
+                    <DateTimePicker
+                      value={corrCheckIn || new Date()}
+                      mode="time"
+                      onChange={(_, d) => {
+                        setCorrShowInPicker(
+                          Platform.OS === "ios"
+                        );
+                        if (d) setCorrCheckIn(d);
+                      }}
+                    />
+                  )}
+                </>
+              )}
+
+              {/* CHECK-OUT */}
+              <Text style={styles.modalLabel}>Check-out Time</Text>
 
               {isWeb ? (
                 <View style={styles.timeRow}>
                   <View
                     style={[
                       styles.timeIcon,
-                      { backgroundColor: "#dc2626" },
+                      { backgroundColor: c.dangerBg },
                     ]}
                   >
                     <Ionicons
                       name="log-out-outline"
                       size={18}
-                      color="#fff"
+                      color={c.dangerText}
                     />
                   </View>
                   <View style={{ flex: 1 }}>
@@ -1168,13 +1476,13 @@ export default function History() {
                     <View
                       style={[
                         styles.timeIcon,
-                        { backgroundColor: "#dc2626" },
+                        { backgroundColor: c.dangerBg },
                       ]}
                     >
                       <Ionicons
                         name="log-out-outline"
                         size={18}
-                        color="#fff"
+                        color={c.dangerText}
                       />
                     </View>
                     <View style={{ flex: 1 }}>
@@ -1200,7 +1508,7 @@ export default function History() {
                     <Ionicons
                       name="chevron-forward"
                       size={18}
-                      color="#64748b"
+                      color={c.textMuted}
                     />
                   </TouchableOpacity>
                   {corrShowPicker && (
@@ -1218,8 +1526,20 @@ export default function History() {
                 </>
               )}
 
+              {/* WORK NOTES */}
+              <Text style={styles.modalLabel}>Work Notes</Text>
+              <TextInput
+                style={styles.input}
+                value={corrNotes}
+                onChangeText={setCorrNotes}
+                multiline
+                placeholder="What did you do that day?"
+                placeholderTextColor={c.textFaint}
+              />
+
+              {/* REASON */}
               <Text style={styles.modalLabel}>
-                Reason
+                Reason for correction *
               </Text>
 
               <TextInput
@@ -1227,8 +1547,8 @@ export default function History() {
                 value={corrReason}
                 onChangeText={setCorrReason}
                 multiline
-                placeholder="Why did you forget to check out?"
-                placeholderTextColor="#64748b"
+                placeholder="Why does this record need to change?"
+                placeholderTextColor={c.textFaint}
               />
 
               <View style={styles.modalActions}>
@@ -1252,7 +1572,7 @@ export default function History() {
                   {corrSaving ? (
                     <ActivityIndicator color="#fff" />
                   ) : (
-                    <Text style={styles.modalBtnText}>
+                    <Text style={[styles.modalBtnText, { color: "#fff" }]}>
                       Submit
                     </Text>
                   )}
@@ -1268,17 +1588,17 @@ export default function History() {
   );
 }
 
-const styles = StyleSheet.create({
+const makeStyles = (c: any) => StyleSheet.create({
 
   container: {
     flex: 1,
-    backgroundColor: "#0b1220",
+    backgroundColor: c.bg,
     paddingHorizontal: 20,
   },
 
   loader: {
     flex: 1,
-    backgroundColor: "#0b1220",
+    backgroundColor: c.bg,
     justifyContent: "center",
     alignItems: "center",
   },
@@ -1302,7 +1622,7 @@ const styles = StyleSheet.create({
   },
 
   popupText: {
-    color: "#fff",
+    color: c.text,
     fontWeight: "700",
     textAlign: "center",
   },
@@ -1319,13 +1639,13 @@ const styles = StyleSheet.create({
     width: 42,
     height: 42,
     borderRadius: 12,
-    backgroundColor: "#111827",
+    backgroundColor: c.surface,
     justifyContent: "center",
     alignItems: "center",
   },
 
   title: {
-    color: "#fff",
+    color: c.text,
     fontSize: 22,
     fontWeight: "800",
   },
@@ -1334,11 +1654,77 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: "#2563eb",
+    backgroundColor: c.accent,
     paddingVertical: 14,
     borderRadius: 14,
     marginBottom: 18,
     gap: 8,
+  },
+
+  monthNav: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    backgroundColor: c.surface,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: c.surfaceBorder,
+    marginBottom: 12,
+  },
+  monthLabel: {
+    color: c.text,
+    fontSize: 14,
+    fontWeight: "800",
+    letterSpacing: 0.3,
+  },
+
+  tableCard: {
+    backgroundColor: c.surface,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: c.surfaceBorder,
+    overflow: "hidden",
+    marginBottom: 18,
+  },
+  tableRow: {
+    flexDirection: "row",
+    paddingVertical: 10,
+    paddingHorizontal: 10,
+    borderBottomWidth: 1,
+    borderBottomColor: c.surfaceBorder,
+    alignItems: "center",
+  },
+  tableHead: {
+    backgroundColor: c.surfaceMuted,
+  },
+  tableCell: {
+    flex: 1,
+    color: c.text,
+    fontSize: 12,
+    fontWeight: "600",
+  },
+  tableCellDate: {
+    flex: 1.2,
+    color: c.text,
+    fontWeight: "700",
+  },
+  tableHeadText: {
+    color: c.textMuted,
+    fontSize: 11,
+    fontWeight: "800",
+    letterSpacing: 0.5,
+    textTransform: "uppercase",
+  },
+  tableEmpty: {
+    padding: 18,
+    alignItems: "center",
+  },
+  tableEmptyText: {
+    color: c.textMuted,
+    fontSize: 12,
+    textAlign: "center",
   },
 
   manualBtnText: {
@@ -1348,12 +1734,12 @@ const styles = StyleSheet.create({
   },
 
   card: {
-    backgroundColor: "#111827",
+    backgroundColor: c.surface,
     borderRadius: 20,
     padding: 18,
     marginBottom: 18,
     borderWidth: 1,
-    borderColor: "#1f2937",
+    borderColor: c.surfaceBorder,
   },
 
   topRow: {
@@ -1406,7 +1792,7 @@ const styles = StyleSheet.create({
   },
 
   corrHint: {
-    color: "#94a3b8",
+    color: c.textMuted,
     fontSize: 13,
     marginTop: -8,
     marginBottom: 14,
@@ -1414,13 +1800,13 @@ const styles = StyleSheet.create({
   },
 
   date: {
-    color: "#fff",
+    color: c.text,
     fontSize: 18,
     fontWeight: "700",
   },
 
   type: {
-    color: "#94a3b8",
+    color: c.textMuted,
     marginTop: 4,
     fontWeight: "600",
   },
@@ -1436,11 +1822,11 @@ const styles = StyleSheet.create({
   },
 
   activeBadge: {
-    backgroundColor: "#2563eb",
+    backgroundColor: c.accent,
   },
 
   badgeText: {
-    color: "#fff",
+    color: c.text,
     fontWeight: "700",
     fontSize: 12,
   },
@@ -1452,12 +1838,12 @@ const styles = StyleSheet.create({
   },
 
   label: {
-    color: "#94a3b8",
+    color: c.textMuted,
     fontWeight: "600",
   },
 
   value: {
-    color: "#fff",
+    color: c.text,
     fontWeight: "700",
   },
 
@@ -1465,17 +1851,17 @@ const styles = StyleSheet.create({
     marginTop: 14,
     paddingTop: 14,
     borderTopWidth: 1,
-    borderTopColor: "#1f2937",
+    borderTopColor: c.surfaceBorder,
   },
 
   notesLabel: {
-    color: "#94a3b8",
+    color: c.textMuted,
     marginBottom: 8,
     fontWeight: "600",
   },
 
   notes: {
-    color: "#e2e8f0",
+    color: c.text,
     lineHeight: 22,
   },
 
@@ -1489,7 +1875,7 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: "#2563eb",
+    backgroundColor: c.accent,
     paddingVertical: 12,
     borderRadius: 12,
     width: "48%",
@@ -1506,20 +1892,20 @@ const styles = StyleSheet.create({
   },
 
   btnText: {
-    color: "#fff",
+    color: c.text,
     fontWeight: "700",
     marginLeft: 6,
   },
 
   modalOverlay: {
     flex: 1,
-    backgroundColor: "rgba(0,0,0,0.7)",
+    backgroundColor: c.overlay,
     justifyContent: "center",
     padding: 20,
   },
 
   modalContent: {
-    backgroundColor: "#111827",
+    backgroundColor: c.surface,
     borderRadius: 20,
     padding: 20,
     maxHeight: "90%",
@@ -1528,13 +1914,44 @@ const styles = StyleSheet.create({
   timeRow: {
     flexDirection: "row",
     alignItems: "center",
-    backgroundColor: "#0f172a",
+    backgroundColor: c.surfaceMuted,
     borderRadius: 12,
     padding: 12,
     marginBottom: 10,
     borderWidth: 1,
-    borderColor: "#1e293b",
+    borderColor: c.surfaceBorder,
+    gap: 8,
   },
+
+  typeRow: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 6,
+    marginBottom: 10,
+    marginTop: 4,
+  },
+
+  typeChip: {
+    paddingHorizontal: 12,
+    paddingVertical: 7,
+    borderRadius: 999,
+    backgroundColor: c.surfaceMuted,
+    borderWidth: 1,
+    borderColor: c.surfaceBorder,
+  },
+
+  typeChipActive: {
+    backgroundColor: c.accent,
+    borderColor: c.accent,
+  },
+
+  typeChipText: {
+    color: c.textMuted,
+    fontSize: 12,
+    fontWeight: "700",
+  },
+
+  typeChipTextActive: { color: c.text },
 
   timeIcon: {
     width: 36,
@@ -1546,32 +1963,32 @@ const styles = StyleSheet.create({
   },
 
   timeLabel: {
-    color: "#94a3b8",
+    color: c.textMuted,
     fontSize: 12,
     fontWeight: "600",
   },
 
   timeValue: {
-    color: "#fff",
+    color: c.text,
     fontSize: 14,
     fontWeight: "700",
     marginTop: 2,
   },
 
   timePlaceholder: {
-    color: "#64748b",
+    color: c.textMuted,
     fontWeight: "600",
   },
 
   modalTitle: {
-    color: "#fff",
+    color: c.text,
     fontSize: 22,
     fontWeight: "800",
     marginBottom: 20,
   },
 
   modalLabel: {
-    color: "#94a3b8",
+    color: c.textMuted,
     marginBottom: 10,
     fontWeight: "600",
   },
@@ -1585,7 +2002,7 @@ const styles = StyleSheet.create({
 
   typeBtn: {
     width: "48%",
-    backgroundColor: "#1f2937",
+    backgroundColor: c.surfaceMuted,
     padding: 14,
     borderRadius: 12,
     alignItems: "center",
@@ -1593,23 +2010,23 @@ const styles = StyleSheet.create({
   },
 
   activeType: {
-    backgroundColor: "#2563eb",
+    backgroundColor: c.accent,
   },
 
   typeText: {
-    color: "#fff",
+    color: c.text,
     fontWeight: "700",
   },
 
   input: {
-    backgroundColor: "#0f172a",
+    backgroundColor: c.surfaceMuted,
     borderRadius: 12,
     padding: 14,
-    color: "#fff",
+    color: c.text,
     minHeight: 120,
     textAlignVertical: "top",
     borderWidth: 1,
-    borderColor: "#1e293b",
+    borderColor: c.surfaceBorder,
   },
 
   modalActions: {
@@ -1620,7 +2037,7 @@ const styles = StyleSheet.create({
 
   cancelBtn: {
     width: "48%",
-    backgroundColor: "#374151",
+    backgroundColor: c.surfaceMuted,
     padding: 14,
     borderRadius: 12,
     alignItems: "center",
@@ -1635,8 +2052,9 @@ const styles = StyleSheet.create({
   },
 
   modalBtnText: {
-    color: "#fff",
+    color: c.text,
     fontWeight: "700",
   },
 
 });
+

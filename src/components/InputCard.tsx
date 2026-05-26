@@ -1,7 +1,12 @@
+import { useMemo } from "react";
 import { TouchableOpacity, Text, StyleSheet } from "react-native";
 import { COLORS, RADIUS } from "../theme";
 
+import { useTheme } from "../theme/ThemeProvider";
 export default function InputCard({ label, value, onPress }: any) {
+  const { theme } = useTheme();
+  const c = theme.colors;
+  const styles = useMemo(() => makeStyles(c), [c]);
   return (
     <>
       <Text style={styles.label}>{label}</Text>
@@ -12,7 +17,7 @@ export default function InputCard({ label, value, onPress }: any) {
   );
 }
 
-const styles = StyleSheet.create({
+const makeStyles = (c: any) => StyleSheet.create({
   label: {
     fontWeight: "600",
     marginBottom: 6,

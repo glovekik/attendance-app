@@ -1,4 +1,4 @@
-export type Role = "HR" | "MANAGER" | "USER";
+export type Role = "HR" | "MANAGER" | "USER" | "CEO";
 
 export type UserTag =
   | "Employee"
@@ -136,13 +136,11 @@ export type WageDuration =
   | "Week"
   | "Day";
 export type EmployeeType =
-  | "Employee"
-  | "Worker"
-  | "Student"
-  | "Trainee"
-  | "Contractor"
-  | "Freelancer"
-  | "Apprenticeship";
+  | "Full-time"
+  | "Part-time"
+  | "Internship"
+  | "Contract"
+  | "Consultant";
 
 export interface ContractInfo {
   contractStartDate?: string;
@@ -177,6 +175,10 @@ export interface User {
   documents?: ProfileDocuments;
   statutory?: Statutory;
   contract?: ContractInfo;
+  // Termination metadata — populated when status=Terminated.
+  terminationReason?: string | null;
+  terminatedAt?: string | null;
+  terminatedBy?: string | null;
 }
 
 export interface Team {
@@ -186,6 +188,7 @@ export interface Team {
   memberIds: string[];
   leadName?: string;
   members?: User[];
+  teamLead?: { id: string; name: string; email: string };
 }
 
 export type TaskStatus = "PENDING" | "ONGOING" | "COMPLETED";
@@ -501,6 +504,11 @@ export interface LeaveBalance {
   used: number;
   pending: number;
   remaining: number;
+  // Monthly accrual breakdown returned by /leaves/balance once the
+  // backend started exposing the cron's history.
+  accruedThisMonth?: number;
+  accruedYTD?: number;
+  monthlyAccrualHistory?: { month: number; addedDays: number }[];
 }
 
 export interface LeaveRequest {
@@ -537,8 +545,13 @@ export interface AttendanceCorrection {
     name: string;
     email: string;
   };
+  // Requested changes — every field optional. Older records only have
+  // requestedCheckOut populated; newer ones can carry the full set.
+  requestedDate?: string;
   requestedCheckIn?: string | null;
-  requestedCheckOut: string;
+  requestedCheckOut?: string | null;
+  requestedAttendanceType?: "OFFICE" | "WFH" | "LEAVE" | "HOLIDAY";
+  requestedWorkNotes?: string;
   reason: string;
   status: CorrectionStatus;
   rejectionReason?: string | null;
@@ -556,6 +569,7 @@ export interface ChatMessage {
     email: string;
   };
   text: string;
+  mentions?: string[];
   createdAt: string;
 }
 
@@ -589,8 +603,21 @@ export const hasRole = (
 export const isManager = (user: User | null): boolean =>
   hasRole(user, "MANAGER");
 
+export const isCEO = (user: User | null): boolean =>
+  hasRole(user, "CEO");
+
+// Intern is a tag, not a Role — we use it to gate sensitive views (e.g.
+// payroll/payslips) when the spec calls for restricted visibility.
+export const isIntern = (user: User | null): boolean =>
+  !!user && user.tag === "Intern";
+
 export const hasManagerOrHrAccess = (user: User | null): boolean =>
   hasRole(user, "HR") || hasRole(user, "MANAGER");
+
+// CEO has global read access — treat like HR for visibility purposes,
+// but write-actions stay gated by `isHR` so CEO is read-only by default.
+export const hasGlobalAccess = (user: User | null): boolean =>
+  hasRole(user, "HR") || hasRole(user, "CEO");
 
 // ===== ATTENDANCE EXPANSION (Phase B) =====
 export type AttendanceStatus =
@@ -783,6 +810,7 @@ export interface DashboardMe {
   }[];
   pendingLeaveRequests: number;
   pendingCorrectionRequests: number;
+  pendingReimbursementRequests?: number;
   recentPayslips: {
     year: number;
     month: number;
@@ -790,6 +818,14 @@ export interface DashboardMe {
     status: string;
   }[];
   unreadNotifications: number;
+  // KPIs
+  attendanceRatePctMTD?: number | null;
+  onTimeCheckInRatePctMTD?: number | null;
+  avgHoursPerDayThisWeek?: number | null;
+  overtimeHoursThisMonth?: number;
+  myTaskCompletionRatePct30d?: number | null;
+  pendingRequestsTotal?: number;
+  requiredDocCompletenessPct?: number | null;
 }
 
 export interface DashboardHR {
@@ -799,6 +835,11 @@ export interface DashboardHR {
   onLeaveToday: number;
   pendingLeaveApprovals: number;
   pendingCorrectionApprovals: number;
+  // Per-queue pending counts (for tile badges)
+  pendingReimbursementApprovals?: number;
+  pendingTimesheetApprovals?: number;
+  pendingManualAttendanceApprovals?: number;
+  pendingOnboardings?: number;
   payrollStatus?: {
     year: number;
     month: number;
@@ -815,6 +856,13 @@ export interface DashboardHR {
     departmentName: string;
     count: number;
   }[];
+  // KPIs
+  wfhToday?: number;
+  officeToday?: number;
+  pendingApprovalsTotal?: number;
+  payCycleAccuracyPct?: number | null;
+  holidayCountThisYear?: number;
+  lateArrivalRatePct?: number | null;
 }
 
 export interface DashboardManager {
@@ -827,6 +875,10 @@ export interface DashboardManager {
   }[];
   pendingLeaveApprovals: number;
   pendingCorrectionApprovals: number;
+  // Per-queue pending counts (for tile badges)
+  pendingReimbursementApprovals?: number;
+  pendingTimesheetApprovals?: number;
+  pendingManualAttendanceApprovals?: number;
   openTasksForReports: number;
   upcomingDeadlines: {
     id: string;
@@ -835,6 +887,12 @@ export interface DashboardManager {
     dueDate?: string;
     priority?: TaskPriority;
   }[];
+  // KPIs
+  teamAttendanceRatePctMTD?: number | null;
+  teamWfhRatioPctToday?: number | null;
+  pendingApprovalsTotal?: number;
+  onTimeTaskDeliveryPct30d?: number | null;
+  teamAvgHoursPerDay7d?: number | null;
 }
 
 // ===== AUDIT LOGS (Phase A) =====
@@ -1166,6 +1224,8 @@ export interface EmployeeDocument {
   notes?: string;
   expiresOn?: string;
   uploadedBy?: string;
+  uploadedByRole?: "HR" | "USER";
+  lockedByHR?: boolean;
   uploadedAt?: string;
 }
 

@@ -1,7 +1,4 @@
-import React, {
-  useEffect,
-  useState,
-} from "react";
+﻿import React, { useEffect, useMemo, useState } from "react";
 
 import {
   View,
@@ -12,10 +9,8 @@ import {
   TextInput,
   ActivityIndicator,
   Modal,
-  SafeAreaView,
-  Platform,
-  Alert,
-} from "react-native";
+  Platform } from "react-native";
+import { SafeAreaView } from "react-native-safe-area-context";
 
 import AsyncStorage from "@react-native-async-storage/async-storage";
 
@@ -23,74 +18,80 @@ import { useRouter } from "expo-router";
 
 import { Ionicons } from "@expo/vector-icons";
 
-import DateTimePicker from "@react-native-community/datetimepicker";
-
-import {
-  WebDateField,
-  dateToYMD,
-  ymdToDate,
-} from "../src/components/WebDateField";
-
 import {
   listUsers,
   createUser,
-  updateUser,
-} from "../src/services/users";
+  updateUser } from "../src/services/users";
+
+import { hrListAssets } from "../src/services/assets";
+
+import {
+  addUserDocument,
+  DOC_CATEGORIES } from "../src/services/documents";
+
+import { FilePickButton } from "../src/components/FilePickButton";
+import { DatePickerField } from "../src/components/DatePickerField";
 
 import {
   User,
-  UserTag,
   UserStatus,
-  USER_TAGS,
   USER_STATUSES,
-} from "../src/types";
+  Asset } from "../src/types";
 
-const isWeb = Platform.OS === "web";
+import { useTheme } from "../src/theme/ThemeProvider";
+import { getMe } from "../src/services/api";
+import {
+  BottomTabBar,
+  BOTTOM_BAR_RESERVED_HEIGHT } from "../src/components/BottomTabBar";
+import { confirmAction, notify } from "../src/utils/confirm";
 
+interface StagedDoc {
+  category: string;
+  fileName: string;
+  fileUrl: string;
+}
+
+/**
+ * Employees list — Koru-style card grid. Tabs (Active / Not Active),
+ * search, big create button. Profile / terminate inline.
+ */
 export default function Users() {
-
   const router = useRouter();
+  const { theme } = useTheme();
+  const c = theme.colors;
+  const styles = useMemo(() => makeStyles(c), [c]);
 
   const [users, setUsers] = useState<User[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
+  const [tab, setTab] = useState<"ACTIVE" | "INACTIVE">("ACTIVE");
+  const [me, setMe] = useState<User | null>(null);
 
-  const [popup, setPopup] = useState({
-    visible: false,
-    type: "success" as "success" | "error",
-    message: "",
-  });
-
-  // ===== modal =====
+  // Create modal state
   const [modalVisible, setModalVisible] = useState(false);
-  const [editingId, setEditingId] = useState<string | null>(null);
-
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
-  const [tag, setTag] = useState<UserTag>("Employee");
+  const [tag, setTag] = useState<string>("Employee");
   const [employeeCode, setEmployeeCode] = useState("");
   const [workPhone, setWorkPhone] = useState("");
   const [status, setStatus] = useState<UserStatus>("Active");
-
-  const [hasJoining, setHasJoining] = useState(false);
-  const [joiningDate, setJoiningDate] = useState<Date>(new Date());
-  const [showDatePicker, setShowDatePicker] = useState(false);
-
+  const [joiningDate, setJoiningDate] = useState<string>("");
+  const [availableAssets, setAvailableAssets] = useState<Asset[]>([]);
+  const [selectedAssetIds, setSelectedAssetIds] = useState<string[]>([]);
+  const [stagedDocs, setStagedDocs] = useState<StagedDoc[]>([]);
+  const [docCategory, setDocCategory] = useState<string>(
+    DOC_CATEGORIES[0]
+  );
   const [saving, setSaving] = useState(false);
 
-  const showPopup = (
-    msg: string,
-    kind: "success" | "error" = "success"
-  ) => {
-    setPopup({ visible: true, type: kind, message: msg });
-    setTimeout(() => {
-      setPopup((p) => ({ ...p, visible: false }));
-    }, 2500);
-  };
+  // Terminate modal state
+  const [terminateModalVisible, setTerminateModalVisible] = useState(false);
+  const [terminateTarget, setTerminateTarget] = useState<User | null>(null);
+  const [terminateReason, setTerminateReason] = useState("");
+  const [terminating, setTerminating] = useState(false);
 
-  // ===== load =====
   const load = async () => {
     try {
       const token = await AsyncStorage.getItem("token");
@@ -98,20 +99,48 @@ export default function Users() {
         router.replace("/login");
         return;
       }
-      const res = await listUsers(token);
-      setUsers(res || []);
+      const [list, meRes] = await Promise.all([
+        listUsers(token),
+        getMe(token).catch(() => null),
+      ]);
+      setUsers(list || []);
+      setMe(meRes);
     } catch (err: any) {
-      showPopup(err?.message || "Failed to load users", "error");
+      notify("Couldn't load employees", err?.message || "");
+    } finally {
+      setLoading(false);
     }
-    setLoading(false);
   };
 
   useEffect(() => {
     load();
   }, []);
 
-  const resetForm = () => {
-    setEditingId(null);
+  const filteredUsers = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    return users
+      .filter((u) =>
+        tab === "ACTIVE" ? u.status !== "Terminated" : u.status === "Terminated"
+      )
+      .filter((u) => {
+        if (!q) return true;
+        return (
+          u.name.toLowerCase().includes(q) ||
+          u.email.toLowerCase().includes(q) ||
+          (u.employeeCode || "").toLowerCase().includes(q) ||
+          (u.tag || "").toLowerCase().includes(q)
+        );
+      });
+  }, [users, tab, search]);
+
+  const activeCount = users.filter(
+    (u) => u.status !== "Terminated"
+  ).length;
+  const inactiveCount = users.filter(
+    (u) => u.status === "Terminated"
+  ).length;
+
+  const openCreate = () => {
     setName("");
     setEmail("");
     setPassword("");
@@ -120,913 +149,1040 @@ export default function Users() {
     setEmployeeCode("");
     setWorkPhone("");
     setStatus("Active");
-    setHasJoining(false);
-    setJoiningDate(new Date());
-  };
-
-  const openCreate = () => {
-    resetForm();
+    setJoiningDate("");
+    setSelectedAssetIds([]);
+    setStagedDocs([]);
+    setDocCategory(DOC_CATEGORIES[0]);
     setModalVisible(true);
+    (async () => {
+      try {
+        const token = await AsyncStorage.getItem("token");
+        if (!token) return;
+        const list = await hrListAssets(token, { status: "AVAILABLE" });
+        setAvailableAssets(list || []);
+      } catch {
+        setAvailableAssets([]);
+      }
+    })();
   };
 
-  const openEdit = (u: User) => {
-    setEditingId(u.id);
-    setName(u.name);
-    setEmail(u.email);
-    setPassword("");
-    setTag(u.tag || "Employee");
-    setEmployeeCode(u.employeeCode || "");
-    setWorkPhone(u.workPhone || "");
-    setStatus(u.status || "Active");
-    if (u.joiningDate) {
-      setHasJoining(true);
-      setJoiningDate(new Date(`${u.joiningDate}T00:00:00`));
-    } else {
-      setHasJoining(false);
-      setJoiningDate(new Date());
-    }
-    setModalVisible(true);
-  };
-
-  // ===== terminate (soft-delete) =====
-  const askTerminate = (u: User) => {
-    if (u.status === "Terminated") {
-      Alert.alert(
-        "Reactivate user?",
-        `${u.name} is currently Terminated. Set status back to Active?`,
-        [
-          { text: "Cancel", style: "cancel" },
-          {
-            text: "Reactivate",
-            onPress: () => doSetStatus(u, "Active"),
-          },
-        ]
-      );
-      return;
-    }
-    Alert.alert(
-      "Terminate user?",
-      `${u.name} will be marked Terminated. Their account is preserved (audit / payroll history kept) but they can no longer log in. You can reactivate later from this list.`,
-      [
-        { text: "Cancel", style: "cancel" },
-        {
-          text: "Terminate",
-          style: "destructive",
-          onPress: () => doSetStatus(u, "Terminated"),
-        },
-      ]
-    );
-  };
-
-  const doSetStatus = async (u: User, status: UserStatus) => {
-    try {
-      const token = await AsyncStorage.getItem("token");
-      if (!token) return;
-      await updateUser(token, u.id, { status });
-      showPopup(
-        status === "Terminated"
-          ? `${u.name} terminated`
-          : `${u.name} reactivated`
-      );
-      await load();
-    } catch (err: any) {
-      showPopup(err?.message || "Failed", "error");
-    }
-  };
-
-  // ===== save =====
-  const save = async () => {
-
+  const saveNew = async () => {
     if (saving) return;
-
-    if (!name.trim()) {
-      showPopup("Name required", "error");
-      return;
-    }
-
-    if (!editingId) {
-      if (!email.trim()) {
-        showPopup("Email required", "error");
-        return;
-      }
-      if (password.length < 6) {
-        showPopup("Password must be at least 6 chars", "error");
-        return;
-      }
-    }
-
+    if (!name.trim()) return notify("Name required");
+    if (!email.trim()) return notify("Email required");
+    if (password.length < 6)
+      return notify("Password must be at least 6 characters");
     try {
-
       setSaving(true);
-
       const token = await AsyncStorage.getItem("token");
       if (!token) return;
-
-      const sharedFields = {
+      const res = await createUser(token, {
         name: name.trim(),
+        email: email.trim(),
+        password,
         tag,
         employeeCode: employeeCode.trim() || undefined,
         workPhone: workPhone.trim() || undefined,
+        joiningDate: joiningDate || undefined,
         status,
-        joiningDate: hasJoining ? dateToYMD(joiningDate) : undefined,
-      };
-
-      if (editingId) {
-        await updateUser(token, editingId, sharedFields);
-        showPopup("User updated");
-      } else {
-        const createdEmail = email.trim();
-        const createdPwd = password;
-        await createUser(token, {
-          ...sharedFields,
-          email: createdEmail,
-          password: createdPwd,
-        });
-        // Show credentials once so HR can share them verbally if needed.
-        // After this dialog closes the password is gone (only the hash
-        // remains on the server).
-        Alert.alert(
-          "User created",
-          `Email: ${createdEmail}\nPassword: ${createdPwd}\n\n` +
-            "A welcome email with a setup link has also been sent. " +
-            "Recommend the user click that link to set their own password.",
-          [{ text: "OK" }]
-        );
+        initialAssetIds:
+          selectedAssetIds.length > 0 ? selectedAssetIds : undefined });
+      // Upload staged docs.
+      for (const d of stagedDocs) {
+        await addUserDocument(token, res.id, d).catch(() => {});
       }
-
       setModalVisible(false);
-      resetForm();
+      notify(
+        "Employee created",
+        `Email: ${email}${
+          res.employeeCode ? `\nCode: ${res.employeeCode}` : ""
+        }`
+      );
+      router.push({
+        pathname: "/hr-user-profile" as any,
+        params: { id: res.id } });
       await load();
-
     } catch (err: any) {
-      showPopup(err?.message || "Failed to save", "error");
+      notify("Couldn't create", err?.message || "");
     } finally {
       setSaving(false);
     }
   };
 
+  const askTerminate = async (u: User) => {
+    if (u.status === "Terminated") {
+      const ok = await confirmAction({
+        title: "Reactivate user?",
+        message: `${u.name} is currently NOT ACTIVE. Set status back to Active?`,
+        confirmLabel: "Reactivate" });
+      if (ok) await doSetStatus(u, "Active");
+      return;
+    }
+    setTerminateTarget(u);
+    setTerminateReason("");
+    setTerminateModalVisible(true);
+  };
+
+  const confirmTerminate = async () => {
+    if (terminating || !terminateTarget) return;
+    if (!terminateReason.trim()) return notify("Reason is required");
+    try {
+      setTerminating(true);
+      await doSetStatus(
+        terminateTarget,
+        "Terminated",
+        terminateReason.trim()
+      );
+      setTerminateModalVisible(false);
+      setTerminateTarget(null);
+      setTerminateReason("");
+    } finally {
+      setTerminating(false);
+    }
+  };
+
+  const doSetStatus = async (
+    u: User,
+    next: UserStatus,
+    reason?: string
+  ) => {
+    try {
+      const token = await AsyncStorage.getItem("token");
+      if (!token) return;
+      const payload: any = { status: next };
+      if (next === "Terminated" && reason) {
+        payload.terminationReason = reason;
+      }
+      await updateUser(token, u.id, payload);
+      await load();
+    } catch (err: any) {
+      notify("Failed", err?.message || "");
+    }
+  };
+
   if (loading) {
     return (
-      <View style={styles.loader}>
-        <ActivityIndicator size="large" color="#2563eb" />
+      <View style={[styles.loader, { backgroundColor: c.bg }]}>
+        <ActivityIndicator size="large" color={c.accent} />
       </View>
     );
   }
 
   return (
-    <SafeAreaView style={styles.safe}>
-
-      {popup.visible && (
-        <View
-          style={[
-            styles.popup,
-            popup.type === "success"
-              ? styles.successPopup
-              : styles.errorPopup,
-          ]}
-        >
-          <Text style={styles.popupText}>
-            {popup.message}
-          </Text>
-        </View>
-      )}
-
+    <SafeAreaView style={[styles.safe, { backgroundColor: c.bg }]}>
       <ScrollView
-        style={styles.container}
-        contentContainerStyle={styles.content}
+        contentContainerStyle={{
+          padding: 20,
+          paddingBottom: BOTTOM_BAR_RESERVED_HEIGHT + 24 }}
+        showsVerticalScrollIndicator={false}
       >
-
-        <View style={styles.header}>
-
+        {/* HEADER */}
+        <View style={styles.headerRow}>
           <TouchableOpacity
-            style={styles.backBtn}
-            onPress={() => router.back()}
+            onPress={() =>
+              router.canGoBack() ? router.back() : router.replace("/")
+            }
+            style={[
+              styles.iconBtn,
+              {
+                backgroundColor: c.surface,
+                borderColor: c.surfaceBorder },
+            ]}
           >
-            <Ionicons
-              name="chevron-back"
-              size={22}
-              color="#fff"
-            />
+            <Ionicons name="chevron-back" size={22} color={c.text} />
           </TouchableOpacity>
-
-          <View style={{ flex: 1 }}>
-            <Text style={styles.title}>Users</Text>
-            <Text style={styles.subtitle}>
-              {users.length} total
+          <View style={{ flex: 1, marginLeft: 12 }}>
+            <Text style={[styles.title, { color: c.text }]}>
+              Employees
+            </Text>
+            <Text style={[styles.subtitle, { color: c.textMuted }]}>
+              {activeCount} active
             </Text>
           </View>
-
           <TouchableOpacity
-            style={styles.addBtn}
             onPress={openCreate}
+            style={[
+              styles.addBtn,
+              {
+                backgroundColor: c.accent,
+                shadowColor: c.shadow },
+            ]}
+            activeOpacity={0.85}
           >
             <Ionicons name="add" size={22} color="#fff" />
           </TouchableOpacity>
-
         </View>
 
-        <View style={styles.searchBox}>
-          <Ionicons name="search" size={16} color="#64748b" />
+        {/* TABS */}
+        <View style={styles.tabsRow}>
+          <TouchableOpacity
+            onPress={() => setTab("ACTIVE")}
+            activeOpacity={0.85}
+            style={[
+              styles.tabBtn,
+              {
+                backgroundColor:
+                  tab === "ACTIVE" ? c.accentSoft : c.surfaceMuted,
+                borderColor:
+                  tab === "ACTIVE" ? c.accent : c.surfaceBorder },
+            ]}
+          >
+            <Text
+              style={{
+                color: tab === "ACTIVE" ? c.accent : c.textMuted,
+                fontWeight: "800",
+                fontSize: 13 }}
+            >
+              Active · {activeCount}
+            </Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            onPress={() => setTab("INACTIVE")}
+            activeOpacity={0.85}
+            style={[
+              styles.tabBtn,
+              {
+                backgroundColor:
+                  tab === "INACTIVE" ? c.accentSoft : c.surfaceMuted,
+                borderColor:
+                  tab === "INACTIVE" ? c.accent : c.surfaceBorder },
+            ]}
+          >
+            <Text
+              style={{
+                color: tab === "INACTIVE" ? c.accent : c.textMuted,
+                fontWeight: "800",
+                fontSize: 13 }}
+            >
+              Not Active · {inactiveCount}
+            </Text>
+          </TouchableOpacity>
+        </View>
+
+        {/* SEARCH */}
+        <View
+          style={[
+            styles.searchBox,
+            {
+              backgroundColor: c.surface,
+              borderColor: c.surfaceBorder },
+          ]}
+        >
+          <Ionicons name="search" size={18} color={c.textMuted} />
           <TextInput
-            style={styles.searchInput}
+            style={[styles.searchInput, { color: c.text }]}
             value={search}
             onChangeText={setSearch}
             placeholder="Search by name, email, or code"
-            placeholderTextColor="#64748b"
+            placeholderTextColor={c.textFaint}
             autoCapitalize="none"
           />
           {search.length > 0 && (
-            <TouchableOpacity onPress={() => setSearch("")}>
+            <TouchableOpacity onPress={() => setSearch("")} hitSlop={8}>
               <Ionicons
                 name="close-circle"
-                size={16}
-                color="#64748b"
+                size={18}
+                color={c.textMuted}
               />
             </TouchableOpacity>
           )}
         </View>
 
-        {users
-          .filter((u) => {
-            const q = search.trim().toLowerCase();
-            if (!q) return true;
-            return (
-              u.name.toLowerCase().includes(q) ||
-              u.email.toLowerCase().includes(q) ||
-              (u.employeeCode || "").toLowerCase().includes(q) ||
-              (u.tag || "").toLowerCase().includes(q)
-            );
-          })
-          .map((u) => (
-          <TouchableOpacity
-            key={u.id}
-            style={styles.card}
-            onPress={() => openEdit(u)}
-            activeOpacity={0.85}
+        {/* LIST */}
+        {filteredUsers.length === 0 ? (
+          <View
+            style={[
+              styles.emptyCard,
+              {
+                backgroundColor: c.surface,
+                borderColor: c.surfaceBorder,
+                shadowColor: c.shadow },
+            ]}
           >
-
-            <View style={styles.avatar}>
-              <Text style={styles.avatarText}>
-                {u.name.charAt(0).toUpperCase()}
-              </Text>
-            </View>
-
-            <View style={{ flex: 1 }}>
-              <Text style={styles.cardName}>{u.name}</Text>
-              <Text style={styles.cardEmail}>
-                {u.email}
-                {u.employeeCode ? `  ·  ${u.employeeCode}` : ""}
-              </Text>
-              {u.tag ? (
-                <Text style={styles.cardTag}>{u.tag}</Text>
-              ) : null}
-            </View>
-
-            <View style={styles.rightChips}>
-              <View
-                style={[
-                  styles.roleChip,
-                  u.role === "HR" && { backgroundColor: "#db2777" },
-                  u.role === "MANAGER" && { backgroundColor: "#7c3aed" },
-                ]}
-              >
-                <Text style={styles.roleChipText}>{u.role}</Text>
-              </View>
-              {u.status && u.status !== "Active" ? (
-                <View
-                  style={[
-                    styles.roleChip,
-                    u.status === "Terminated"
-                      ? { backgroundColor: "#dc2626" }
-                      : { backgroundColor: "#f59e0b" },
-                    { marginTop: 4 },
-                  ]}
-                >
-                  <Text style={styles.roleChipText}>
-                    {u.status.toUpperCase()}
-                  </Text>
-                </View>
-              ) : null}
-              <View style={{ flexDirection: "row", gap: 4, marginTop: 4 }}>
-                <TouchableOpacity
-                  style={styles.profileBtn}
-                  onPress={() =>
-                    router.push(
-                      `/hr-user-profile?id=${u.id}` as any
-                    )
-                  }
-                >
-                  <Ionicons
-                    name="open-outline"
-                    size={14}
-                    color="#fff"
-                  />
-                  <Text style={styles.profileBtnText}>Profile</Text>
-                </TouchableOpacity>
-                <TouchableOpacity
-                  style={[
-                    styles.terminateBtn,
-                    u.status === "Terminated" && {
-                      backgroundColor: "#16a34a",
-                    },
-                  ]}
-                  onPress={(e) => {
-                    // Stop the card's onPress (opens modal)
-                    if ((e as any).stopPropagation) (e as any).stopPropagation();
-                    askTerminate(u);
-                  }}
-                  hitSlop={6}
-                >
-                  <Ionicons
-                    name={
-                      u.status === "Terminated"
-                        ? "refresh-outline"
-                        : "trash-outline"
-                    }
-                    size={14}
-                    color="#fff"
-                  />
-                </TouchableOpacity>
-              </View>
-            </View>
-
-          </TouchableOpacity>
-        ))}
-
-        {users.length === 0 && (
-          <View style={styles.emptyBox}>
-            <Text style={styles.emptyTitle}>No users yet</Text>
-            <Text style={styles.emptySub}>
-              Tap + to create the first one.
+            <Ionicons
+              name={
+                tab === "ACTIVE"
+                  ? "people-outline"
+                  : "person-remove-outline"
+              }
+              size={32}
+              color={c.textMuted}
+            />
+            <Text style={[styles.emptyText, { color: c.text }]}>
+              {search
+                ? "No matching employees"
+                : tab === "ACTIVE"
+                ? "No active employees yet"
+                : "No terminated employees"}
             </Text>
+            {!search && tab === "ACTIVE" && (
+              <Text style={[styles.emptySub, { color: c.textMuted }]}>
+                Tap + to create your first employee.
+              </Text>
+            )}
           </View>
+        ) : (
+          filteredUsers.map((u) => (
+            <UserCard
+              key={u.id}
+              user={u}
+              onPress={() =>
+                router.push(`/hr-user-profile?id=${u.id}` as any)
+              }
+              onTerminate={() => askTerminate(u)}
+              theme={theme}
+            />
+          ))
         )}
-
       </ScrollView>
 
-      {/* MODAL */}
+      {/* CREATE MODAL */}
       <Modal
         visible={modalVisible}
         transparent
         animationType="slide"
         onRequestClose={() => setModalVisible(false)}
       >
-        <View style={styles.modalOverlay}>
-          <View style={styles.modalCard}>
-            <ScrollView
-              showsVerticalScrollIndicator={false}
-              keyboardShouldPersistTaps="handled"
-            >
-
-              <Text style={styles.modalTitle}>
-                {editingId ? "Edit User" : "New User"}
-              </Text>
-
-              <Text style={styles.label}>Name</Text>
-              <TextInput
-                style={styles.input}
-                value={name}
-                onChangeText={setName}
-                placeholder="Full name"
-                placeholderTextColor="#64748b"
-              />
-
-              <Text style={styles.label}>Email</Text>
-              <TextInput
-                style={[
-                  styles.input,
-                  editingId && styles.inputDisabled,
-                ]}
-                value={email}
-                onChangeText={setEmail}
-                placeholder="user@example.com"
-                placeholderTextColor="#64748b"
-                autoCapitalize="none"
-                keyboardType="email-address"
-                editable={!editingId}
-              />
-              {editingId ? (
-                <Text style={styles.hintMini}>
-                  Email can't be changed
+        <View style={[styles.modalScrim, { backgroundColor: c.overlay }]}>
+          <View
+            style={[
+              styles.modalCard,
+              { backgroundColor: c.surface, shadowColor: c.shadow },
+            ]}
+          >
+            <ScrollView showsVerticalScrollIndicator={false}>
+              <View style={styles.modalHeader}>
+                <Text style={[styles.modalTitle, { color: c.text }]}>
+                  New employee
                 </Text>
-              ) : null}
-
-              {!editingId ? (
-                <>
-                  <Text style={styles.label}>Password</Text>
-                  <View style={styles.pwdRow}>
-                    <TextInput
-                      style={[styles.input, { flex: 1 }]}
-                      value={password}
-                      onChangeText={setPassword}
-                      placeholder="Min 6 characters"
-                      placeholderTextColor="#64748b"
-                      secureTextEntry={!showPassword}
-                      autoCapitalize="none"
-                    />
-                    <TouchableOpacity
-                      style={styles.eyeBtn}
-                      onPress={() => setShowPassword((v) => !v)}
-                    >
-                      <Ionicons
-                        name={
-                          showPassword ? "eye-off-outline" : "eye-outline"
-                        }
-                        size={20}
-                        color="#94a3b8"
-                      />
-                    </TouchableOpacity>
-                  </View>
-                  <Text style={styles.hintMini}>
-                    HR can view what's typed. After creation, an email with
-                    a setup link is sent — recommend the user replace this
-                    password on first login.
-                  </Text>
-                </>
-              ) : null}
-
-              <Text style={styles.label}>Designation</Text>
-              <View style={styles.chipPicker}>
-                {USER_TAGS.map((t) => (
-                  <TouchableOpacity
-                    key={t}
-                    style={[
-                      styles.pickBtn,
-                      tag === t && styles.pickActive,
-                    ]}
-                    onPress={() => setTag(t)}
-                  >
-                    <Text
-                      style={[
-                        styles.pickText,
-                        tag === t && { color: "#fff" },
-                      ]}
-                    >
-                      {t}
-                    </Text>
-                  </TouchableOpacity>
-                ))}
-              </View>
-
-              <Text style={styles.label}>Employee Code</Text>
-              <TextInput
-                style={styles.input}
-                value={employeeCode}
-                onChangeText={setEmployeeCode}
-                placeholder="e.g. EMP-0042"
-                placeholderTextColor="#64748b"
-              />
-
-              <Text style={styles.label}>Work Phone</Text>
-              <TextInput
-                style={styles.input}
-                value={workPhone}
-                onChangeText={setWorkPhone}
-                placeholder="+91-9876543210"
-                placeholderTextColor="#64748b"
-                keyboardType="phone-pad"
-              />
-
-              <View style={styles.toggleRow}>
-                <Text style={styles.label}>Joining Date</Text>
                 <TouchableOpacity
-                  onPress={() => setHasJoining(!hasJoining)}
-                  style={[
-                    styles.toggleBtn,
-                    hasJoining && styles.toggleOn,
-                  ]}
+                  onPress={() => setModalVisible(false)}
+                  hitSlop={8}
                 >
-                  <Text
-                    style={[
-                      styles.toggleBtnText,
-                      hasJoining && { color: "#fff" },
-                    ]}
-                  >
-                    {hasJoining ? "Set" : "Not set"}
-                  </Text>
+                  <Ionicons name="close" size={22} color={c.textMuted} />
                 </TouchableOpacity>
               </View>
 
-              {hasJoining && (
-                isWeb ? (
-                  <View style={styles.joinRow}>
+              <Field label="NAME" theme={theme}>
+                <Input
+                  value={name}
+                  onChangeText={setName}
+                  placeholder="Full name"
+                  theme={theme}
+                />
+              </Field>
+              <Field label="EMAIL" theme={theme}>
+                <Input
+                  value={email}
+                  onChangeText={setEmail}
+                  placeholder="user@example.com"
+                  autoCapitalize="none"
+                  keyboardType="email-address"
+                  theme={theme}
+                />
+              </Field>
+              <Field label="PASSWORD" theme={theme}>
+                <View style={{ position: "relative" }}>
+                  <Input
+                    value={password}
+                    onChangeText={setPassword}
+                    placeholder="Min 6 characters"
+                    secureTextEntry={!showPassword}
+                    autoCapitalize="none"
+                    theme={theme}
+                  />
+                  <TouchableOpacity
+                    onPress={() => setShowPassword((v) => !v)}
+                    style={styles.eyeBtn}
+                    hitSlop={8}
+                  >
                     <Ionicons
-                      name="calendar-outline"
-                      size={18}
-                      color="#94a3b8"
+                      name={showPassword ? "eye-off-outline" : "eye-outline"}
+                      size={20}
+                      color={c.textMuted}
                     />
-                    <WebDateField
-                      mode="date"
-                      value={dateToYMD(joiningDate)}
-                      max={dateToYMD(new Date())}
-                      onChange={(v) => {
-                        const d = ymdToDate(v);
-                        if (d) setJoiningDate(d);
-                      }}
-                    />
+                  </TouchableOpacity>
+                </View>
+              </Field>
+
+              <Field label="DESIGNATION" theme={theme}>
+                <Input
+                  value={tag}
+                  onChangeText={setTag}
+                  placeholder="e.g. Senior Engineer"
+                  theme={theme}
+                />
+              </Field>
+
+              <Field
+                label="EMPLOYEE CODE (optional)"
+                theme={theme}
+              >
+                <Input
+                  value={employeeCode}
+                  onChangeText={setEmployeeCode}
+                  placeholder="Leave blank to auto-generate"
+                  theme={theme}
+                />
+              </Field>
+
+              <Field label="WORK PHONE" theme={theme}>
+                <Input
+                  value={workPhone}
+                  onChangeText={setWorkPhone}
+                  placeholder="+91…"
+                  keyboardType="phone-pad"
+                  theme={theme}
+                />
+              </Field>
+
+              <Field label="JOINING DATE" theme={theme}>
+                <DatePickerField
+                  value={joiningDate}
+                  onChange={setJoiningDate}
+                />
+              </Field>
+
+              <Field label="STATUS" theme={theme}>
+                <View style={styles.chipsRow}>
+                  {USER_STATUSES.map((s) => {
+                    const active = status === s;
+                    return (
+                      <TouchableOpacity
+                        key={s}
+                        onPress={() => setStatus(s)}
+                        style={[
+                          styles.chip,
+                          {
+                            backgroundColor: active
+                              ? c.accentSoft
+                              : c.surfaceMuted,
+                            borderColor: active
+                              ? c.accent
+                              : c.surfaceBorder },
+                        ]}
+                      >
+                        <Text
+                          style={{
+                            color: active ? c.accent : c.textMuted,
+                            fontSize: 12,
+                            fontWeight: "700" }}
+                        >
+                          {s === "Terminated" ? "Not Active" : s}
+                        </Text>
+                      </TouchableOpacity>
+                    );
+                  })}
+                </View>
+              </Field>
+
+              {availableAssets.length > 0 && (
+                <Field
+                  label="ASSIGN ASSETS (optional)"
+                  theme={theme}
+                >
+                  <View style={styles.chipsRow}>
+                    {availableAssets.map((a) => {
+                      const picked = selectedAssetIds.includes(a.id);
+                      return (
+                        <TouchableOpacity
+                          key={a.id}
+                          onPress={() =>
+                            setSelectedAssetIds((prev) =>
+                              picked
+                                ? prev.filter((x) => x !== a.id)
+                                : [...prev, a.id]
+                            )
+                          }
+                          style={[
+                            styles.chip,
+                            {
+                              backgroundColor: picked
+                                ? c.accentSoft
+                                : c.surfaceMuted,
+                              borderColor: picked
+                                ? c.accent
+                                : c.surfaceBorder },
+                          ]}
+                        >
+                          <Text
+                            style={{
+                              color: picked ? c.accent : c.textMuted,
+                              fontSize: 12,
+                              fontWeight: "700" }}
+                          >
+                            {a.code} · {a.name}
+                          </Text>
+                        </TouchableOpacity>
+                      );
+                    })}
                   </View>
-                ) : (
-                  <>
-                    <TouchableOpacity
-                      style={styles.joinRow}
-                      onPress={() => setShowDatePicker(true)}
-                    >
-                      <Ionicons
-                        name="calendar-outline"
-                        size={18}
-                        color="#94a3b8"
-                      />
-                      <Text style={styles.joinText}>
-                        {joiningDate.toLocaleDateString("en-US", {
-                          weekday: "short",
-                          month: "short",
-                          day: "numeric",
-                          year: "numeric",
-                        })}
-                      </Text>
-                    </TouchableOpacity>
-                    {showDatePicker && (
-                      <DateTimePicker
-                        value={joiningDate}
-                        mode="date"
-                        maximumDate={new Date()}
-                        onChange={(_, d) => {
-                          setShowDatePicker(
-                            Platform.OS === "ios"
-                          );
-                          if (d) setJoiningDate(d);
-                        }}
-                      />
-                    )}
-                  </>
-                )
+                </Field>
               )}
 
-              <Text style={styles.label}>Status</Text>
-              <View style={styles.chipPicker}>
-                {USER_STATUSES.map((s) => (
-                  <TouchableOpacity
-                    key={s}
-                    style={[
-                      styles.pickBtn,
-                      status === s && styles.pickActive,
-                    ]}
-                    onPress={() => setStatus(s)}
-                  >
-                    <Text
-                      style={[
-                        styles.pickText,
-                        status === s && { color: "#fff" },
-                      ]}
-                    >
-                      {s}
-                    </Text>
-                  </TouchableOpacity>
-                ))}
-              </View>
-
-              {!editingId ? (
-                <Text style={styles.hint}>
-                  New users get the USER role by default.
-                </Text>
-              ) : null}
+              <Field label="DOCUMENTS (optional)" theme={theme}>
+                <View style={styles.chipsRow}>
+                  {DOC_CATEGORIES.map((cat) => {
+                    const active = docCategory === cat;
+                    return (
+                      <TouchableOpacity
+                        key={cat}
+                        onPress={() => setDocCategory(cat)}
+                        style={[
+                          styles.chip,
+                          {
+                            backgroundColor: active
+                              ? c.accentSoft
+                              : c.surfaceMuted,
+                            borderColor: active
+                              ? c.accent
+                              : c.surfaceBorder },
+                        ]}
+                      >
+                        <Text
+                          style={{
+                            color: active ? c.accent : c.textMuted,
+                            fontSize: 12,
+                            fontWeight: "700" }}
+                        >
+                          {cat}
+                        </Text>
+                      </TouchableOpacity>
+                    );
+                  })}
+                </View>
+                <View style={{ marginTop: 10 }}>
+                  <FilePickButton
+                    label={`Upload ${docCategory}`}
+                    onUploaded={(url, fileName) =>
+                      setStagedDocs((prev) => [
+                        ...prev,
+                        { category: docCategory, fileName, fileUrl: url },
+                      ])
+                    }
+                  />
+                </View>
+                {stagedDocs.length > 0 && (
+                  <View style={{ marginTop: 10, gap: 6 }}>
+                    {stagedDocs.map((d, i) => (
+                      <View
+                        key={`${d.category}-${i}`}
+                        style={[
+                          styles.docRow,
+                          {
+                            backgroundColor: c.surfaceMuted,
+                            borderColor: c.surfaceBorder },
+                        ]}
+                      >
+                        <Ionicons
+                          name="document-text-outline"
+                          size={16}
+                          color={c.accent}
+                        />
+                        <Text
+                          style={{
+                            color: c.text,
+                            fontSize: 12,
+                            flex: 1 }}
+                          numberOfLines={1}
+                        >
+                          {d.category} · {d.fileName}
+                        </Text>
+                        <TouchableOpacity
+                          onPress={() =>
+                            setStagedDocs((prev) =>
+                              prev.filter((_, j) => j !== i)
+                            )
+                          }
+                          hitSlop={6}
+                        >
+                          <Ionicons
+                            name="close-circle"
+                            size={16}
+                            color={c.dangerText}
+                          />
+                        </TouchableOpacity>
+                      </View>
+                    ))}
+                  </View>
+                )}
+              </Field>
 
               <View style={styles.modalActions}>
                 <TouchableOpacity
-                  style={styles.cancelBtn}
                   onPress={() => setModalVisible(false)}
-                >
-                  <Text style={styles.modalBtnText}>Cancel</Text>
-                </TouchableOpacity>
-
-                <TouchableOpacity
-                  style={[
-                    styles.saveBtn,
-                    saving && { opacity: 0.7 },
-                  ]}
-                  onPress={save}
                   disabled={saving}
+                  style={[
+                    styles.cancelBtn,
+                    { backgroundColor: c.surfaceMuted },
+                  ]}
+                >
+                  <Text
+                    style={{ color: c.text, fontWeight: "700" }}
+                  >
+                    Cancel
+                  </Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  onPress={saveNew}
+                  disabled={saving}
+                  style={[
+                    styles.submitBtn,
+                    {
+                      backgroundColor: c.accent,
+                      shadowColor: c.shadow,
+                      opacity: saving ? 0.7 : 1 },
+                  ]}
                 >
                   {saving ? (
                     <ActivityIndicator color="#fff" />
                   ) : (
-                    <Text style={styles.modalBtnText}>
-                      {editingId ? "Update" : "Create"}
+                    <Text style={{ color: "#fff", fontWeight: "800" }}>
+                      Create
                     </Text>
                   )}
                 </TouchableOpacity>
               </View>
-
             </ScrollView>
           </View>
         </View>
       </Modal>
 
+      {/* TERMINATE MODAL */}
+      <Modal
+        visible={terminateModalVisible}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setTerminateModalVisible(false)}
+      >
+        <View
+          style={[
+            styles.modalScrim,
+            { backgroundColor: c.overlay, justifyContent: "center" },
+          ]}
+        >
+          <View
+            style={[
+              styles.terminateCard,
+              { backgroundColor: c.surface, shadowColor: c.shadow },
+            ]}
+          >
+            <Text style={[styles.modalTitle, { color: c.text }]}>
+              Mark {terminateTarget?.name || "user"} NOT ACTIVE
+            </Text>
+            <Text style={[styles.terminateHint, { color: c.textMuted }]}>
+              Account is preserved (audit / payroll history kept) but the
+              user can no longer log in. Reactivate later from this list.
+            </Text>
+            <Field label="REASON *" theme={theme}>
+              <Input
+                value={terminateReason}
+                onChangeText={setTerminateReason}
+                placeholder="e.g. Resigned, end of contract…"
+                multiline
+                theme={theme}
+              />
+            </Field>
+            <View style={styles.modalActions}>
+              <TouchableOpacity
+                onPress={() => {
+                  setTerminateModalVisible(false);
+                  setTerminateReason("");
+                  setTerminateTarget(null);
+                }}
+                style={[
+                  styles.cancelBtn,
+                  { backgroundColor: c.surfaceMuted },
+                ]}
+              >
+                <Text
+                  style={{ color: c.text, fontWeight: "700" }}
+                >
+                  Cancel
+                </Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                onPress={confirmTerminate}
+                disabled={terminating}
+                style={[
+                  styles.submitBtn,
+                  {
+                    backgroundColor: c.dangerText,
+                    shadowColor: c.shadow,
+                    opacity: terminating ? 0.7 : 1 },
+                ]}
+              >
+                {terminating ? (
+                  <ActivityIndicator color="#fff" />
+                ) : (
+                  <Text style={{ color: "#fff", fontWeight: "800" }}>
+                    Mark NOT ACTIVE
+                  </Text>
+                )}
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
+
+      <BottomTabBar user={me} />
     </SafeAreaView>
   );
 }
 
-const styles = StyleSheet.create({
-  safe: { flex: 1, backgroundColor: "#0b1220" },
-  container: { flex: 1 },
-  content: { padding: 20, paddingBottom: 60 },
-  loader: {
-    flex: 1,
-    backgroundColor: "#0b1220",
-    justifyContent: "center",
-    alignItems: "center",
-  },
+// =============================================================
+// Sub-components
+// =============================================================
 
-  popup: {
-    position: "absolute",
-    top: 60,
-    left: 20,
-    right: 20,
-    padding: 14,
-    borderRadius: 14,
-    zIndex: 999,
-  },
-  successPopup: { backgroundColor: "#16a34a" },
-  errorPopup: { backgroundColor: "#dc2626" },
-  popupText: { color: "#fff", fontWeight: "700", textAlign: "center" },
+const UserCard = ({
+  user,
+  onPress,
+  onTerminate,
+  theme }: {
+  user: User;
+  onPress: () => void;
+  onTerminate: () => void;
+  theme: any;
+}) => {
+  const c = theme.colors;
+  const styles = useMemo(() => makeStyles(c), [c]);
+  const roleTint =
+    user.role === "HR"
+      ? { bg: c.roleHrBg, fg: c.roleHrText }
+      : user.role === "CEO"
+      ? { bg: c.roleCeoBg, fg: c.roleCeoText }
+      : user.role === "MANAGER"
+      ? { bg: c.roleManagerBg, fg: c.roleManagerText }
+      : { bg: c.accentSoft, fg: c.accentText };
+  const isTerminated = user.status === "Terminated";
 
-  header: {
+  return (
+    <View
+      style={[
+        styles.userCard,
+        {
+          backgroundColor: c.surface,
+          borderColor: c.surfaceBorder,
+          shadowColor: c.shadow },
+      ]}
+    >
+      <TouchableOpacity
+        onPress={onPress}
+        activeOpacity={0.85}
+        style={styles.userCardMain}
+      >
+        <View
+          style={[
+            styles.avatar,
+            { backgroundColor: c.accentSoft },
+          ]}
+        >
+          <Text
+            style={{
+              color: c.accentText,
+              fontSize: 18,
+              fontWeight: "800" }}
+          >
+            {user.name.charAt(0).toUpperCase()}
+          </Text>
+        </View>
+        <View style={{ flex: 1 }}>
+          <Text
+            style={[styles.userName, { color: c.text }]}
+            numberOfLines={1}
+          >
+            {user.name}
+          </Text>
+          <Text
+            style={[styles.userMeta, { color: c.textMuted }]}
+            numberOfLines={1}
+          >
+            {user.email}
+            {user.employeeCode ? `  ·  ${user.employeeCode}` : ""}
+          </Text>
+          <View style={styles.userChips}>
+            <View
+              style={[
+                styles.miniChip,
+                { backgroundColor: roleTint.bg },
+              ]}
+            >
+              <Text
+                style={{
+                  color: roleTint.fg,
+                  fontSize: 10,
+                  fontWeight: "800" }}
+              >
+                {user.role}
+              </Text>
+            </View>
+            {!!user.tag && (
+              <View
+                style={[
+                  styles.miniChip,
+                  { backgroundColor: c.pastelSky },
+                ]}
+              >
+                <Text
+                  style={{
+                    color: "#0369a1",
+                    fontSize: 10,
+                    fontWeight: "800" }}
+                >
+                  {user.tag}
+                </Text>
+              </View>
+            )}
+            {isTerminated && (
+              <View
+                style={[
+                  styles.miniChip,
+                  { backgroundColor: c.dangerBg },
+                ]}
+              >
+                <Text
+                  style={{
+                    color: c.dangerText,
+                    fontSize: 10,
+                    fontWeight: "800" }}
+                >
+                  NOT ACTIVE
+                </Text>
+              </View>
+            )}
+          </View>
+        </View>
+      </TouchableOpacity>
+      <TouchableOpacity
+        onPress={onTerminate}
+        style={[
+          styles.userAction,
+          {
+            backgroundColor: isTerminated
+              ? c.successBg
+              : c.dangerBg },
+        ]}
+        hitSlop={6}
+      >
+        <Ionicons
+          name={isTerminated ? "refresh-outline" : "trash-outline"}
+          size={16}
+          color={isTerminated ? c.successText : c.dangerText}
+        />
+      </TouchableOpacity>
+    </View>
+  );
+};
+
+const Field = ({
+  label,
+  theme,
+  children }: {
+  label: string;
+  theme: any;
+  children: React.ReactNode;
+}) => (
+  <View style={{ marginTop: 14 }}>
+    <Text
+      style={{
+        color: theme.colors.textMuted,
+        fontSize: 11,
+        fontWeight: "800",
+        letterSpacing: 1.2,
+        marginBottom: 6 }}
+    >
+      {label}
+    </Text>
+    {children}
+  </View>
+);
+
+const Input = ({
+  theme,
+  multiline,
+  ...rest
+}: any) => (
+  <TextInput
+    {...rest}
+    multiline={multiline}
+    placeholderTextColor={theme.colors.textFaint}
+    style={{
+      backgroundColor: theme.colors.surfaceMuted,
+      color: theme.colors.text,
+      paddingHorizontal: 12,
+      paddingVertical: multiline ? 12 : 11,
+      borderRadius: 12,
+      borderWidth: 1,
+      borderColor: theme.colors.surfaceBorder,
+      fontSize: 14,
+      minHeight: multiline ? 70 : 44,
+      textAlignVertical: multiline ? "top" : undefined }}
+  />
+);
+
+const makeStyles = (c: any) => StyleSheet.create({
+  safe: { flex: 1 },
+  loader: { flex: 1, alignItems: "center", justifyContent: "center" },
+  headerRow: {
     flexDirection: "row",
     alignItems: "center",
-    marginBottom: 18,
-    marginTop: 10,
-    gap: 12,
-  },
-  backBtn: {
+    marginBottom: 16,
+    gap: 8 },
+  iconBtn: {
     width: 42,
     height: 42,
-    borderRadius: 12,
-    backgroundColor: "#111827",
-    justifyContent: "center",
-    alignItems: "center",
+    borderRadius: 14,
     borderWidth: 1,
-    borderColor: "#1f2937",
-  },
-  addBtn: {
-    width: 42,
-    height: 42,
-    borderRadius: 12,
-    backgroundColor: "#2563eb",
-    justifyContent: "center",
     alignItems: "center",
-  },
-  title: { color: "#fff", fontSize: 24, fontWeight: "800" },
-  subtitle: { color: "#94a3b8", fontSize: 13, marginTop: 3 },
+    justifyContent: "center" },
+  title: { fontSize: 26, fontWeight: "800" },
+  subtitle: { fontSize: 13, marginTop: 2 },
+  addBtn: {
+    width: 46,
+    height: 46,
+    borderRadius: 16,
+    alignItems: "center",
+    justifyContent: "center",
+    shadowOpacity: 0.2,
+    shadowRadius: 10,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 3 },
+
+  tabsRow: { flexDirection: "row", gap: 8, marginBottom: 12 },
+  tabBtn: {
+    flex: 1,
+    paddingVertical: 11,
+    borderRadius: 14,
+    borderWidth: 1,
+    alignItems: "center" },
 
   searchBox: {
     flexDirection: "row",
     alignItems: "center",
-    backgroundColor: "#111827",
-    borderRadius: 12,
-    paddingHorizontal: 12,
-    marginBottom: 12,
-    borderWidth: 1,
-    borderColor: "#1f2937",
-    gap: 8,
-  },
-
-  searchInput: {
-    flex: 1,
-    color: "#fff",
-    paddingVertical: 10,
-    fontSize: 14,
-  },
-
-  card: {
-    flexDirection: "row",
-    alignItems: "center",
-    backgroundColor: "#111827",
     borderRadius: 14,
-    padding: 14,
-    marginBottom: 10,
+    paddingHorizontal: 12,
     borderWidth: 1,
-    borderColor: "#1f2937",
-    gap: 12,
-  },
-  avatar: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: "#2563eb",
-    justifyContent: "center",
-    alignItems: "center",
-  },
-  avatarText: { color: "#fff", fontWeight: "700", fontSize: 15 },
-  cardName: { color: "#fff", fontSize: 15, fontWeight: "700" },
-  cardEmail: { color: "#94a3b8", fontSize: 12, marginTop: 2 },
-  cardTag: {
-    color: "#0ea5e9",
-    fontSize: 11,
-    fontWeight: "700",
-    marginTop: 4,
-  },
+    gap: 10,
+    marginBottom: 14 },
+  searchInput: { flex: 1, paddingVertical: 12, fontSize: 14 },
 
-  rightChips: {
-    alignItems: "flex-end",
-    gap: 4,
-  },
-  profileBtn: {
+  emptyCard: {
+    padding: 30,
+    borderRadius: 18,
+    borderWidth: 1,
+    alignItems: "center",
+    gap: 8,
+    marginTop: 8,
+    shadowOpacity: 1,
+    shadowRadius: 12,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 2 },
+  emptyText: { fontSize: 14, fontWeight: "700" },
+  emptySub: { fontSize: 12 },
+
+  userCard: {
     flexDirection: "row",
     alignItems: "center",
-    backgroundColor: "#3b82f6",
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-    borderRadius: 8,
-    gap: 4,
-  },
-  profileBtnText: { color: "#fff", fontSize: 10, fontWeight: "800" },
-  terminateBtn: {
-    backgroundColor: "#dc2626",
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 8,
+    padding: 12,
+    borderRadius: 16,
+    borderWidth: 1,
+    marginBottom: 10,
+    shadowOpacity: 1,
+    shadowRadius: 10,
+    shadowOffset: { width: 0, height: 3 },
+    elevation: 1,
+    gap: 8 },
+  userCardMain: {
+    flex: 1,
+    flexDirection: "row",
     alignItems: "center",
-    justifyContent: "center",
-  },
-  pwdRow: {
+    gap: 12 },
+  avatar: {
+    width: 46,
+    height: 46,
+    borderRadius: 23,
+    alignItems: "center",
+    justifyContent: "center" },
+  userName: { fontSize: 15, fontWeight: "800" },
+  userMeta: { fontSize: 12, marginTop: 2 },
+  userChips: { flexDirection: "row", flexWrap: "wrap", gap: 4, marginTop: 6 },
+  miniChip: {
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 999 },
+  userAction: {
+    width: 36,
+    height: 36,
+    borderRadius: 12,
+    alignItems: "center",
+    justifyContent: "center" },
+
+  // Modals
+  modalScrim: { flex: 1, justifyContent: "flex-end" },
+  modalCard: {
+    padding: 20,
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    maxHeight: "90%",
+    shadowOpacity: 1,
+    shadowRadius: 24,
+    shadowOffset: { width: 0, height: -8 },
+    elevation: 12 },
+  modalHeader: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    marginBottom: 6 },
+  modalTitle: { fontSize: 20, fontWeight: "800" },
+  chipsRow: { flexDirection: "row", flexWrap: "wrap", gap: 6 },
+  chip: {
+    paddingHorizontal: 12,
+    paddingVertical: 7,
+    borderRadius: 999,
+    borderWidth: 1 },
+  docRow: {
     flexDirection: "row",
     alignItems: "center",
     gap: 8,
-  },
-  eyeBtn: {
-    width: 44,
-    height: 44,
-    borderRadius: 12,
-    backgroundColor: "#0f172a",
-    borderWidth: 1,
-    borderColor: "#1e293b",
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  roleChip: {
-    backgroundColor: "#1e293b",
-    paddingHorizontal: 9,
-    paddingVertical: 4,
-    borderRadius: 999,
-  },
-  roleChipText: {
-    color: "#fff",
-    fontSize: 10,
-    fontWeight: "700",
-    letterSpacing: 0.5,
-  },
-
-  emptyBox: {
-    alignItems: "center",
-    padding: 40,
-    backgroundColor: "#111827",
-    borderRadius: 18,
-    borderWidth: 1,
-    borderColor: "#1f2937",
-    marginTop: 20,
-  },
-  emptyTitle: { color: "#fff", fontSize: 16, fontWeight: "700" },
-  emptySub: {
-    color: "#94a3b8",
-    fontSize: 13,
-    marginTop: 6,
-    textAlign: "center",
-  },
-
-  modalOverlay: {
-    flex: 1,
-    backgroundColor: "rgba(0,0,0,0.7)",
-    justifyContent: "center",
-    padding: 20,
-  },
-  modalCard: {
-    backgroundColor: "#111827",
-    borderRadius: 18,
-    padding: 20,
-    maxHeight: "92%",
-  },
-  modalTitle: {
-    color: "#fff",
-    fontSize: 22,
-    fontWeight: "800",
-    marginBottom: 12,
-  },
-
-  label: {
-    color: "#94a3b8",
-    fontSize: 13,
-    fontWeight: "600",
-    marginBottom: 6,
-    marginTop: 14,
-  },
-  input: {
-    backgroundColor: "#0f172a",
-    color: "#fff",
-    borderRadius: 12,
-    padding: 13,
-    borderWidth: 1,
-    borderColor: "#1e293b",
-    fontSize: 14,
-  },
-  inputDisabled: {
-    opacity: 0.55,
-  },
-  hintMini: {
-    color: "#64748b",
-    fontSize: 11,
-    marginTop: 4,
-    fontStyle: "italic",
-  },
-
-  chipPicker: {
-    flexDirection: "row",
-    flexWrap: "wrap",
-    gap: 6,
-  },
-  pickBtn: {
-    paddingHorizontal: 11,
-    paddingVertical: 7,
-    backgroundColor: "#0f172a",
+    paddingHorizontal: 10,
+    paddingVertical: 8,
     borderRadius: 10,
-    borderWidth: 1,
-    borderColor: "#1e293b",
-  },
-  pickActive: {
-    backgroundColor: "#2563eb",
-    borderColor: "#2563eb",
-  },
-  pickText: {
-    color: "#94a3b8",
-    fontSize: 12,
-    fontWeight: "700",
-  },
-
-  toggleRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-  },
-  toggleBtn: {
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    backgroundColor: "#0f172a",
-    borderRadius: 999,
-    borderWidth: 1,
-    borderColor: "#1e293b",
-    marginTop: 14,
-  },
-  toggleOn: {
-    backgroundColor: "#2563eb",
-    borderColor: "#2563eb",
-  },
-  toggleBtnText: {
-    color: "#94a3b8",
-    fontWeight: "700",
-    fontSize: 12,
-  },
-
-  joinRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    backgroundColor: "#0f172a",
-    borderRadius: 12,
-    padding: 13,
-    borderWidth: 1,
-    borderColor: "#1e293b",
-    gap: 10,
-    marginTop: 8,
-  },
-  joinText: {
-    color: "#fff",
-    fontWeight: "700",
-    fontSize: 14,
-  },
-
-  hint: {
-    color: "#64748b",
-    fontSize: 12,
-    marginTop: 14,
-    fontStyle: "italic",
-  },
-
+    borderWidth: 1 },
+  eyeBtn: {
+    position: "absolute",
+    right: 10,
+    top: 0,
+    bottom: 0,
+    justifyContent: "center" },
   modalActions: {
     flexDirection: "row",
     gap: 10,
-    marginTop: 22,
-  },
+    marginTop: 18,
+    marginBottom: Platform.OS === "ios" ? 10 : 0 },
   cancelBtn: {
     flex: 1,
-    backgroundColor: "#374151",
-    padding: 14,
-    borderRadius: 12,
+    paddingVertical: 14,
+    borderRadius: 14,
+    alignItems: "center" },
+  submitBtn: {
+    flex: 1.5,
+    paddingVertical: 14,
+    borderRadius: 14,
     alignItems: "center",
-  },
-  saveBtn: {
-    flex: 1,
-    backgroundColor: "#16a34a",
-    padding: 14,
-    borderRadius: 12,
-    alignItems: "center",
-  },
-  modalBtnText: { color: "#fff", fontWeight: "700" },
-});
+    shadowOpacity: 0.2,
+    shadowRadius: 10,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 3 },
+
+  terminateCard: {
+    margin: 20,
+    padding: 20,
+    borderRadius: 20,
+    shadowOpacity: 1,
+    shadowRadius: 24,
+    shadowOffset: { width: 0, height: 12 },
+    elevation: 12 },
+  terminateHint: {
+    fontSize: 12,
+    marginTop: 6,
+    lineHeight: 18 } });

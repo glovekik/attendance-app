@@ -1,7 +1,6 @@
-import React, {
+﻿import React, {
   useEffect,
-  useState,
-} from "react";
+  useState, useMemo} from "react";
 
 import {
   View,
@@ -11,9 +10,8 @@ import {
   TouchableOpacity,
   TextInput,
   ActivityIndicator,
-  Modal,
-  SafeAreaView,
-} from "react-native";
+  Modal } from "react-native";
+import { SafeAreaView } from "react-native-safe-area-context";
 
 import AsyncStorage from "@react-native-async-storage/async-storage";
 
@@ -23,22 +21,56 @@ import { Ionicons } from "@expo/vector-icons";
 
 import { listUsers } from "../src/services/users";
 
+import { useTheme } from "../src/theme/ThemeProvider";
 import {
   hrGetSalaryStructure,
-  hrSetSalaryStructure,
-} from "../src/services/payroll";
+  hrSetSalaryStructure } from "../src/services/payroll";
+import { breakdownFromCTC, PF_MONTHLY_CAP } from "../src/utils/salaryFormula";
 
 import {
   User,
   SalaryStructure,
-  TDSRegime,
-} from "../src/types";
+  TDSRegime } from "../src/types";
 
 const REGIMES: TDSRegime[] = ["NEW", "OLD"];
+
+// Stable field component — defined at module scope so typing into the
+// TextInput doesn't unmount it and dismiss the keyboard after one letter.
+const Field = ({
+  label,
+  value,
+  onChange,
+  keyboard = "decimal-pad",
+  styles,
+  faintColor }: {
+  label: string;
+  value: string;
+  onChange: (v: string) => void;
+  keyboard?: "decimal-pad" | "default" | "number-pad";
+  styles: any;
+  faintColor: string;
+}) => (
+  <View style={{ flex: 1 }}>
+    <Text style={styles.label}>{label}</Text>
+    <TextInput
+      style={styles.input}
+      value={value}
+      onChangeText={onChange}
+      keyboardType={keyboard}
+      placeholderTextColor={faintColor}
+    />
+  </View>
+);
 
 export default function SalaryStructures() {
 
   const router = useRouter();
+
+  const { theme } = useTheme();
+
+  const c = theme.colors;
+
+  const s = useMemo(() => makeStyles(c), [c]);
 
   const [users, setUsers] = useState<User[]>([]);
   const [loading, setLoading] = useState(true);
@@ -50,6 +82,7 @@ export default function SalaryStructures() {
   const [saving, setSaving] = useState(false);
 
   // Form fields
+  const [monthlyCTC, setMonthlyCTC] = useState("");
   const [basic, setBasic] = useState("");
   const [hra, setHra] = useState("");
   const [comm, setComm] = useState("");
@@ -71,8 +104,7 @@ export default function SalaryStructures() {
   const [popup, setPopup] = useState({
     visible: false,
     type: "success" as "success" | "error",
-    message: "",
-  });
+    message: "" });
 
   const showPopup = (
     msg: string,
@@ -110,6 +142,7 @@ export default function SalaryStructures() {
     setCurrent(null);
 
     // Reset to defaults
+    setMonthlyCTC("");
     setBasic("");
     setHra("");
     setComm("");
@@ -190,8 +223,7 @@ export default function SalaryStructures() {
         bankAccountNumber: bankAccount.trim() || undefined,
         bankIfsc: bankIfsc.trim() || undefined,
         bankName: bankName.trim() || undefined,
-        tdsRegime,
-      });
+        tdsRegime });
       showPopup("Saved");
       setModalVisible(false);
     } catch (err: any) {
@@ -204,7 +236,7 @@ export default function SalaryStructures() {
   if (loading) {
     return (
       <View style={s.loader}>
-        <ActivityIndicator size="large" color="#2563eb" />
+        <ActivityIndicator size="large" color={c.accent} />
       </View>
     );
   }
@@ -231,9 +263,9 @@ export default function SalaryStructures() {
         <View style={s.header}>
           <TouchableOpacity
             style={s.backBtn}
-            onPress={() => router.back()}
+            onPress={() => (router.canGoBack() ? router.back() : router.replace("/"))}
           >
-            <Ionicons name="chevron-back" size={22} color="#fff" />
+            <Ionicons name="chevron-back" size={22} color={c.text} />
           </TouchableOpacity>
           <View style={{ flex: 1 }}>
             <Text style={s.title}>Salary Structures</Text>
@@ -260,7 +292,7 @@ export default function SalaryStructures() {
             <Ionicons
               name="chevron-forward"
               size={18}
-              color="#64748b"
+              color={c.textMuted}
             />
           </TouchableOpacity>
         ))}
@@ -288,32 +320,66 @@ export default function SalaryStructures() {
               </Text>
 
               {loadingStructure && (
-                <ActivityIndicator color="#2563eb" style={{ marginTop: 14 }} />
+                <ActivityIndicator color={c.accent} style={{ marginTop: 14 }} />
               )}
+
+              {/* QUICK FILL FROM MONTHLY CTC */}
+              <Text style={s.section}>QUICK FILL</Text>
+              <Field
+                label="Monthly CTC (₹)"
+                value={monthlyCTC}
+                onChange={setMonthlyCTC}
+                styles={s}
+                faintColor={c.textFaint}
+              />
+              <Text style={s.note}>
+                Basic 50% · HRA 20% · Comm 5% · Other 19% · Employer PF 6%
+                (cap ₹{PF_MONTHLY_CAP})
+              </Text>
+              <TouchableOpacity
+                style={s.fillBtn}
+                onPress={() => {
+                  const ctc = parseFloat(monthlyCTC) || 0;
+                  if (ctc <= 0) {
+                    showPopup("Enter a valid monthly CTC", "error");
+                    return;
+                  }
+                  const b = breakdownFromCTC(ctc);
+                  setBasic(String(b.basic));
+                  setHra(String(b.hra));
+                  setComm(String(b.communicationAllowance));
+                  setOther(String(b.otherAllowance));
+                  setEmployerPF(String(b.employerPF));
+                  setEmployeePF(String(b.employerPF));
+                  setAutoPF(false);
+                }}
+              >
+                <Text style={s.fillBtnText}>Apply formula</Text>
+              </TouchableOpacity>
 
               {/* EARNINGS */}
               <Text style={s.section}>EARNINGS</Text>
               <View style={s.twoCol}>
-                <Field label="Basic" value={basic} onChange={setBasic} />
-                <Field label="HRA" value={hra} onChange={setHra} />
+                <Field label="Basic" value={basic} onChange={setBasic} styles={s} faintColor={c.textFaint} />
+                <Field label="HRA" value={hra} onChange={setHra} styles={s} faintColor={c.textFaint} />
               </View>
               <View style={s.twoCol}>
-                <Field label="Comm. Allowance" value={comm} onChange={setComm} />
-                <Field label="Other Allowance" value={other} onChange={setOther} />
+                <Field label="Comm. Allowance" value={comm} onChange={setComm} styles={s} faintColor={c.textFaint} />
+                <Field label="Other Allowance" value={other} onChange={setOther} styles={s} faintColor={c.textFaint} />
               </View>
               <View style={s.twoCol}>
-                <Field label="Employer Insurance" value={employerInsurance} onChange={setEmployerInsurance} />
+                <Field label="Employer Insurance" value={employerInsurance} onChange={setEmployerInsurance} styles={s} faintColor={c.textFaint} />
                 <View style={{ flex: 1 }} />
               </View>
 
               {/* DEDUCTIONS */}
               <Text style={s.section}>DEDUCTIONS</Text>
               <View style={s.twoCol}>
-                <Field label="Professional Tax" value={pt} onChange={setPt} />
-                <Field label="TDS" value={tds} onChange={setTds} />
+                <Field label="Professional Tax" value={pt} onChange={setPt} styles={s} faintColor={c.textFaint} />
+                <Field label="TDS" value={tds} onChange={setTds} styles={s} faintColor={c.textFaint} />
               </View>
               <View style={s.twoCol}>
-                <Field label="Employee Insurance" value={employeeInsurance} onChange={setEmployeeInsurance} />
+                <Field label="Employee Insurance" value={employeeInsurance} onChange={setEmployeeInsurance} styles={s} faintColor={c.textFaint} />
                 <View style={{ flex: 1 }} />
               </View>
 
@@ -334,12 +400,12 @@ export default function SalaryStructures() {
               </View>
               {autoPF ? (
                 <Text style={s.note}>
-                  PF auto = min(Basic, 15000) × 12%, max ₹1800
+                  PF auto = min(Basic, 15000) × 12%, max ₹{PF_MONTHLY_CAP}
                 </Text>
               ) : (
                 <View style={s.twoCol}>
-                  <Field label="Employer PF" value={employerPF} onChange={setEmployerPF} />
-                  <Field label="Employee PF" value={employeePF} onChange={setEmployeePF} />
+                  <Field label="Employer PF" value={employerPF} onChange={setEmployerPF} styles={s} faintColor={c.textFaint} />
+                  <Field label="Employee PF" value={employeePF} onChange={setEmployeePF} styles={s} faintColor={c.textFaint} />
                 </View>
               )}
 
@@ -370,18 +436,20 @@ export default function SalaryStructures() {
               {/* IDs / BANK */}
               <Text style={s.section}>IDs & BANK</Text>
               <View style={s.twoCol}>
-                <Field label="PAN" value={pan} onChange={setPan} keyboard="default" />
-                <Field label="UAN" value={uan} onChange={setUan} keyboard="default" />
+                <Field label="PAN" value={pan} onChange={setPan} keyboard="default" styles={s} faintColor={c.textFaint} />
+                <Field label="UAN" value={uan} onChange={setUan} keyboard="default" styles={s} faintColor={c.textFaint} />
               </View>
               <Field
                 label="Bank Account"
                 value={bankAccount}
                 onChange={setBankAccount}
                 keyboard="default"
+                styles={s}
+                faintColor={c.textFaint}
               />
               <View style={s.twoCol}>
-                <Field label="IFSC" value={bankIfsc} onChange={setBankIfsc} keyboard="default" />
-                <Field label="Bank Name" value={bankName} onChange={setBankName} keyboard="default" />
+                <Field label="IFSC" value={bankIfsc} onChange={setBankIfsc} keyboard="default" styles={s} faintColor={c.textFaint} />
+                <Field label="Bank Name" value={bankName} onChange={setBankName} keyboard="default" styles={s} faintColor={c.textFaint} />
               </View>
 
               <View style={s.modalActions}>
@@ -399,7 +467,7 @@ export default function SalaryStructures() {
                   {saving ? (
                     <ActivityIndicator color="#fff" />
                   ) : (
-                    <Text style={s.modalBtnText}>Save</Text>
+                    <Text style={[s.modalBtnText, { color: "#fff" }]}>Save</Text>
                   )}
                 </TouchableOpacity>
               </View>
@@ -413,74 +481,54 @@ export default function SalaryStructures() {
   );
 }
 
-const Field = ({
-  label,
-  value,
-  onChange,
-  keyboard = "decimal-pad",
-}: {
-  label: string;
-  value: string;
-  onChange: (v: string) => void;
-  keyboard?: "decimal-pad" | "default" | "number-pad";
-}) => (
-  <View style={{ flex: 1 }}>
-    <Text style={s.label}>{label}</Text>
-    <TextInput
-      style={s.input}
-      value={value}
-      onChangeText={onChange}
-      keyboardType={keyboard}
-      placeholderTextColor="#64748b"
-    />
-  </View>
-);
 
-const s = StyleSheet.create({
-  safe: { flex: 1, backgroundColor: "#0b1220" },
+const makeStyles = (c: any) => StyleSheet.create({
+  safe: { flex: 1, backgroundColor: c.bg },
   container: { flex: 1 },
   content: { padding: 20, paddingBottom: 60 },
-  loader: { flex: 1, backgroundColor: "#0b1220", justifyContent: "center", alignItems: "center" },
+  loader: { flex: 1, backgroundColor: c.bg, justifyContent: "center", alignItems: "center" },
   popup: { position: "absolute", top: 60, left: 20, right: 20, padding: 14, borderRadius: 14, zIndex: 999 },
   popupOk: { backgroundColor: "#16a34a" },
   popupErr: { backgroundColor: "#dc2626" },
-  popupText: { color: "#fff", fontWeight: "700", textAlign: "center" },
+  popupText: { color: c.text, fontWeight: "700", textAlign: "center" },
 
   header: { flexDirection: "row", alignItems: "center", marginBottom: 18, marginTop: 10, gap: 12 },
-  backBtn: { width: 42, height: 42, borderRadius: 12, backgroundColor: "#111827", justifyContent: "center", alignItems: "center", borderWidth: 1, borderColor: "#1f2937" },
-  title: { color: "#fff", fontSize: 24, fontWeight: "800" },
-  subtitle: { color: "#94a3b8", fontSize: 13, marginTop: 3 },
+  backBtn: { width: 42, height: 42, borderRadius: 12, backgroundColor: c.surface, justifyContent: "center", alignItems: "center", borderWidth: 1, borderColor: c.surfaceBorder },
+  title: { color: c.text, fontSize: 24, fontWeight: "800" },
+  subtitle: { color: c.textMuted, fontSize: 13, marginTop: 3 },
 
-  card: { flexDirection: "row", alignItems: "center", backgroundColor: "#111827", borderRadius: 14, padding: 12, marginBottom: 8, borderWidth: 1, borderColor: "#1f2937", gap: 10 },
+  card: { flexDirection: "row", alignItems: "center", backgroundColor: c.surface, borderRadius: 14, padding: 12, marginBottom: 8, borderWidth: 1, borderColor: c.surfaceBorder, gap: 10 },
   avatar: { width: 36, height: 36, borderRadius: 18, backgroundColor: "#0d9488", justifyContent: "center", alignItems: "center" },
   avatarText: { color: "#fff", fontWeight: "700", fontSize: 14 },
-  cardName: { color: "#fff", fontSize: 14, fontWeight: "700" },
-  cardEmail: { color: "#94a3b8", fontSize: 11, marginTop: 2 },
+  cardName: { color: c.text, fontSize: 14, fontWeight: "700" },
+  cardEmail: { color: c.textMuted, fontSize: 11, marginTop: 2 },
 
-  modalOverlay: { flex: 1, backgroundColor: "rgba(0,0,0,0.7)", justifyContent: "center", padding: 20 },
-  modalCard: { backgroundColor: "#111827", borderRadius: 18, padding: 20, maxHeight: "94%" },
-  modalTitle: { color: "#fff", fontSize: 22, fontWeight: "800" },
-  hint: { color: "#94a3b8", fontSize: 11, marginTop: 4 },
+  modalOverlay: { flex: 1, backgroundColor: c.overlay, justifyContent: "center", padding: 20 },
+  modalCard: { backgroundColor: c.surface, borderRadius: 18, padding: 20, maxHeight: "94%" },
+  modalTitle: { color: c.text, fontSize: 22, fontWeight: "800" },
+  hint: { color: c.textMuted, fontSize: 11, marginTop: 4 },
 
-  section: { color: "#64748b", fontSize: 11, letterSpacing: 1.5, fontWeight: "700", marginTop: 16, marginBottom: 8 },
+  section: { color: c.textMuted, fontSize: 11, letterSpacing: 1.5, fontWeight: "700", marginTop: 16, marginBottom: 8 },
 
-  label: { color: "#94a3b8", fontSize: 12, fontWeight: "600", marginBottom: 4, marginTop: 8 },
-  input: { backgroundColor: "#0f172a", color: "#fff", borderRadius: 10, padding: 11, borderWidth: 1, borderColor: "#1e293b", fontSize: 13 },
+  label: { color: c.textMuted, fontSize: 12, fontWeight: "600", marginBottom: 4, marginTop: 8 },
+  input: { backgroundColor: c.surfaceMuted, color: c.text, borderRadius: 10, padding: 11, borderWidth: 1, borderColor: c.surfaceBorder, fontSize: 13 },
   twoCol: { flexDirection: "row", gap: 8 },
 
   toggleRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginTop: 12 },
-  toggleBtn: { paddingHorizontal: 14, paddingVertical: 6, backgroundColor: "#0f172a", borderRadius: 999, borderWidth: 1, borderColor: "#1e293b" },
-  toggleOn: { backgroundColor: "#2563eb", borderColor: "#2563eb" },
-  toggleText: { color: "#94a3b8", fontWeight: "700", fontSize: 11 },
-  note: { color: "#64748b", fontSize: 11, fontStyle: "italic", marginTop: 4 },
+  toggleBtn: { paddingHorizontal: 14, paddingVertical: 6, backgroundColor: c.surfaceMuted, borderRadius: 999, borderWidth: 1, borderColor: c.surfaceBorder },
+  toggleOn: { backgroundColor: c.accent, borderColor: c.accent },
+  toggleText: { color: c.textMuted, fontWeight: "700", fontSize: 11 },
+  note: { color: c.textMuted, fontSize: 11, fontStyle: "italic", marginTop: 4 },
 
   chipPicker: { flexDirection: "row", gap: 6, flexWrap: "wrap" },
-  pickBtn: { paddingHorizontal: 12, paddingVertical: 8, backgroundColor: "#0f172a", borderRadius: 10, borderWidth: 1, borderColor: "#1e293b" },
-  pickActive: { backgroundColor: "#2563eb", borderColor: "#2563eb" },
-  pickText: { color: "#94a3b8", fontSize: 12, fontWeight: "700" },
+  pickBtn: { paddingHorizontal: 12, paddingVertical: 8, backgroundColor: c.surfaceMuted, borderRadius: 10, borderWidth: 1, borderColor: c.surfaceBorder },
+  pickActive: { backgroundColor: c.accent, borderColor: c.accent },
+  pickText: { color: c.textMuted, fontSize: 12, fontWeight: "700" },
 
   modalActions: { flexDirection: "row", gap: 10, marginTop: 22 },
-  cancelBtn: { flex: 1, backgroundColor: "#374151", padding: 14, borderRadius: 12, alignItems: "center" },
+  cancelBtn: { flex: 1, backgroundColor: c.surfaceMuted, padding: 14, borderRadius: 12, alignItems: "center" },
   saveBtn: { flex: 1, backgroundColor: "#16a34a", padding: 14, borderRadius: 12, alignItems: "center" },
-  modalBtnText: { color: "#fff", fontWeight: "700" },
-});
+  modalBtnText: { color: c.text, fontWeight: "700" },
+  fillBtn: { backgroundColor: c.accent, padding: 12, borderRadius: 12, alignItems: "center", marginTop: 10 },
+  fillBtnText: { color: "#fff", fontWeight: "700", fontSize: 13 } });
+

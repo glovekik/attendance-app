@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useCallback } from "react";
+﻿import React, { useEffect, useState, useCallback, useMemo} from "react";
 
 import {
   View,
@@ -7,7 +7,6 @@ import {
   FlatList,
   TouchableOpacity,
   ActivityIndicator,
-  SafeAreaView,
   RefreshControl,
   Modal,
   TextInput,
@@ -15,8 +14,8 @@ import {
   ScrollView,
   Switch,
   KeyboardAvoidingView,
-  Platform,
-} from "react-native";
+  Platform } from "react-native";
+import { SafeAreaView } from "react-native-safe-area-context";
 
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useRouter } from "expo-router";
@@ -26,29 +25,24 @@ import {
   listHrReviews,
   createManagerReview,
   submitManagerEval,
-  submitReview,
-} from "../src/services/reviews";
+  submitReview } from "../src/services/reviews";
 import { listUsers } from "../src/services/users";
+import { useTheme } from "../src/theme/ThemeProvider";
+import { reviewStatusColor } from "../src/theme/statusColors";
 import {
   DimensionRating,
   REVIEW_TYPES,
   Review,
-  ReviewStatus,
   ReviewType,
-  User,
-} from "../src/types";
-
-const STATUS_COLOR: Record<ReviewStatus, string> = {
-  SELF_EVAL: "#f59e0b",
-  MANAGER_EVAL: "#3b82f6",
-  SUBMITTED: "#8b5cf6",
-  ACKNOWLEDGED: "#16a34a",
-};
+  User } from "../src/types";
 
 const DEFAULT_DIMS = ["Quality", "Ownership", "Collaboration"];
 
 export default function ManagerReviews() {
   const router = useRouter();
+  const { theme } = useTheme();
+  const c = theme.colors;
+  const styles = useMemo(() => makeStyles(c), [c]);
   const [items, setItems] = useState<Review[]>([]);
   const [users, setUsers] = useState<User[]>([]);
   const [loading, setLoading] = useState(true);
@@ -89,7 +83,10 @@ export default function ManagerReviews() {
       setItems(revs || []);
       setUsers(allUsers || []);
     } catch (err: any) {
-      console.log("manager-reviews load error", err);
+      Alert.alert(
+        "Couldn't load reviews",
+        err?.message || "Pull down to retry."
+      );
     } finally {
       setLoading(false);
       setRefreshing(false);
@@ -130,8 +127,7 @@ export default function ManagerReviews() {
         type,
         periodStart: periodStart.trim(),
         periodEnd: periodEnd.trim(),
-        dimensions: dims.length ? dims : undefined,
-      });
+        dimensions: dims.length ? dims : undefined });
       setShowForm(false);
       reset();
       load();
@@ -169,8 +165,7 @@ export default function ManagerReviews() {
         ratings: dimRatings.length ? dimRatings : undefined,
         overallRating,
         promotionRecommendation: promotion || undefined,
-        nextSteps: nextSteps.trim() || undefined,
-      });
+        nextSteps: nextSteps.trim() || undefined });
       Alert.alert("Saved", "Manager eval saved as draft");
       setSelected(null);
       load();
@@ -194,8 +189,7 @@ export default function ManagerReviews() {
         ratings: dimRatings.length ? dimRatings : undefined,
         overallRating,
         promotionRecommendation: promotion || undefined,
-        nextSteps: nextSteps.trim() || undefined,
-      });
+        nextSteps: nextSteps.trim() || undefined });
       await submitReview(token, selected.id);
       setSelected(null);
       load();
@@ -209,18 +203,18 @@ export default function ManagerReviews() {
   return (
     <SafeAreaView style={styles.safe}>
       <View style={styles.header}>
-        <TouchableOpacity onPress={() => router.back()}>
-          <Ionicons name="arrow-back" size={24} color="#fff" />
+        <TouchableOpacity onPress={() => (router.canGoBack() ? router.back() : router.replace("/"))}>
+          <Ionicons name="arrow-back" size={24} color={c.text} />
         </TouchableOpacity>
         <Text style={styles.title}>Reviews (Manager)</Text>
         <TouchableOpacity onPress={() => setShowForm(true)}>
-          <Ionicons name="add-circle" size={28} color="#3b82f6" />
+          <Ionicons name="add-circle" size={28} color={c.accent} />
         </TouchableOpacity>
       </View>
 
       {loading ? (
         <View style={styles.loader}>
-          <ActivityIndicator size="large" color="#3b82f6" />
+          <ActivityIndicator size="large" color={c.accent} />
         </View>
       ) : (
         <FlatList
@@ -233,18 +227,19 @@ export default function ManagerReviews() {
             <RefreshControl
               refreshing={refreshing}
               onRefresh={onRefresh}
-              tintColor="#3b82f6"
-              colors={["#3b82f6"]}
+              tintColor={c.accent}
+              colors={[c.accent]}
             />
           }
           ListEmptyComponent={
             <View style={styles.empty}>
-              <Ionicons name="star-outline" size={42} color="#475569" />
+              <Ionicons name="star-outline" size={42} color={c.textFaint} />
               <Text style={styles.emptyText}>No reviews</Text>
             </View>
           }
           renderItem={({ item }) => {
             const emp = users.find((u) => u.id === item.employeeId)?.name;
+            const sc = reviewStatusColor(item.status, c);
             return (
               <TouchableOpacity
                 style={styles.card}
@@ -263,10 +258,10 @@ export default function ManagerReviews() {
                   <View
                     style={[
                       styles.pill,
-                      { backgroundColor: STATUS_COLOR[item.status] },
+                      { backgroundColor: sc.bg },
                     ]}
                   >
-                    <Text style={styles.pillText}>{item.status}</Text>
+                    <Text style={[styles.pillText, { color: sc.fg }]}>{item.status}</Text>
                   </View>
                 </View>
               </TouchableOpacity>
@@ -290,7 +285,7 @@ export default function ManagerReviews() {
             <View style={styles.modalHeader}>
               <Text style={styles.modalTitle}>New review</Text>
               <TouchableOpacity onPress={() => setShowForm(false)}>
-                <Ionicons name="close" size={24} color="#94a3b8" />
+                <Ionicons name="close" size={24} color={c.textMuted} />
               </TouchableOpacity>
             </View>
 
@@ -349,7 +344,7 @@ export default function ManagerReviews() {
                     value={periodStart}
                     onChangeText={setPeriodStart}
                     placeholder="2026-01-01"
-                    placeholderTextColor="#475569"
+                    placeholderTextColor={c.textFaint}
                     autoCapitalize="none"
                   />
                 </View>
@@ -360,7 +355,7 @@ export default function ManagerReviews() {
                     value={periodEnd}
                     onChangeText={setPeriodEnd}
                     placeholder="2026-03-31"
-                    placeholderTextColor="#475569"
+                    placeholderTextColor={c.textFaint}
                     autoCapitalize="none"
                   />
                 </View>
@@ -372,7 +367,7 @@ export default function ManagerReviews() {
                 value={dimensionsText}
                 onChangeText={setDimensionsText}
                 placeholder="Quality, Ownership, Collaboration"
-                placeholderTextColor="#475569"
+                placeholderTextColor={c.textFaint}
               />
               <View style={{ height: 14 }} />
             </ScrollView>
@@ -414,7 +409,7 @@ export default function ManagerReviews() {
             <View style={styles.modalHeader}>
               <Text style={styles.modalTitle}>Manager evaluation</Text>
               <TouchableOpacity onPress={() => setSelected(null)}>
-                <Ionicons name="close" size={24} color="#94a3b8" />
+                <Ionicons name="close" size={24} color={c.textMuted} />
               </TouchableOpacity>
             </View>
 
@@ -469,7 +464,7 @@ export default function ManagerReviews() {
                   onChangeText={setStrengths}
                   multiline
                   textAlignVertical="top"
-                  placeholderTextColor="#475569"
+                  placeholderTextColor={c.textFaint}
                 />
 
                 <Text style={styles.label}>Areas to improve</Text>
@@ -479,7 +474,7 @@ export default function ManagerReviews() {
                   onChangeText={setAreas}
                   multiline
                   textAlignVertical="top"
-                  placeholderTextColor="#475569"
+                  placeholderTextColor={c.textFaint}
                 />
 
                 {dimRatings.map((d, i) => (
@@ -512,7 +507,7 @@ export default function ManagerReviews() {
                         setDimRatings(copy);
                       }}
                       placeholder="Comment"
-                      placeholderTextColor="#475569"
+                      placeholderTextColor={c.textFaint}
                     />
                   </View>
                 ))}
@@ -547,7 +542,7 @@ export default function ManagerReviews() {
                   <Switch
                     value={promotion}
                     onValueChange={setPromotion}
-                    trackColor={{ false: "#1e293b", true: "#16a34a" }}
+                    trackColor={{ false: "#1f2937", true: "#16a34a" }}
                   />
                 </View>
 
@@ -558,7 +553,7 @@ export default function ManagerReviews() {
                   onChangeText={setNextSteps}
                   multiline
                   textAlignVertical="top"
-                  placeholderTextColor="#475569"
+                  placeholderTextColor={c.textFaint}
                 />
 
                 <View style={styles.actions}>
@@ -589,148 +584,132 @@ export default function ManagerReviews() {
   );
 }
 
-const styles = StyleSheet.create({
-  safe: { flex: 1, backgroundColor: "#0b1220" },
+const makeStyles = (c: any) => StyleSheet.create({
+  safe: { flex: 1, backgroundColor: c.bg },
   loader: {
     flex: 1,
-    backgroundColor: "#0b1220",
+    backgroundColor: c.bg,
     justifyContent: "center",
-    alignItems: "center",
-  },
+    alignItems: "center" },
   header: {
     flexDirection: "row",
     alignItems: "center",
     paddingHorizontal: 16,
     paddingVertical: 14,
     borderBottomWidth: 1,
-    borderBottomColor: "#1f2937",
-    gap: 12,
-  },
-  title: { color: "#fff", fontSize: 18, fontWeight: "800", flex: 1 },
+    borderBottomColor: c.surfaceBorder,
+    gap: 12 },
+  title: { color: c.text, fontSize: 18, fontWeight: "800", flex: 1 },
   card: {
-    backgroundColor: "#111827",
+    backgroundColor: c.surface,
     padding: 14,
     borderRadius: 14,
     marginBottom: 8,
     borderWidth: 1,
-    borderColor: "#1f2937",
-  },
+    borderColor: c.surfaceBorder },
   cardTop: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 10,
-  },
-  cardTitle: { color: "#fff", fontSize: 15, fontWeight: "700" },
-  cardSub: { color: "#94a3b8", fontSize: 12, marginTop: 2 },
+    gap: 10 },
+  cardTitle: { color: c.text, fontSize: 15, fontWeight: "700" },
+  cardSub: { color: c.textMuted, fontSize: 12, marginTop: 2 },
   pill: {
     paddingHorizontal: 8,
     paddingVertical: 3,
-    borderRadius: 6,
-  },
-  pillText: { color: "#fff", fontSize: 10, fontWeight: "800" },
+    borderRadius: 6 },
+  pillText: { color: c.text, fontSize: 10, fontWeight: "800" },
   emptyWrap: { flex: 1, justifyContent: "center" },
   empty: { alignItems: "center", gap: 10 },
-  emptyText: { color: "#475569", fontSize: 14 },
+  emptyText: { color: c.textMuted, fontSize: 14 },
   modalWrap: {
     flex: 1,
     justifyContent: "flex-end",
-    backgroundColor: "rgba(0,0,0,0.5)",
-  },
+    backgroundColor: c.overlay },
   modal: {
-    backgroundColor: "#0f172a",
+    backgroundColor: c.surfaceMuted,
     padding: 20,
     borderTopLeftRadius: 18,
     borderTopRightRadius: 18,
     borderTopWidth: 1,
-    borderTopColor: "#1e293b",
-    maxHeight: "92%",
-  },
+    borderTopColor: c.surfaceBorder,
+    maxHeight: "92%" },
   modalHeader: {
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
-    marginBottom: 8,
-  },
-  modalTitle: { color: "#fff", fontSize: 17, fontWeight: "800" },
-  hint: { color: "#64748b", fontSize: 12, marginTop: 4 },
+    marginBottom: 8 },
+  modalTitle: { color: c.text, fontSize: 17, fontWeight: "800" },
+  hint: { color: c.textMuted, fontSize: 12, marginTop: 4 },
   section: {
-    backgroundColor: "#0b1220",
+    backgroundColor: c.bg,
     borderRadius: 10,
     padding: 10,
     marginTop: 10,
     borderWidth: 1,
-    borderColor: "#1f2937",
-  },
+    borderColor: c.surfaceBorder },
   sectionHeader: {
-    color: "#64748b",
+    color: c.textMuted,
     fontSize: 10,
     letterSpacing: 1.5,
     fontWeight: "800",
     marginTop: 14,
-    marginBottom: 6,
-  },
+    marginBottom: 6 },
   label: {
-    color: "#94a3b8",
+    color: c.textMuted,
     fontSize: 11,
     letterSpacing: 1.2,
     fontWeight: "700",
     marginTop: 12,
-    marginBottom: 6,
-  },
+    marginBottom: 6 },
   input: {
-    backgroundColor: "#111827",
-    color: "#fff",
+    backgroundColor: c.surface,
+    color: c.text,
     paddingHorizontal: 12,
     paddingVertical: 10,
     borderRadius: 10,
     borderWidth: 1,
-    borderColor: "#1f2937",
-    minHeight: 42,
-  },
-  body: { color: "#cbd5e1", fontSize: 13, lineHeight: 18 },
+    borderColor: c.surfaceBorder,
+    minHeight: 42 },
+  body: { color: c.text, fontSize: 13, lineHeight: 18 },
   chipRow: { flexDirection: "row", flexWrap: "wrap", gap: 6 },
   chip: {
     paddingHorizontal: 10,
     paddingVertical: 6,
     borderRadius: 999,
-    backgroundColor: "#111827",
+    backgroundColor: c.surface,
     borderWidth: 1,
-    borderColor: "#1f2937",
-  },
-  chipActive: { backgroundColor: "#3b82f6", borderColor: "#3b82f6" },
-  chipText: { color: "#94a3b8", fontSize: 11, fontWeight: "700" },
-  chipTextActive: { color: "#fff" },
+    borderColor: c.surfaceBorder },
+  chipActive: { backgroundColor: c.accent, borderColor: c.accent },
+  chipText: { color: c.textMuted, fontSize: 11, fontWeight: "700" },
+  chipTextActive: { color: c.text },
   dimBox: {
-    backgroundColor: "#111827",
+    backgroundColor: c.surface,
     padding: 12,
     borderRadius: 10,
     marginTop: 8,
     borderWidth: 1,
-    borderColor: "#1f2937",
-  },
-  dimName: { color: "#fff", fontSize: 13, fontWeight: "700" },
+    borderColor: c.surfaceBorder },
+  dimName: { color: c.text, fontSize: 13, fontWeight: "700" },
   starsRow: { flexDirection: "row", gap: 6, marginTop: 6 },
   dimComment: {
-    backgroundColor: "#0b1220",
-    color: "#fff",
+    backgroundColor: c.bg,
+    color: c.text,
     paddingHorizontal: 10,
     paddingVertical: 6,
     borderRadius: 8,
     borderWidth: 1,
-    borderColor: "#1f2937",
+    borderColor: c.surfaceBorder,
     marginTop: 6,
-    fontSize: 12,
-  },
+    fontSize: 12 },
   row: { flexDirection: "row", alignItems: "center" },
   actions: { flexDirection: "row", gap: 10, marginTop: 18 },
   btn: {
     flex: 1,
     paddingVertical: 14,
     borderRadius: 12,
-    alignItems: "center",
-  },
-  btnGhost: { backgroundColor: "#1e293b" },
-  btnGhostText: { color: "#94a3b8", fontWeight: "700" },
-  btnPrimary: { backgroundColor: "#3b82f6" },
-  btnPrimaryText: { color: "#fff", fontWeight: "800" },
-});
+    alignItems: "center" },
+  btnGhost: { backgroundColor: c.surfaceMuted },
+  btnGhostText: { color: c.textMuted, fontWeight: "700" },
+  btnPrimary: { backgroundColor: c.accent },
+  btnPrimaryText: { color: "#fff", fontWeight: "800" } });
+

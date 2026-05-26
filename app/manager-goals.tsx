@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useCallback } from "react";
+﻿import React, { useEffect, useState, useCallback, useMemo} from "react";
 
 import {
   View,
@@ -7,15 +7,14 @@ import {
   FlatList,
   TouchableOpacity,
   ActivityIndicator,
-  SafeAreaView,
   RefreshControl,
   Modal,
   TextInput,
   Alert,
   ScrollView,
   KeyboardAvoidingView,
-  Platform,
-} from "react-native";
+  Platform } from "react-native";
+import { SafeAreaView } from "react-native-safe-area-context";
 
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useRouter } from "expo-router";
@@ -24,25 +23,23 @@ import { Ionicons } from "@expo/vector-icons";
 import {
   listManagerGoals,
   createManagerGoal,
-  updateManagerGoal,
-} from "../src/services/goals";
+  updateManagerGoal } from "../src/services/goals";
 import { listUsers } from "../src/services/users";
 import {
   GOAL_STATUSES,
   Goal,
   GoalStatus,
-  User,
-} from "../src/types";
+  User } from "../src/types";
+import { DatePickerField } from "../src/components/DatePickerField";
 
-const STATUS_COLOR: Record<GoalStatus, string> = {
-  DRAFT: "#64748b",
-  ACTIVE: "#3b82f6",
-  COMPLETED: "#16a34a",
-  CANCELLED: "#64748b",
-};
+import { useTheme } from "../src/theme/ThemeProvider";
+import { goalStatusColor } from "../src/theme/statusColors";
 
 export default function ManagerGoals() {
   const router = useRouter();
+  const { theme } = useTheme();
+  const c = theme.colors;
+  const styles = useMemo(() => makeStyles(c), [c]);
   const [items, setItems] = useState<Goal[]>([]);
   const [users, setUsers] = useState<User[]>([]);
   const [loading, setLoading] = useState(true);
@@ -76,7 +73,10 @@ export default function ManagerGoals() {
       setItems(goals || []);
       setUsers(allUsers || []);
     } catch (err: any) {
-      console.log("manager-goals load error", err);
+      Alert.alert(
+        "Couldn't load goals",
+        err?.message || "Pull down to retry."
+      );
     } finally {
       setLoading(false);
       setRefreshing(false);
@@ -136,8 +136,7 @@ export default function ManagerGoals() {
         dueDate: dueDate.trim() || undefined,
         targetValue: targetValue ? parseFloat(targetValue) : undefined,
         unit: unit.trim() || undefined,
-        weight: weight ? parseFloat(weight) : undefined,
-      };
+        weight: weight ? parseFloat(weight) : undefined };
       if (editingId) {
         await updateManagerGoal(token, editingId, { ...payload, status });
       } else {
@@ -156,18 +155,18 @@ export default function ManagerGoals() {
   return (
     <SafeAreaView style={styles.safe}>
       <View style={styles.header}>
-        <TouchableOpacity onPress={() => router.back()}>
-          <Ionicons name="arrow-back" size={24} color="#fff" />
+        <TouchableOpacity onPress={() => (router.canGoBack() ? router.back() : router.replace("/"))}>
+          <Ionicons name="arrow-back" size={24} color={c.text} />
         </TouchableOpacity>
         <Text style={styles.title}>Goals (Manager)</Text>
         <TouchableOpacity onPress={openCreate}>
-          <Ionicons name="add-circle" size={28} color="#3b82f6" />
+          <Ionicons name="add-circle" size={28} color={c.accent} />
         </TouchableOpacity>
       </View>
 
       {loading ? (
         <View style={styles.loader}>
-          <ActivityIndicator size="large" color="#3b82f6" />
+          <ActivityIndicator size="large" color={c.accent} />
         </View>
       ) : (
         <FlatList
@@ -180,18 +179,19 @@ export default function ManagerGoals() {
             <RefreshControl
               refreshing={refreshing}
               onRefresh={onRefresh}
-              tintColor="#3b82f6"
-              colors={["#3b82f6"]}
+              tintColor={c.accent}
+              colors={[c.accent]}
             />
           }
           ListEmptyComponent={
             <View style={styles.empty}>
-              <Ionicons name="flag-outline" size={42} color="#475569" />
+              <Ionicons name="flag-outline" size={42} color={c.textFaint} />
               <Text style={styles.emptyText}>No goals yet</Text>
             </View>
           }
           renderItem={({ item }) => {
             const who = users.find((u) => u.id === item.userId)?.name;
+            const sc = goalStatusColor(item.status, c);
             return (
               <TouchableOpacity
                 style={styles.card}
@@ -206,10 +206,10 @@ export default function ManagerGoals() {
                   <View
                     style={[
                       styles.pill,
-                      { backgroundColor: STATUS_COLOR[item.status] },
+                      { backgroundColor: sc.bg },
                     ]}
                   >
-                    <Text style={styles.pillText}>{item.status}</Text>
+                    <Text style={[styles.pillText, { color: sc.fg }]}>{item.status}</Text>
                   </View>
                 </View>
                 <Text style={styles.meta}>
@@ -242,7 +242,7 @@ export default function ManagerGoals() {
                 {editingId ? "Edit goal" : "New goal"}
               </Text>
               <TouchableOpacity onPress={() => setShowForm(false)}>
-                <Ionicons name="close" size={24} color="#94a3b8" />
+                <Ionicons name="close" size={24} color={c.textMuted} />
               </TouchableOpacity>
             </View>
 
@@ -276,7 +276,7 @@ export default function ManagerGoals() {
                 value={title}
                 onChangeText={setTitle}
                 placeholder="Lead the migration to v2 API"
-                placeholderTextColor="#475569"
+                placeholderTextColor={c.textFaint}
               />
 
               <Text style={styles.label}>Description</Text>
@@ -286,19 +286,15 @@ export default function ManagerGoals() {
                 onChangeText={setDescription}
                 multiline
                 textAlignVertical="top"
-                placeholderTextColor="#475569"
+                placeholderTextColor={c.textFaint}
               />
 
               <View style={{ flexDirection: "row", gap: 8 }}>
                 <View style={{ flex: 1 }}>
                   <Text style={styles.label}>Due date</Text>
-                  <TextInput
-                    style={styles.input}
+                  <DatePickerField
                     value={dueDate}
-                    onChangeText={setDueDate}
-                    placeholder="YYYY-MM-DD"
-                    placeholderTextColor="#475569"
-                    autoCapitalize="none"
+                    onChange={setDueDate}
                   />
                 </View>
                 <View style={{ flex: 1 }}>
@@ -308,7 +304,7 @@ export default function ManagerGoals() {
                     value={weight}
                     onChangeText={setWeight}
                     placeholder="0.3"
-                    placeholderTextColor="#475569"
+                    placeholderTextColor={c.textFaint}
                     keyboardType="decimal-pad"
                   />
                 </View>
@@ -322,7 +318,7 @@ export default function ManagerGoals() {
                     value={targetValue}
                     onChangeText={setTargetValue}
                     placeholder="100"
-                    placeholderTextColor="#475569"
+                    placeholderTextColor={c.textFaint}
                     keyboardType="decimal-pad"
                   />
                 </View>
@@ -333,7 +329,7 @@ export default function ManagerGoals() {
                     value={unit}
                     onChangeText={setUnit}
                     placeholder="%"
-                    placeholderTextColor="#475569"
+                    placeholderTextColor={c.textFaint}
                   />
                 </View>
               </View>
@@ -342,28 +338,30 @@ export default function ManagerGoals() {
                 <>
                   <Text style={styles.label}>Status</Text>
                   <View style={styles.chipRow}>
-                    {GOAL_STATUSES.map((s) => (
-                      <TouchableOpacity
-                        key={s}
-                        style={[
-                          styles.chip,
-                          status === s && {
-                            backgroundColor: STATUS_COLOR[s],
-                            borderColor: STATUS_COLOR[s],
-                          },
-                        ]}
-                        onPress={() => setStatus(s)}
-                      >
-                        <Text
+                    {GOAL_STATUSES.map((s) => {
+                      const sc = goalStatusColor(s, c);
+                      return (
+                        <TouchableOpacity
+                          key={s}
                           style={[
-                            styles.chipText,
-                            status === s && styles.chipTextActive,
+                            styles.chip,
+                            status === s && {
+                              backgroundColor: sc.bg,
+                              borderColor: sc.solid },
                           ]}
+                          onPress={() => setStatus(s)}
                         >
-                          {s}
-                        </Text>
-                      </TouchableOpacity>
-                    ))}
+                          <Text
+                            style={[
+                              styles.chipText,
+                              status === s && { color: sc.fg },
+                            ]}
+                          >
+                            {s}
+                          </Text>
+                        </TouchableOpacity>
+                      );
+                    })}
                   </View>
                 </>
               )}
@@ -395,109 +393,97 @@ export default function ManagerGoals() {
   );
 }
 
-const styles = StyleSheet.create({
-  safe: { flex: 1, backgroundColor: "#0b1220" },
+const makeStyles = (c: any) => StyleSheet.create({
+  safe: { flex: 1, backgroundColor: c.bg },
   loader: {
     flex: 1,
-    backgroundColor: "#0b1220",
+    backgroundColor: c.bg,
     justifyContent: "center",
-    alignItems: "center",
-  },
+    alignItems: "center" },
   header: {
     flexDirection: "row",
     alignItems: "center",
     paddingHorizontal: 16,
     paddingVertical: 14,
     borderBottomWidth: 1,
-    borderBottomColor: "#1f2937",
-    gap: 12,
-  },
-  title: { color: "#fff", fontSize: 18, fontWeight: "800", flex: 1 },
+    borderBottomColor: c.surfaceBorder,
+    gap: 12 },
+  title: { color: c.text, fontSize: 18, fontWeight: "800", flex: 1 },
   card: {
-    backgroundColor: "#111827",
+    backgroundColor: c.surface,
     padding: 14,
     borderRadius: 14,
     marginBottom: 8,
     borderWidth: 1,
-    borderColor: "#1f2937",
-  },
+    borderColor: c.surfaceBorder },
   cardTop: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 10,
-  },
-  cardTitle: { color: "#fff", fontSize: 15, fontWeight: "700" },
+    gap: 10 },
+  cardTitle: { color: c.text, fontSize: 15, fontWeight: "700" },
   who: { color: "#0ea5e9", fontSize: 12, marginTop: 2 },
   pill: {
     paddingHorizontal: 8,
     paddingVertical: 3,
-    borderRadius: 6,
-  },
-  pillText: { color: "#fff", fontSize: 10, fontWeight: "800" },
-  meta: { color: "#94a3b8", fontSize: 12, marginTop: 6 },
+    borderRadius: 6 },
+  pillText: { color: c.text, fontSize: 10, fontWeight: "800" },
+  meta: { color: c.textMuted, fontSize: 12, marginTop: 6 },
   emptyWrap: { flex: 1, justifyContent: "center" },
   empty: { alignItems: "center", gap: 10 },
-  emptyText: { color: "#475569", fontSize: 14 },
+  emptyText: { color: c.textMuted, fontSize: 14 },
   modalWrap: {
     flex: 1,
     justifyContent: "flex-end",
-    backgroundColor: "rgba(0,0,0,0.5)",
-  },
+    backgroundColor: c.overlay },
   modal: {
-    backgroundColor: "#0f172a",
+    backgroundColor: c.surfaceMuted,
     padding: 20,
     borderTopLeftRadius: 18,
     borderTopRightRadius: 18,
     borderTopWidth: 1,
-    borderTopColor: "#1e293b",
-    maxHeight: "92%",
-  },
+    borderTopColor: c.surfaceBorder,
+    maxHeight: "92%" },
   modalHeader: {
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
-    marginBottom: 10,
-  },
-  modalTitle: { color: "#fff", fontSize: 17, fontWeight: "800" },
+    marginBottom: 10 },
+  modalTitle: { color: c.text, fontSize: 17, fontWeight: "800" },
   label: {
-    color: "#94a3b8",
+    color: c.textMuted,
     fontSize: 11,
     letterSpacing: 1.2,
     fontWeight: "700",
     marginTop: 14,
-    marginBottom: 6,
-  },
+    marginBottom: 6 },
   input: {
-    backgroundColor: "#111827",
-    color: "#fff",
+    backgroundColor: c.surface,
+    color: c.text,
     paddingHorizontal: 12,
     paddingVertical: 10,
     borderRadius: 10,
     borderWidth: 1,
-    borderColor: "#1f2937",
-    minHeight: 42,
-  },
+    borderColor: c.surfaceBorder,
+    minHeight: 42 },
   chipRow: { flexDirection: "row", flexWrap: "wrap", gap: 6 },
   chip: {
     paddingHorizontal: 10,
     paddingVertical: 6,
     borderRadius: 999,
-    backgroundColor: "#111827",
+    backgroundColor: c.surface,
     borderWidth: 1,
-    borderColor: "#1f2937",
-  },
-  chipActive: { backgroundColor: "#3b82f6", borderColor: "#3b82f6" },
-  chipText: { color: "#94a3b8", fontSize: 11, fontWeight: "700" },
-  chipTextActive: { color: "#fff" },
+    borderColor: c.surfaceBorder },
+  chipActive: { backgroundColor: c.accent, borderColor: c.accent },
+  chipText: { color: c.textMuted, fontSize: 11, fontWeight: "700" },
+  chipTextActive: { color: c.text },
   actions: { flexDirection: "row", gap: 10, marginTop: 14 },
   btn: {
     flex: 1,
     paddingVertical: 14,
     borderRadius: 12,
-    alignItems: "center",
-  },
-  btnGhost: { backgroundColor: "#1e293b" },
-  btnGhostText: { color: "#94a3b8", fontWeight: "700" },
-  btnPrimary: { backgroundColor: "#3b82f6" },
-  btnPrimaryText: { color: "#fff", fontWeight: "800" },
-});
+    alignItems: "center" },
+  btnGhost: { backgroundColor: c.surfaceMuted },
+  btnGhostText: { color: c.textMuted, fontWeight: "700" },
+  btnPrimary: { backgroundColor: c.accent },
+  btnPrimaryText: { color: "#fff", fontWeight: "800" } });
+

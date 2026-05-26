@@ -1,28 +1,18 @@
+﻿import React, { useEffect, useState, useMemo} from "react";
+
 import {
   View,
   Text,
-  TextInput,
-  TouchableOpacity,
   StyleSheet,
-  Image,
-  StatusBar,
-  SafeAreaView,
-  Dimensions,
+  TouchableOpacity,
+  TextInput,
+  ScrollView,
   KeyboardAvoidingView,
   Platform,
-  ScrollView,
   ActivityIndicator,
-  Animated,
-  Easing,
-  Modal,
   Alert,
-} from "react-native";
-
-import {
-  useEffect,
-  useRef,
-  useState,
-} from "react";
+  Image } from "react-native";
+import { SafeAreaView } from "react-native-safe-area-context";
 
 import AsyncStorage from "@react-native-async-storage/async-storage";
 
@@ -33,49 +23,42 @@ import { Ionicons } from "@expo/vector-icons";
 import {
   loginUser,
   verifyOtp,
-  resendOtp,
-} from "../src/services/api";
+  resendOtp } from "../src/services/api";
 
 import { registerPushToken } from "../src/services/notifications";
+import { useTheme } from "../src/theme/ThemeProvider";
 
-const { width, height } =
-  Dimensions.get("window");
-
-const isSmallDevice =
-  height < 700;
-
-const PRIMARY = "#2563EB";
-
+/**
+ * Login screen — branded hero with the 4SightAI logo on a soft accent
+ * banner, a floating sign-in card overlapping the banner, and the OTP
+ * step inlined (no modal) so users keep visual context.
+ */
 export default function Login() {
-
   const router = useRouter();
+  const { theme } = useTheme();
 
-  const [email, setEmail] =
-    useState("");
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
+  const [loading, setLoading] = useState(false);
 
-  const [password, setPassword] =
-    useState("");
+  const [emailError, setEmailError] = useState("");
+  const [passwordError, setPasswordError] = useState("");
+  const [serverError, setServerError] = useState("");
 
-  const [loading, setLoading] =
-    useState(false);
-
-  const [showPassword, setShowPassword] =
-    useState(false);
-
-  const [emailError, setEmailError] =
-    useState("");
-
-  const [passwordError, setPasswordError] =
-    useState("");
-
-  const [serverError, setServerError] =
-    useState("");
-
-  // OTP flow state (only used when REQUIRE_LOGIN_OTP=true on backend)
+  // OTP step state
   const [otpRequired, setOtpRequired] = useState(false);
   const [otpCode, setOtpCode] = useState("");
   const [otpVerifying, setOtpVerifying] = useState(false);
   const [otpResending, setOtpResending] = useState(false);
+
+  // Redirect if a token already exists.
+  useEffect(() => {
+    (async () => {
+      const token = await AsyncStorage.getItem("token");
+      if (token) router.replace("/");
+    })();
+  }, [router]);
 
   const completeLogin = async (token: string) => {
     await AsyncStorage.setItem("token", token);
@@ -83,14 +66,60 @@ export default function Login() {
     router.replace("/");
   };
 
+  const validate = (): boolean => {
+    setEmailError("");
+    setPasswordError("");
+    setServerError("");
+    let ok = true;
+    if (!email.trim()) {
+      setEmailError("Email is required");
+      ok = false;
+    } else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+      setEmailError("Enter a valid email");
+      ok = false;
+    }
+    if (!password.trim()) {
+      setPasswordError("Password is required");
+      ok = false;
+    } else if (password.length < 6) {
+      setPasswordError("Minimum 6 characters");
+      ok = false;
+    }
+    return ok;
+  };
+
+  const onSignIn = async () => {
+    if (loading || !validate()) return;
+    try {
+      setLoading(true);
+      setServerError("");
+      const res = await loginUser({ email, password });
+      if (res.step === "OTP_REQUIRED") {
+        setOtpRequired(true);
+        setOtpCode("");
+        return;
+      }
+      const token = res.access_token || res.token;
+      if (!token) {
+        setServerError("Invalid credentials");
+        return;
+      }
+      await completeLogin(token);
+    } catch (err: any) {
+      setServerError(err?.message || "Login failed");
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const onVerifyOtp = async () => {
     if (otpVerifying) return;
     if (otpCode.trim().length < 4) {
-      Alert.alert("Enter the 6-digit code from your email");
+      Alert.alert("Enter the code from your email");
       return;
     }
-    setOtpVerifying(true);
     try {
+      setOtpVerifying(true);
       const res = await verifyOtp(email, otpCode.trim());
       const token = res.access_token;
       if (!token) {
@@ -120,955 +149,447 @@ export default function Login() {
     }
   };
 
-  // Animated values
-  const glow1 = useRef(
-    new Animated.Value(0)
-  ).current;
+  const c = theme.colors;
 
-  const glow2 = useRef(
-    new Animated.Value(0)
-  ).current;
-
-  // Animation refs
-  const glow1Loop = useRef<any>(null);
-
-  const glow2Loop = useRef<any>(null);
-
-  useEffect(() => {
-
-    checkSession();
-
-    startAnimations();
-
-    return () => {
-
-      glow1.stopAnimation();
-
-      glow2.stopAnimation();
-
-      glow1Loop.current?.stop();
-
-      glow2Loop.current?.stop();
-    };
-
-  }, []);
-
-  // ================= SESSION CHECK =================
-  const checkSession = async () => {
-
-    try {
-
-      const token =
-        await AsyncStorage.getItem(
-          "token"
-        );
-
-      if (token) {
-
-        router.replace("/");
-      }
-
-    } catch (err) {
-
-      console.log(err);
-    }
-  };
-
-  // ================= BACKGROUND ANIMATION =================
-  const startAnimations = () => {
-
-    glow1Loop.current = Animated.loop(
-
-      Animated.sequence([
-
-        Animated.timing(glow1, {
-
-          toValue: 1,
-
-          duration: 4000,
-
-          easing:
-            Easing.inOut(
-              Easing.ease
-            ),
-
-          useNativeDriver: true,
-        }),
-
-        Animated.timing(glow1, {
-
-          toValue: 0,
-
-          duration: 4000,
-
-          easing:
-            Easing.inOut(
-              Easing.ease
-            ),
-
-          useNativeDriver: true,
-        }),
-      ])
-    );
-
-    glow2Loop.current = Animated.loop(
-
-      Animated.sequence([
-
-        Animated.timing(glow2, {
-
-          toValue: 1,
-
-          duration: 5000,
-
-          easing:
-            Easing.inOut(
-              Easing.ease
-            ),
-
-          useNativeDriver: true,
-        }),
-
-        Animated.timing(glow2, {
-
-          toValue: 0,
-
-          duration: 5000,
-
-          easing:
-            Easing.inOut(
-              Easing.ease
-            ),
-
-          useNativeDriver: true,
-        }),
-      ])
-    );
-
-    glow1Loop.current.start();
-
-    glow2Loop.current.start();
-  };
-
-  // ================= VALIDATION =================
-  const validateInputs = () => {
-
-    let valid = true;
-
-    setEmailError("");
-
-    setPasswordError("");
-
-    setServerError("");
-
-    if (!email.trim()) {
-
-      setEmailError(
-        "Email is required"
-      );
-
-      valid = false;
-
-    } else {
-
-      const emailRegex =
-        /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-
-      if (
-        !emailRegex.test(email)
-      ) {
-
-        setEmailError(
-          "Enter valid email"
-        );
-
-        valid = false;
-      }
-    }
-
-    if (!password.trim()) {
-
-      setPasswordError(
-        "Password is required"
-      );
-
-      valid = false;
-
-    } else if (
-      password.length < 6
-    ) {
-
-      setPasswordError(
-        "Minimum 6 characters"
-      );
-
-      valid = false;
-    }
-
-    return valid;
-  };
-
-  // ================= LOGIN =================
-  const handleLogin =
-    async () => {
-
-      if (loading) return;
-
-      const valid =
-        validateInputs();
-
-      if (!valid) return;
-
-      try {
-
-        setLoading(true);
-
-        setServerError("");
-
-        const res =
-          await loginUser({
-
-            email,
-
-            password,
-          });
-
-        // OTP gate: backend may require an emailed OTP before issuing the token
-        if (res.step === "OTP_REQUIRED") {
-          setOtpRequired(true);
-          setOtpCode("");
-          return;
-        }
-
-        const token =
-
-          res.access_token ||
-
-          res.token;
-
-        if (!token) {
-
-          setServerError(
-            "Invalid credentials"
-          );
-
-          return;
-        }
-
-        await completeLogin(token);
-
-      } catch (err: any) {
-
-        console.log(err);
-
-        setServerError(
-
-          err?.message ||
-
-          "Login failed"
-        );
-
-      } finally {
-
-        setLoading(false);
-      }
-    };
-
-  // ================= ANIMATION STYLES =================
-  const glow1Style = {
-
-    transform: [
-
-      {
-        translateY:
-          glow1.interpolate({
-
-            inputRange: [0, 1],
-
-            outputRange: [0, 30],
-          }),
-      },
-
-      {
-        translateX:
-          glow1.interpolate({
-
-            inputRange: [0, 1],
-
-            outputRange: [0, -20],
-          }),
-      },
-
-      {
-        scale:
-          glow1.interpolate({
-
-            inputRange: [0, 1],
-
-            outputRange: [1, 1.1],
-          }),
-      },
-    ],
-  };
-
-  const glow2Style = {
-
-    transform: [
-
-      {
-        translateY:
-          glow2.interpolate({
-
-            inputRange: [0, 1],
-
-            outputRange: [0, -25],
-          }),
-      },
-
-      {
-        translateX:
-          glow2.interpolate({
-
-            inputRange: [0, 1],
-
-            outputRange: [0, 20],
-          }),
-      },
-
-      {
-        scale:
-          glow2.interpolate({
-
-            inputRange: [0, 1],
-
-            outputRange: [1, 1.15],
-          }),
-      },
-    ],
-  };
+  const styles = useMemo(() => makeStyles(c), [c]);
 
   return (
-
-    <SafeAreaView style={styles.safe}>
-
-      <StatusBar
-        barStyle="light-content"
-      />
-
+    <SafeAreaView style={[styles.safe, { backgroundColor: c.bg }]}>
       <KeyboardAvoidingView
+        behavior={Platform.OS === "ios" ? "padding" : undefined}
         style={{ flex: 1 }}
-        behavior={
-          Platform.OS === "ios"
-            ? "padding"
-            : undefined
-        }
       >
-
         <ScrollView
-          contentContainerStyle={{
-            flexGrow: 1,
-          }}
+          contentContainerStyle={styles.scroll}
           keyboardShouldPersistTaps="handled"
-          showsVerticalScrollIndicator={
-            false
-          }
+          showsVerticalScrollIndicator={false}
         >
-
-          <View style={styles.container}>
-
-            {/* Animated Background */}
-            <Animated.View
+          {/* ===== BRAND BANNER ===== */}
+          <View style={[styles.banner, { backgroundColor: c.accentSoft }]}>
+            {/* decorative blobs */}
+            <View
               style={[
-                styles.topGlow,
-                glow1Style,
+                styles.blob,
+                styles.blobOne,
+                { backgroundColor: c.accent, opacity: 0.12 },
               ]}
             />
-
-            <Animated.View
+            <View
               style={[
-                styles.bottomGlow,
-                glow2Style,
+                styles.blob,
+                styles.blobTwo,
+                { backgroundColor: c.accent, opacity: 0.08 },
               ]}
             />
+            <Image
+              source={require("../assets/images/logo.jpg")}
+              style={styles.bannerLogo}
+              resizeMode="contain"
+            />
+            <Text style={[styles.bannerTagline, { color: c.accentText }]}>
+              AI Ambitions Empowered
+            </Text>
+          </View>
 
-            {/* HEADER */}
-            <View style={styles.header}>
-
-              <Image
-                source={{
-                  uri:
-                    "https://4sightai.com/images/logo-final.png",
-                }}
-                style={styles.logo}
-                resizeMode="contain"
+          {/* ===== SIGN-IN CARD ===== */}
+          <View
+            style={[
+              styles.card,
+              {
+                backgroundColor: c.surface,
+                borderColor: c.surfaceBorder,
+                shadowColor: c.shadow },
+            ]}
+          >
+            {/* contextual icon ring */}
+            <View
+              style={[
+                styles.cardIconRing,
+                { backgroundColor: c.pastelLavender },
+              ]}
+            >
+              <Ionicons
+                name={otpRequired ? "mail-outline" : "lock-closed-outline"}
+                size={26}
+                color={c.accent}
               />
-
-              <Text style={styles.title}>
-                Welcome Back
-              </Text>
-
-              <Text style={styles.subtitle}>
-                Login to continue managing attendance
-              </Text>
-
             </View>
 
-            {/* CARD */}
-            <View style={styles.card}>
+            <Text style={[styles.cardTitle, { color: c.text }]}>
+              {otpRequired ? "Check your email" : "Welcome back"}
+            </Text>
+            <Text style={[styles.cardSub, { color: c.textMuted }]}>
+              {otpRequired
+                ? `We sent a 6-digit code to ${email}.`
+                : "Sign in to continue to your workspace."}
+            </Text>
 
-              {/* EMAIL */}
-              <Text style={styles.label}>
-                Email Address
-              </Text>
-
-              <TextInput
-                value={email}
-                onChangeText={(text) => {
-
-                  setEmail(text);
-
-                  setEmailError("");
-                }}
-                placeholder="Enter email"
-                placeholderTextColor="#94a3b8"
-                keyboardType="email-address"
-                autoCapitalize="none"
-                style={[
-
-                  styles.input,
-
-                  emailError &&
-                    styles.inputError,
-                ]}
-              />
-
-              {!!emailError && (
-
-                <Text style={styles.errorText}>
-                  {emailError}
-                </Text>
-
-              )}
-
-              {/* PASSWORD */}
-              <Text style={styles.label}>
-                Password
-              </Text>
-
+          {/* ===== FORM ===== */}
+          {!otpRequired ? (
+            <View style={{ marginTop: 6 }}>
+              <FieldLabel label="EMAIL" theme={theme} />
               <View
                 style={[
-
-                  styles.passwordContainer,
-
-                  passwordError &&
-                    styles.inputError,
+                  styles.inputWrap,
+                  {
+                    backgroundColor: c.surface,
+                    borderColor: emailError ? c.dangerText : c.surfaceBorder },
                 ]}
               >
-
-                <TextInput
-                  value={password}
-                  onChangeText={(text) => {
-
-                    setPassword(text);
-
-                    setPasswordError("");
-                  }}
-                  placeholder="Enter password"
-                  placeholderTextColor="#94a3b8"
-                  secureTextEntry={
-                    !showPassword
-                  }
-                  style={
-                    styles.passwordInput
-                  }
+                <Ionicons
+                  name="mail-outline"
+                  size={18}
+                  color={c.textMuted}
                 />
-
-                <TouchableOpacity
-                  onPress={() =>
-                    setShowPassword(
-                      !showPassword
-                    )
-                  }
-                >
-
-                  <Ionicons
-                    name={
-                      showPassword
-                        ? "eye-off"
-                        : "eye"
-                    }
-                    size={22}
-                    color="#94a3b8"
-                  />
-
-                </TouchableOpacity>
-
+                <TextInput
+                  style={[styles.input, { color: c.text }]}
+                  value={email}
+                  onChangeText={setEmail}
+                  placeholder="you@company.com"
+                  placeholderTextColor={c.textFaint}
+                  autoCapitalize="none"
+                  keyboardType="email-address"
+                  autoComplete="email"
+                />
               </View>
+              {!!emailError && (
+                <Text style={[styles.fieldErr, { color: c.dangerText }]}>
+                  {emailError}
+                </Text>
+              )}
 
+              <FieldLabel label="PASSWORD" theme={theme} />
+              <View
+                style={[
+                  styles.inputWrap,
+                  {
+                    backgroundColor: c.surface,
+                    borderColor: passwordError
+                      ? c.dangerText
+                      : c.surfaceBorder },
+                ]}
+              >
+                <Ionicons
+                  name="lock-closed-outline"
+                  size={18}
+                  color={c.textMuted}
+                />
+                <TextInput
+                  style={[styles.input, { color: c.text }]}
+                  value={password}
+                  onChangeText={setPassword}
+                  placeholder="Your password"
+                  placeholderTextColor={c.textFaint}
+                  secureTextEntry={!showPassword}
+                  autoCapitalize="none"
+                  autoComplete="password"
+                />
+                <TouchableOpacity
+                  onPress={() => setShowPassword((v) => !v)}
+                  hitSlop={8}
+                >
+                  <Ionicons
+                    name={showPassword ? "eye-off-outline" : "eye-outline"}
+                    size={20}
+                    color={c.textMuted}
+                  />
+                </TouchableOpacity>
+              </View>
               {!!passwordError && (
-
-                <Text style={styles.errorText}>
+                <Text style={[styles.fieldErr, { color: c.dangerText }]}>
                   {passwordError}
                 </Text>
-
               )}
 
-              {/* SERVER ERROR */}
-              {!!serverError && (
-
-                <View
-                  style={
-                    styles.serverErrorBox
-                  }
-                >
-
-                  <Text
-                    style={
-                      styles.serverErrorText
-                    }
-                  >
-                    {serverError}
-                  </Text>
-
-                </View>
-
-              )}
-
-              {/* LOGIN BUTTON */}
               <TouchableOpacity
-                activeOpacity={0.85}
-                style={[
-
-                  styles.btn,
-
-                  loading &&
-                    styles.btnDisabled,
-                ]}
-                onPress={
-                  handleLogin
-                }
-                disabled={loading}
+                onPress={() => router.push("/forgot-password")}
+                style={{ alignSelf: "flex-end", marginTop: 10 }}
               >
-
-                {loading ? (
-
-                  <View
-                    style={
-                      styles.loadingRow
-                    }
-                  >
-
-                    <ActivityIndicator
-                      color="#fff"
-                      size="small"
-                    />
-
-                    <Text
-                      style={
-                        styles.btnText
-                      }
-                    >
-                      Logging in...
-                    </Text>
-
-                  </View>
-
-                ) : (
-
-                  <Text
-                    style={
-                      styles.btnText
-                    }
-                  >
-                    Login
-                  </Text>
-
-                )}
-
-              </TouchableOpacity>
-
-              <TouchableOpacity
-                style={styles.forgotBtn}
-                onPress={() =>
-                  router.push("/forgot-password")
-                }
-              >
-                <Text style={styles.forgotText}>
+                <Text style={[styles.linkText, { color: c.accent }]}>
                   Forgot password?
                 </Text>
               </TouchableOpacity>
 
-            </View>
-
-          </View>
-
-        </ScrollView>
-
-      </KeyboardAvoidingView>
-
-      {/* OTP MODAL — only shown when backend has REQUIRE_LOGIN_OTP=true */}
-      <Modal
-        visible={otpRequired}
-        animationType="slide"
-        transparent
-        onRequestClose={() => setOtpRequired(false)}
-      >
-        <View style={styles.otpWrap}>
-          <View style={styles.otpModal}>
-            <View style={styles.otpHeader}>
-              <Ionicons
-                name="mail-outline"
-                size={22}
-                color="#3b82f6"
-              />
-              <Text style={styles.otpTitle}>Enter OTP</Text>
-            </View>
-            <Text style={styles.otpSub}>
-              We emailed a 6-digit code to {email}. It expires in
-              10 minutes.
-            </Text>
-
-            <TextInput
-              style={styles.otpInput}
-              value={otpCode}
-              onChangeText={setOtpCode}
-              placeholder="••••••"
-              placeholderTextColor="#475569"
-              keyboardType="number-pad"
-              maxLength={6}
-              autoFocus
-            />
-
-            <TouchableOpacity
-              style={[
-                styles.otpBtn,
-                otpVerifying && { opacity: 0.7 },
-              ]}
-              onPress={onVerifyOtp}
-              disabled={otpVerifying}
-            >
-              {otpVerifying ? (
-                <ActivityIndicator color="#fff" />
-              ) : (
-                <Text style={styles.otpBtnText}>Verify</Text>
+              {!!serverError && (
+                <View
+                  style={[
+                    styles.errorBanner,
+                    {
+                      backgroundColor: c.dangerBg,
+                      borderColor: c.dangerText },
+                  ]}
+                >
+                  <Ionicons
+                    name="alert-circle-outline"
+                    size={16}
+                    color={c.dangerText}
+                  />
+                  <Text
+                    style={[styles.errorBannerText, { color: c.dangerText }]}
+                  >
+                    {serverError}
+                  </Text>
+                </View>
               )}
-            </TouchableOpacity>
 
-            <View style={styles.otpFooter}>
               <TouchableOpacity
-                onPress={onResendOtp}
-                disabled={otpResending}
+                style={[
+                  styles.cta,
+                  {
+                    backgroundColor: c.accent,
+                    shadowColor: c.shadow,
+                    opacity: loading ? 0.7 : 1 },
+                ]}
+                onPress={onSignIn}
+                disabled={loading}
+                activeOpacity={0.85}
               >
-                <Text style={styles.otpResend}>
-                  {otpResending ? "Sending…" : "Resend code"}
-                </Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                onPress={() => {
-                  setOtpRequired(false);
-                  setOtpCode("");
-                }}
-              >
-                <Text style={styles.otpCancel}>Cancel</Text>
+                {loading ? (
+                  <ActivityIndicator color="#fff" />
+                ) : (
+                  <>
+                    <Text style={styles.ctaText}>Sign in</Text>
+                    <Ionicons
+                      name="arrow-forward"
+                      size={18}
+                      color="#fff"
+                    />
+                  </>
+                )}
               </TouchableOpacity>
             </View>
-          </View>
-        </View>
-      </Modal>
+          ) : (
+            // ===== OTP STEP =====
+            <View style={{ marginTop: 22 }}>
+              <FieldLabel label="VERIFICATION CODE" theme={theme} />
+              <View
+                style={[
+                  styles.inputWrap,
+                  {
+                    backgroundColor: c.surface,
+                    borderColor: c.surfaceBorder },
+                ]}
+              >
+                <Ionicons
+                  name="keypad-outline"
+                  size={18}
+                  color={c.textMuted}
+                />
+                <TextInput
+                  style={[
+                    styles.input,
+                    {
+                      color: c.text,
+                      letterSpacing: 4,
+                      textAlign: "center" },
+                  ]}
+                  value={otpCode}
+                  onChangeText={setOtpCode}
+                  placeholder="••••••"
+                  placeholderTextColor={c.textFaint}
+                  keyboardType="number-pad"
+                  maxLength={8}
+                />
+              </View>
 
+              <TouchableOpacity
+                style={[
+                  styles.cta,
+                  {
+                    backgroundColor: c.accent,
+                    shadowColor: c.shadow,
+                    opacity: otpVerifying ? 0.7 : 1,
+                    marginTop: 18 },
+                ]}
+                onPress={onVerifyOtp}
+                disabled={otpVerifying}
+                activeOpacity={0.85}
+              >
+                {otpVerifying ? (
+                  <ActivityIndicator color="#fff" />
+                ) : (
+                  <Text style={styles.ctaText}>Verify & sign in</Text>
+                )}
+              </TouchableOpacity>
+
+              <View style={styles.otpFooter}>
+                <TouchableOpacity
+                  onPress={onResendOtp}
+                  disabled={otpResending}
+                >
+                  <Text style={[styles.linkText, { color: c.accent }]}>
+                    {otpResending ? "Resending…" : "Resend code"}
+                  </Text>
+                </TouchableOpacity>
+                <Text style={[styles.dot, { color: c.textFaint }]}>·</Text>
+                <TouchableOpacity
+                  onPress={() => {
+                    setOtpRequired(false);
+                    setOtpCode("");
+                  }}
+                >
+                  <Text style={[styles.linkText, { color: c.textMuted }]}>
+                    Use different email
+                  </Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+          )}
+          </View>
+          {/* /sign-in card */}
+
+          <Text style={[styles.footnote, { color: c.textFaint }]}>
+            By signing in you accept our policy and terms.
+          </Text>
+        </ScrollView>
+      </KeyboardAvoidingView>
     </SafeAreaView>
   );
 }
 
-const styles = StyleSheet.create({
+const FieldLabel = ({ label, theme }: { label: string; theme: any }) => (
+  <Text
+    style={{
+      color: theme.colors.textMuted,
+      fontSize: 11,
+      fontWeight: "800",
+      letterSpacing: 1.4,
+      marginTop: 16,
+      marginBottom: 6 }}
+  >
+    {label}
+  </Text>
+);
 
-  safe: {
-    flex: 1,
-    backgroundColor: "#020617",
-  },
 
-  container: {
-    flex: 1,
-    justifyContent: "center",
-    paddingHorizontal:
-      width * 0.06,
-    paddingVertical: 24,
-    backgroundColor: "#020617",
-    overflow: "hidden",
-  },
+const makeStyles = (c: any) => StyleSheet.create({
+  safe: { flex: 1 },
+  scroll: {
+    paddingBottom: 40 },
 
-  topGlow: {
-    position: "absolute",
-    top: -120,
-    right: -80,
-    width: 280,
-    height: 280,
-    borderRadius: 280,
-    backgroundColor: "#2563eb33",
-  },
-
-  bottomGlow: {
-    position: "absolute",
-    bottom: -100,
-    left: -80,
-    width: 260,
-    height: 260,
-    borderRadius: 260,
-    backgroundColor: "#06b6d433",
-  },
-
-  header: {
-    alignItems: "center",
-    marginBottom: 36,
-  },
-
-  logo: {
-    width: width * 0.5,
-    height: 80,
-    marginBottom: 20,
-  },
-
-  title: {
-    color: "#fff",
-    fontSize:
-      isSmallDevice
-        ? 26
-        : 32,
-    fontWeight: "800",
-    marginBottom: 8,
-  },
-
-  subtitle: {
-    color: "#94a3b8",
-    fontSize:
-      isSmallDevice
-        ? 13
-        : 15,
-    textAlign: "center",
-    lineHeight: 22,
-    paddingHorizontal: 10,
-  },
-
-  card: {
-    backgroundColor:
-      "rgba(15,23,42,0.92)",
-
-    borderWidth: 1,
-
-    borderColor:
-      "rgba(255,255,255,0.08)",
-
-    padding:
-      isSmallDevice
-        ? 18
-        : 24,
-
-    borderRadius: 24,
-
-    width: "100%",
-
-    maxWidth: 450,
-
-    alignSelf: "center",
-
-    shadowColor: "#000",
-
-    shadowOpacity: 0.35,
-
-    shadowRadius: 20,
-
-    shadowOffset: {
-      width: 0,
-      height: 10,
-    },
-
-    elevation: 12,
-  },
-
-  label: {
-    color: "#cbd5e1",
-    marginBottom: 8,
-    fontSize: 14,
-    fontWeight: "600",
-  },
-
-  input: {
-    backgroundColor: "#0f172a",
-    borderWidth: 1,
-    borderColor: "#1e293b",
-    color: "#fff",
-    paddingVertical: 16,
-    paddingHorizontal: 18,
-    borderRadius: 16,
-    fontSize: 15,
-    marginBottom: 6,
-  },
-
-  passwordContainer: {
-    backgroundColor: "#0f172a",
-    borderWidth: 1,
-    borderColor: "#1e293b",
-    borderRadius: 16,
-    paddingHorizontal: 16,
-    flexDirection: "row",
-    alignItems: "center",
-    marginBottom: 6,
-  },
-
-  passwordInput: {
-    flex: 1,
-    color: "#fff",
-    paddingVertical: 16,
-    fontSize: 15,
-  },
-
-  inputError: {
-    borderColor: "#ef4444",
-  },
-
-  errorText: {
-    color: "#ef4444",
-    fontSize: 13,
-    marginBottom: 14,
-    marginLeft: 4,
-  },
-
-  serverErrorBox: {
-    backgroundColor:
-      "rgba(239,68,68,0.12)",
-
-    borderColor:
-      "rgba(239,68,68,0.35)",
-
-    borderWidth: 1,
-
-    padding: 12,
-
-    borderRadius: 12,
-
-    marginBottom: 18,
-  },
-
-  serverErrorText: {
-    color: "#fca5a5",
-    fontSize: 13,
-    textAlign: "center",
-  },
-
-  btn: {
-    backgroundColor: PRIMARY,
-    paddingVertical: 17,
-    borderRadius: 16,
-    alignItems: "center",
-    justifyContent: "center",
-    marginTop: 8,
-
-    shadowColor: PRIMARY,
-    shadowOpacity: 0.45,
-    shadowRadius: 12,
-
-    shadowOffset: {
-      width: 0,
-      height: 6,
-    },
-
-    elevation: 8,
-  },
-
-  btnDisabled: {
-    opacity: 0.7,
-  },
-
-  loadingRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 10,
-  },
-
-  btnText: {
-    color: "#fff",
-    fontSize: 16,
-    fontWeight: "700",
-    letterSpacing: 0.5,
-  },
-
-  forgotBtn: {
-    alignItems: "center",
-    paddingVertical: 14,
-    marginTop: 8,
-  },
-
-  forgotText: {
-    color: "#94a3b8",
-    fontSize: 13,
-    fontWeight: "600",
-  },
-
-  otpWrap: {
-    flex: 1,
-    backgroundColor: "rgba(0,0,0,0.6)",
-    justifyContent: "center",
+  // ===== BRAND BANNER =====
+  banner: {
+    paddingTop: 36,
+    paddingBottom: 80,
     paddingHorizontal: 24,
-  },
-
-  otpModal: {
-    backgroundColor: "#0f172a",
-    padding: 24,
-    borderRadius: 18,
-    borderWidth: 1,
-    borderColor: "#1e293b",
-  },
-
-  otpHeader: {
-    flexDirection: "row",
     alignItems: "center",
-    gap: 10,
-    marginBottom: 8,
-  },
-
-  otpTitle: { color: "#fff", fontSize: 18, fontWeight: "800" },
-
-  otpSub: {
-    color: "#94a3b8",
+    overflow: "hidden",
+    position: "relative",
+    borderBottomLeftRadius: 32,
+    borderBottomRightRadius: 32 },
+  blob: {
+    position: "absolute",
+    borderRadius: 999 },
+  blobOne: {
+    width: 220,
+    height: 220,
+    top: -70,
+    right: -60 },
+  blobTwo: {
+    width: 160,
+    height: 160,
+    bottom: -40,
+    left: -50 },
+  bannerLogo: {
+    width: "100%",
+    maxWidth: 260,
+    height: 78 },
+  bannerTagline: {
     fontSize: 12,
-    lineHeight: 18,
-    marginBottom: 18,
-  },
+    fontWeight: "800",
+    letterSpacing: 2,
+    marginTop: 12,
+    textTransform: "uppercase" },
 
-  otpInput: {
-    backgroundColor: "#111827",
-    color: "#fff",
-    fontSize: 28,
+  // ===== CARD =====
+  card: {
+    marginHorizontal: 20,
+    marginTop: -56,
+    padding: 24,
+    paddingTop: 30,
+    borderRadius: 22,
+    borderWidth: 1,
+    alignItems: "stretch",
+    shadowOpacity: 1,
+    shadowRadius: 28,
+    shadowOffset: { width: 0, height: 12 },
+    elevation: 8 },
+  cardIconRing: {
+    width: 56,
+    height: 56,
+    borderRadius: 28,
+    alignItems: "center",
+    justifyContent: "center",
+    marginBottom: 16,
+    alignSelf: "center" },
+  cardTitle: {
+    fontSize: 22,
     fontWeight: "800",
     textAlign: "center",
-    letterSpacing: 12,
-    paddingVertical: 14,
+    marginBottom: 4 },
+  cardSub: {
+    fontSize: 13,
+    textAlign: "center",
+    lineHeight: 19,
+    marginBottom: 4 },
+
+  inputWrap: {
+    flexDirection: "row",
+    alignItems: "center",
+    borderRadius: 14,
+    borderWidth: 1,
+    paddingHorizontal: 14,
+    minHeight: 52,
+    gap: 10 },
+  input: {
+    flex: 1,
+    fontSize: 15,
+    paddingVertical: 12 },
+  fieldErr: {
+    fontSize: 12,
+    marginTop: 4,
+    marginLeft: 4 },
+  linkText: {
+    fontSize: 13,
+    fontWeight: "700" },
+  errorBanner: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    padding: 12,
     borderRadius: 12,
     borderWidth: 1,
-    borderColor: "#1f2937",
-    marginBottom: 14,
-  },
-
-  otpBtn: {
-    backgroundColor: "#2563EB",
-    paddingVertical: 14,
-    borderRadius: 12,
+    marginTop: 14 },
+  errorBannerText: {
+    fontSize: 13,
+    fontWeight: "600",
+    flex: 1 },
+  cta: {
+    flexDirection: "row",
     alignItems: "center",
-  },
-
-  otpBtnText: {
+    justifyContent: "center",
+    gap: 8,
+    paddingVertical: 16,
+    borderRadius: 16,
+    marginTop: 22,
+    shadowOpacity: 0.18,
+    shadowRadius: 14,
+    shadowOffset: { width: 0, height: 6 },
+    elevation: 4 },
+  ctaText: {
     color: "#fff",
     fontSize: 15,
     fontWeight: "800",
-  },
-
+    letterSpacing: 0.3 },
   otpFooter: {
     flexDirection: "row",
-    justifyContent: "space-between",
-    marginTop: 14,
-  },
-
-  otpResend: { color: "#3b82f6", fontSize: 13, fontWeight: "700" },
-  otpCancel: { color: "#94a3b8", fontSize: 13, fontWeight: "700" },
-
-});
+    justifyContent: "center",
+    alignItems: "center",
+    gap: 8,
+    marginTop: 20 },
+  dot: { fontSize: 16 },
+  footnote: {
+    fontSize: 11,
+    textAlign: "center",
+    marginTop: 24,
+    paddingHorizontal: 32 } });

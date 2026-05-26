@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+﻿import React, { useState, useMemo} from "react";
 
 import {
   View,
@@ -8,16 +8,14 @@ import {
   TouchableOpacity,
   TextInput,
   ActivityIndicator,
-  SafeAreaView,
-  Platform,
-} from "react-native";
+  Platform } from "react-native";
+import { SafeAreaView } from "react-native-safe-area-context";
 
 import AsyncStorage from "@react-native-async-storage/async-storage";
 
 import {
   useRouter,
-  useLocalSearchParams,
-} from "expo-router";
+  useLocalSearchParams } from "expo-router";
 
 import { Ionicons } from "@expo/vector-icons";
 
@@ -28,11 +26,11 @@ import {
   dateToYMD,
   dateToHM,
   ymdToDate,
-  hmToDate,
-} from "../src/components/WebDateField";
+  hmToDate } from "../src/components/WebDateField";
 
 import { addManualEntry } from "../src/services/api";
-
+
+import { useTheme } from "../src/theme/ThemeProvider";
 const isWeb = Platform.OS === "web";
 
 const TYPES = ["OFFICE", "WFH", "LEAVE", "HOLIDAY"];
@@ -40,6 +38,12 @@ const TYPES = ["OFFICE", "WFH", "LEAVE", "HOLIDAY"];
 export default function Manual() {
 
   const router = useRouter();
+
+  const { theme } = useTheme();
+
+  const c = theme.colors;
+
+  const styles = useMemo(() => makeStyles(c), [c]);
 
   const params = useLocalSearchParams();
 
@@ -86,8 +90,7 @@ export default function Manual() {
   const [popup, setPopup] = useState({
     visible: false,
     type: "success" as "success" | "error",
-    message: "",
-  });
+    message: "" });
 
   // ================= POPUP =================
   const showPopup = (
@@ -107,15 +110,13 @@ export default function Manual() {
       weekday: "short",
       month: "short",
       day: "numeric",
-      year: "numeric",
-    });
+      year: "numeric" });
 
   const formatTime = (d: Date) =>
     d.toLocaleTimeString([], {
       hour: "numeric",
       minute: "2-digit",
-      hour12: true,
-    });
+      hour12: true });
 
   const dateOnly = (d: Date) => {
     const yyyy = d.getFullYear();
@@ -190,8 +191,7 @@ export default function Manual() {
 
         workNotes: notes.trim(),
 
-        attendanceType: type,
-      };
+        attendanceType: type };
 
       await addManualEntry(token, payload);
 
@@ -252,12 +252,12 @@ export default function Manual() {
 
           <TouchableOpacity
             style={styles.backBtn}
-            onPress={() => router.back()}
+            onPress={() => (router.canGoBack() ? router.back() : router.replace("/"))}
           >
             <Ionicons
               name="chevron-back"
               size={22}
-              color="#fff"
+              color={c.text}
             />
           </TouchableOpacity>
 
@@ -335,7 +335,7 @@ export default function Manual() {
               <Ionicons
                 name="chevron-forward"
                 size={20}
-                color="#64748b"
+                color={c.textMuted}
               />
 
             </TouchableOpacity>
@@ -399,13 +399,13 @@ export default function Manual() {
                 <View
                   style={[
                     styles.rowIcon,
-                    { backgroundColor: "#16a34a" },
+                    { backgroundColor: c.successBg },
                   ]}
                 >
                   <Ionicons
                     name="log-in-outline"
                     size={20}
-                    color="#fff"
+                    color={c.successText}
                   />
                 </View>
 
@@ -439,13 +439,13 @@ export default function Manual() {
                   <View
                     style={[
                       styles.rowIcon,
-                      { backgroundColor: "#16a34a" },
+                      { backgroundColor: c.successBg },
                     ]}
                   >
                     <Ionicons
                       name="log-in-outline"
                       size={20}
-                      color="#fff"
+                      color={c.successText}
                     />
                   </View>
 
@@ -468,7 +468,7 @@ export default function Manual() {
                   <Ionicons
                     name="chevron-forward"
                     size={20}
-                    color="#64748b"
+                    color={c.textMuted}
                   />
 
                 </TouchableOpacity>
@@ -493,13 +493,13 @@ export default function Manual() {
                 <View
                   style={[
                     styles.rowIcon,
-                    { backgroundColor: "#dc2626" },
+                    { backgroundColor: c.dangerBg },
                   ]}
                 >
                   <Ionicons
                     name="log-out-outline"
                     size={20}
-                    color="#fff"
+                    color={c.dangerText}
                   />
                 </View>
 
@@ -533,13 +533,13 @@ export default function Manual() {
                   <View
                     style={[
                       styles.rowIcon,
-                      { backgroundColor: "#dc2626" },
+                      { backgroundColor: c.dangerBg },
                     ]}
                   >
                     <Ionicons
                       name="log-out-outline"
                       size={20}
-                      color="#fff"
+                      color={c.dangerText}
                     />
                   </View>
 
@@ -562,7 +562,7 @@ export default function Manual() {
                   <Ionicons
                     name="chevron-forward"
                     size={20}
-                    color="#64748b"
+                    color={c.textMuted}
                   />
 
                 </TouchableOpacity>
@@ -589,7 +589,7 @@ export default function Manual() {
         <TextInput
           style={styles.notesInput}
           placeholder="What did you work on this day?"
-          placeholderTextColor="#64748b"
+          placeholderTextColor={c.textFaint}
           multiline
           value={notes}
           onChangeText={setNotes}
@@ -633,21 +633,18 @@ export default function Manual() {
   );
 }
 
-const styles = StyleSheet.create({
+const makeStyles = (c: any) => StyleSheet.create({
 
   safe: {
     flex: 1,
-    backgroundColor: "#0b1220",
-  },
+    backgroundColor: c.bg },
 
   container: {
-    flex: 1,
-  },
+    flex: 1 },
 
   content: {
     padding: 20,
-    paddingBottom: 60,
-  },
+    paddingBottom: 60 },
 
   popup: {
     position: "absolute",
@@ -656,151 +653,131 @@ const styles = StyleSheet.create({
     right: 20,
     padding: 14,
     borderRadius: 14,
-    zIndex: 999,
-  },
+    zIndex: 999 },
 
   successPopup: {
-    backgroundColor: "#16a34a",
-  },
+    backgroundColor: "#16a34a" },
 
   errorPopup: {
-    backgroundColor: "#dc2626",
-  },
+    backgroundColor: "#dc2626" },
 
   popupText: {
-    color: "#fff",
+    color: c.text,
     fontWeight: "700",
-    textAlign: "center",
-  },
+    textAlign: "center" },
 
   header: {
     flexDirection: "row",
     alignItems: "center",
     marginBottom: 14,
     marginTop: 10,
-    gap: 12,
-  },
+    gap: 12 },
 
   backBtn: {
     width: 42,
     height: 42,
     borderRadius: 12,
-    backgroundColor: "#111827",
+    backgroundColor: c.surface,
     justifyContent: "center",
     alignItems: "center",
     borderWidth: 1,
-    borderColor: "#1f2937",
-  },
+    borderColor: c.surfaceBorder },
 
   title: {
-    color: "#fff",
+    color: c.text,
     fontSize: 24,
-    fontWeight: "800",
-  },
+    fontWeight: "800" },
 
   subtitle: {
-    color: "#94a3b8",
+    color: c.textMuted,
     fontSize: 13,
-    marginTop: 3,
-  },
+    marginTop: 3 },
 
   section: {
-    color: "#64748b",
+    color: c.textMuted,
     fontSize: 12,
     letterSpacing: 1.5,
     marginBottom: 10,
     marginTop: 18,
-    fontWeight: "700",
-  },
+    fontWeight: "700" },
 
   row: {
     flexDirection: "row",
     alignItems: "center",
-    backgroundColor: "#111827",
+    backgroundColor: c.surface,
     borderRadius: 14,
     padding: 14,
     marginBottom: 10,
     borderWidth: 1,
-    borderColor: "#1f2937",
-  },
+    borderColor: c.surfaceBorder },
 
   rowIcon: {
     width: 40,
     height: 40,
     borderRadius: 10,
-    backgroundColor: "#2563eb",
+    backgroundColor: c.accent,
     justifyContent: "center",
     alignItems: "center",
-    marginRight: 12,
-  },
+    marginRight: 12 },
 
   rowLabel: {
-    color: "#94a3b8",
+    color: c.textMuted,
     fontSize: 12,
-    fontWeight: "600",
-  },
+    fontWeight: "600" },
 
   rowValue: {
-    color: "#fff",
+    color: c.text,
     fontSize: 15,
     fontWeight: "700",
-    marginTop: 2,
-  },
+    marginTop: 2 },
 
   rowValuePlaceholder: {
-    color: "#64748b",
-    fontWeight: "600",
-  },
+    color: c.textMuted,
+    fontWeight: "600" },
 
   typeGrid: {
     flexDirection: "row",
     flexWrap: "wrap",
-    justifyContent: "space-between",
-  },
+    justifyContent: "space-between" },
 
   typeBtn: {
     width: "48%",
-    backgroundColor: "#111827",
+    backgroundColor: c.surface,
     paddingVertical: 14,
     borderRadius: 12,
     alignItems: "center",
     borderWidth: 1,
-    borderColor: "#1f2937",
-    marginBottom: 10,
-  },
+    borderColor: c.surfaceBorder,
+    marginBottom: 10 },
 
   activeType: {
-    backgroundColor: "#2563eb",
-    borderColor: "#2563eb",
-  },
+    backgroundColor: c.accent,
+    borderColor: c.accent },
 
   typeText: {
-    color: "#94a3b8",
+    color: c.textMuted,
     fontWeight: "700",
     fontSize: 13,
-    letterSpacing: 0.5,
-  },
+    letterSpacing: 0.5 },
 
   activeTypeText: {
-    color: "#fff",
-  },
+    color: "#fff" },
 
   notesInput: {
-    backgroundColor: "#111827",
+    backgroundColor: c.surface,
     borderRadius: 14,
     padding: 14,
-    color: "#fff",
+    color: c.text,
     minHeight: 120,
     textAlignVertical: "top",
     borderWidth: 1,
-    borderColor: "#1f2937",
+    borderColor: c.surfaceBorder,
     fontSize: 14,
-    lineHeight: 20,
-  },
+    lineHeight: 20 },
 
   saveBtn: {
     marginTop: 26,
-    backgroundColor: "#2563eb",
+    backgroundColor: c.accent,
     paddingVertical: 16,
     borderRadius: 14,
     flexDirection: "row",
@@ -811,17 +788,13 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.4,
     shadowRadius: 12,
     shadowOffset: { width: 0, height: 6 },
-    elevation: 8,
-  },
+    elevation: 8 },
 
   saveBtnDisabled: {
-    opacity: 0.6,
-  },
+    opacity: 0.6 },
 
   saveText: {
-    color: "#fff",
+    color: c.text,
     fontWeight: "700",
-    fontSize: 16,
-  },
+    fontSize: 16 } });
 
-});

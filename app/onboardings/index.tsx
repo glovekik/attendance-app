@@ -1,7 +1,6 @@
-import React, {
+﻿import React, {
   useEffect,
-  useState,
-} from "react";
+  useState, useMemo} from "react";
 
 import {
   View,
@@ -10,9 +9,8 @@ import {
   ScrollView,
   TouchableOpacity,
   ActivityIndicator,
-  Modal,
-  SafeAreaView,
-} from "react-native";
+  Modal } from "react-native";
+import { SafeAreaView } from "react-native-safe-area-context";
 
 import AsyncStorage from "@react-native-async-storage/async-storage";
 
@@ -22,16 +20,22 @@ import { Ionicons } from "@expo/vector-icons";
 
 import {
   hrCreateOnboarding,
-  hrListOnboardings,
-} from "../../src/services/onboarding";
+  hrListOnboardings } from "../../src/services/onboarding";
 
 import { listUsers } from "../../src/services/users";
 
 import { Onboarding, User } from "../../src/types";
 
+import { useTheme } from "../../src/theme/ThemeProvider";
 export default function HROnboardings() {
 
   const router = useRouter();
+
+  const { theme } = useTheme();
+
+  const c = theme.colors;
+
+  const s = useMemo(() => makeStyles(c), [c]);
 
   const [items, setItems] = useState<Onboarding[]>([]);
   const [users, setUsers] = useState<User[]>([]);
@@ -43,8 +47,7 @@ export default function HROnboardings() {
   const [popup, setPopup] = useState({
     visible: false,
     type: "success" as "success" | "error",
-    message: "",
-  });
+    message: "" });
 
   const showPopup = (
     msg: string,
@@ -105,7 +108,7 @@ export default function HROnboardings() {
   if (loading) {
     return (
       <View style={s.loader}>
-        <ActivityIndicator size="large" color="#2563eb" />
+        <ActivityIndicator size="large" color={c.accent} />
       </View>
     );
   }
@@ -136,9 +139,9 @@ export default function HROnboardings() {
         <View style={s.header}>
           <TouchableOpacity
             style={s.backBtn}
-            onPress={() => router.back()}
+            onPress={() => (router.canGoBack() ? router.back() : router.replace("/"))}
           >
-            <Ionicons name="chevron-back" size={22} color="#fff" />
+            <Ionicons name="chevron-back" size={22} color={c.text} />
           </TouchableOpacity>
           <View style={{ flex: 1 }}>
             <Text style={s.title}>Onboardings</Text>
@@ -195,28 +198,27 @@ export default function HROnboardings() {
                   Emp {empDone}/{o.employeeTasks.length}
                 </Text>
               </View>
-              <View
-                style={[
-                  s.statusChip,
-                  o.status === "COMPLETED" && {
-                    backgroundColor: "#16a34a",
-                  },
-                  o.status === "IN_PROGRESS" && {
-                    backgroundColor: "#2563eb",
-                  },
-                  o.status === "PENDING" && {
-                    backgroundColor: "#f59e0b",
-                  },
-                ]}
-              >
-                <Text style={s.statusText}>
-                  {o.status.replace("_", " ")}
-                </Text>
-              </View>
+              {(() => {
+                const tone =
+                  o.status === "COMPLETED"
+                    ? { bg: c.successBg, fg: c.successText }
+                    : o.status === "IN_PROGRESS"
+                    ? { bg: c.accentSoft, fg: c.accentText }
+                    : { bg: c.warningBg, fg: c.warningText };
+                return (
+                  <View
+                    style={[s.statusChip, { backgroundColor: tone.bg }]}
+                  >
+                    <Text style={[s.statusText, { color: tone.fg }]}>
+                      {o.status.replace("_", " ")}
+                    </Text>
+                  </View>
+                );
+              })()}
               <Ionicons
                 name="chevron-forward"
                 size={18}
-                color="#64748b"
+                color={c.textMuted}
               />
             </TouchableOpacity>
           );
@@ -283,43 +285,42 @@ export default function HROnboardings() {
   );
 }
 
-const s = StyleSheet.create({
-  safe: { flex: 1, backgroundColor: "#0b1220" },
+const makeStyles = (c: any) => StyleSheet.create({
+  safe: { flex: 1, backgroundColor: c.bg },
   container: { flex: 1 },
   content: { padding: 20, paddingBottom: 60 },
-  loader: { flex: 1, backgroundColor: "#0b1220", justifyContent: "center", alignItems: "center" },
+  loader: { flex: 1, backgroundColor: c.bg, justifyContent: "center", alignItems: "center" },
   popup: { position: "absolute", top: 60, left: 20, right: 20, padding: 14, borderRadius: 14, zIndex: 999 },
   popupOk: { backgroundColor: "#16a34a" },
   popupErr: { backgroundColor: "#dc2626" },
-  popupText: { color: "#fff", fontWeight: "700", textAlign: "center" },
+  popupText: { color: c.text, fontWeight: "700", textAlign: "center" },
 
   header: { flexDirection: "row", alignItems: "center", marginBottom: 18, marginTop: 10, gap: 12 },
-  backBtn: { width: 42, height: 42, borderRadius: 12, backgroundColor: "#111827", justifyContent: "center", alignItems: "center", borderWidth: 1, borderColor: "#1f2937" },
-  addBtn: { width: 42, height: 42, borderRadius: 12, backgroundColor: "#2563eb", justifyContent: "center", alignItems: "center" },
-  title: { color: "#fff", fontSize: 24, fontWeight: "800" },
-  subtitle: { color: "#94a3b8", fontSize: 13, marginTop: 3 },
+  backBtn: { width: 42, height: 42, borderRadius: 12, backgroundColor: c.surface, justifyContent: "center", alignItems: "center", borderWidth: 1, borderColor: c.surfaceBorder },
+  addBtn: { width: 42, height: 42, borderRadius: 12, backgroundColor: c.accent, justifyContent: "center", alignItems: "center" },
+  title: { color: c.text, fontSize: 24, fontWeight: "800" },
+  subtitle: { color: c.textMuted, fontSize: 13, marginTop: 3 },
 
-  empty: { padding: 40, backgroundColor: "#111827", borderRadius: 18, borderWidth: 1, borderColor: "#1f2937", alignItems: "center" },
-  emptyTitle: { color: "#fff", fontSize: 16, fontWeight: "700" },
-  emptySub: { color: "#94a3b8", fontSize: 13, marginTop: 6, textAlign: "center" },
+  empty: { padding: 40, backgroundColor: c.surface, borderRadius: 18, borderWidth: 1, borderColor: c.surfaceBorder, alignItems: "center" },
+  emptyTitle: { color: c.text, fontSize: 16, fontWeight: "700" },
+  emptySub: { color: c.textMuted, fontSize: 13, marginTop: 6, textAlign: "center" },
 
-  card: { flexDirection: "row", alignItems: "center", backgroundColor: "#111827", borderRadius: 14, padding: 12, marginBottom: 8, borderWidth: 1, borderColor: "#1f2937", gap: 10 },
-  avatar: { width: 36, height: 36, borderRadius: 18, backgroundColor: "#2563eb", justifyContent: "center", alignItems: "center" },
+  card: { flexDirection: "row", alignItems: "center", backgroundColor: c.surface, borderRadius: 14, padding: 12, marginBottom: 8, borderWidth: 1, borderColor: c.surfaceBorder, gap: 10 },
+  avatar: { width: 36, height: 36, borderRadius: 18, backgroundColor: c.accent, justifyContent: "center", alignItems: "center" },
   avatarText: { color: "#fff", fontWeight: "700", fontSize: 14 },
-  cardName: { color: "#fff", fontSize: 14, fontWeight: "700" },
-  cardMeta: { color: "#94a3b8", fontSize: 11, marginTop: 2 },
+  cardName: { color: c.text, fontSize: 14, fontWeight: "700" },
+  cardMeta: { color: c.textMuted, fontSize: 11, marginTop: 2 },
 
   statusChip: { paddingHorizontal: 8, paddingVertical: 3, borderRadius: 999 },
-  statusText: { color: "#fff", fontSize: 9, fontWeight: "800", letterSpacing: 0.5 },
+  statusText: { fontSize: 9, fontWeight: "800", letterSpacing: 0.5 },
 
-  modalOverlay: { flex: 1, backgroundColor: "rgba(0,0,0,0.7)", justifyContent: "center", padding: 20 },
-  modalCard: { backgroundColor: "#111827", borderRadius: 18, padding: 20, maxHeight: "80%" },
-  modalTitle: { color: "#fff", fontSize: 22, fontWeight: "800" },
-  hint: { color: "#94a3b8", fontSize: 12, marginTop: 4 },
+  modalOverlay: { flex: 1, backgroundColor: "rgba(29,24,56,0.35)", justifyContent: "center", padding: 20 },
+  modalCard: { backgroundColor: c.surface, borderRadius: 18, padding: 20, maxHeight: "80%" },
+  modalTitle: { color: c.text, fontSize: 22, fontWeight: "800" },
+  hint: { color: c.textMuted, fontSize: 12, marginTop: 4 },
 
-  userRow: { flexDirection: "row", alignItems: "center", padding: 10, gap: 10, borderRadius: 10, backgroundColor: "#0f172a", marginBottom: 6 },
+  userRow: { flexDirection: "row", alignItems: "center", padding: 10, gap: 10, borderRadius: 10, backgroundColor: c.surfaceMuted, marginBottom: 6 },
 
   modalActions: { flexDirection: "row", gap: 10, marginTop: 18 },
-  cancelBtn: { flex: 1, backgroundColor: "#374151", padding: 14, borderRadius: 12, alignItems: "center" },
-  modalBtnText: { color: "#fff", fontWeight: "700" },
-});
+  cancelBtn: { flex: 1, backgroundColor: c.surfaceMuted, padding: 14, borderRadius: 12, alignItems: "center" },
+  modalBtnText: { color: c.text, fontWeight: "700" } });

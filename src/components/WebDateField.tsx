@@ -1,11 +1,14 @@
 import React from "react";
 
+import { useTheme } from "../theme/ThemeProvider";
+
 type Mode = "date" | "time";
 
 interface Props {
   mode: Mode;
   value: string;
   onChange: (value: string) => void;
+  min?: string;
   max?: string;
 }
 
@@ -13,14 +16,19 @@ export const WebDateField = ({
   mode,
   value,
   onChange,
+  min,
   max,
 }: Props) => {
+
+  const { theme } = useTheme();
 
   return React.createElement("input", {
 
     type: mode,
 
     value,
+
+    min,
 
     max,
 
@@ -29,11 +37,11 @@ export const WebDateField = ({
     style: {
       background: "transparent",
       border: "none",
-      color: "#fff",
+      color: theme.colors.text,
       fontSize: "15px",
       fontWeight: 700,
       outline: "none",
-      colorScheme: "dark",
+      colorScheme: theme.mode === "dark" ? "dark" : "light",
       marginTop: "2px",
       fontFamily: "inherit",
       padding: 0,
