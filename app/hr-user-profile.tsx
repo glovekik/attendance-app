@@ -37,6 +37,9 @@ import {
   hrGetSalaryStructure,
   hrSetSalaryStructure } from "../src/services/payroll";
 import {
+  breakdownFromCTC,
+  PF_MONTHLY_CAP } from "../src/utils/salaryFormula";
+import {
   listUserDocuments,
   deleteUserDocument,
   listUserRequiredDocuments,
@@ -93,6 +96,22 @@ const CERT_LEVELS = [
   "Master",
   "Doctor",
   "Other",
+] as const;
+const GENDER_OPTIONS = [
+  "Male",
+  "Female",
+  "Other",
+  "Prefer not to say",
+] as const;
+const MARITAL_OPTIONS = [
+  "Single",
+  "Married",
+  "Divorced",
+  "Widowed",
+  "Separated",
+] as const;
+const BLOOD_GROUP_OPTIONS = [
+  "A+", "A-", "B+", "B-", "AB+", "AB-", "O+", "O-",
 ] as const;
 const WEEK_LOCS = ["Home", "Office", "Other"] as const;
 const WEEKDAYS: {
@@ -485,9 +504,15 @@ export default function HrUserProfile() {
   const [salTds, setSalTds] = useState("");
   const [savingSalary, setSavingSalary] = useState(false);
 
+  // Monthly CTC drives the "Apply formula" quick-fill and is the
+  // denominator when pctBasis === "CTC" (defaults to that — both
+  // values are visible in the UI so HR can flip mid-edit).
+  const [monthlyCTC, setMonthlyCTC] = useState("");
+  const [pctBasis, setPctBasis] = useState<"CTC" | "Basic">("CTC");
+
   // Percentage-mode flags per component. When true, the input value is a
-  // percentage of Basic; on save, we resolve to an absolute INR amount.
-  // Basic itself never has a pct flag (it's the reference).
+  // percentage of whichever basis (CTC or Basic) is currently selected;
+  // on save, we resolve to an absolute INR amount.
   const [pctHra, setPctHra] = useState(false);
   const [pctComm, setPctComm] = useState(false);
   const [pctOther, setPctOther] = useState(false);
@@ -495,6 +520,43 @@ export default function HrUserProfile() {
   const [pctEmployerIns, setPctEmployerIns] = useState(false);
   const [pctEmployeePF, setPctEmployeePF] = useState(false);
   const [pctEmployeeIns, setPctEmployeeIns] = useState(false);
+
+  // Numeric basis used by AmountOrPctField — switches with pctBasis.
+  const pctBasisAmount =
+    pctBasis === "CTC"
+      ? parseFloat(monthlyCTC) || 0
+      : parseFloat(salBasic) || 0;
+
+  // Intern / Consultant employees get a simplified payroll: only the
+  // wage amount is captured. Everything past contract is hidden.
+  const isSimplifiedEmployee =
+    employeeType === "Internship" || employeeType === "Consultant";
+
+  const applyFormula = () => {
+    const ctc = parseFloat(monthlyCTC) || 0;
+    if (ctc <= 0) {
+      Alert.alert(
+        "Enter monthly CTC",
+        "Type the employee's monthly CTC first, then tap Apply formula."
+      );
+      return;
+    }
+    const b = breakdownFromCTC(ctc);
+    setSalBasic(String(b.basic));
+    setSalHra(String(b.hra));
+    setSalCommAllowance(String(b.communicationAllowance));
+    setSalOtherAllowance(String(b.otherAllowance));
+    setSalEmployerPF(String(b.employerPF));
+    setSalEmployeePF(String(b.employerPF));
+    // After Apply formula the values are absolute INR — turn off the
+    // pct flags so HR doesn't see the resolved amounts interpreted as
+    // percentages.
+    setPctHra(false);
+    setPctComm(false);
+    setPctOther(false);
+    setPctEmployerPF(false);
+    setPctEmployeePF(false);
+  };
 
   const load = useCallback(async () => {
     if (!id) {
@@ -803,10 +865,15 @@ export default function HrUserProfile() {
       return;
     }
     // Resolve a field: if percentage mode is on, derive absolute amount
-    // from Basic; otherwise pass through the raw amount.
+    // from the active basis (CTC or Basic); otherwise pass through the
+    // raw amount. CTC falls back to Basic if monthlyCTC is blank so a
+    // partially-filled form still saves sensible numbers.
+    const ctc = n(monthlyCTC);
+    const basisAmount =
+      pctBasis === "CTC" && ctc > 0 ? ctc : basic;
     const resolve = (raw: string, isPct: boolean): number => {
       const num = n(raw);
-      return isPct ? Math.round((basic * num) / 100) : num;
+      return isPct ? Math.round((basisAmount * num) / 100) : num;
     };
     try {
       setSavingSalary(true);
@@ -1620,20 +1687,40 @@ export default function HrUserProfile() {
                 />
               </Field>
               <Field label="Gender">
-                <TextField value={gender} onChange={setGender} />
+                <ChipPicker
+                  options={GENDER_OPTIONS}
+                  selected={
+                    (GENDER_OPTIONS as readonly string[]).includes(gender)
+                      ? (gender as typeof GENDER_OPTIONS[number])
+                      : undefined
+                  }
+                  onSelect={(v) => setGender(v || "")}
+                />
               </Field>
               <Field label="Marital Status">
-                <TextField
-                  value={maritalStatus}
-                  onChange={setMaritalStatus}
-                  placeholder="Single / Married / ..."
+                <ChipPicker
+                  options={MARITAL_OPTIONS}
+                  selected={
+                    (MARITAL_OPTIONS as readonly string[]).includes(
+                      maritalStatus
+                    )
+                      ? (maritalStatus as typeof MARITAL_OPTIONS[number])
+                      : undefined
+                  }
+                  onSelect={(v) => setMaritalStatus(v || "")}
                 />
               </Field>
               <Field label="Blood Group">
-                <TextField
-                  value={bloodGroup}
-                  onChange={setBloodGroup}
-                  placeholder="O+"
+                <ChipPicker
+                  options={BLOOD_GROUP_OPTIONS}
+                  selected={
+                    (BLOOD_GROUP_OPTIONS as readonly string[]).includes(
+                      bloodGroup
+                    )
+                      ? (bloodGroup as typeof BLOOD_GROUP_OPTIONS[number])
+                      : undefined
+                  }
+                  onSelect={(v) => setBloodGroup(v || "")}
                 />
               </Field>
               <View style={[styles.row, { marginTop: 14 }]}>
@@ -1812,128 +1899,188 @@ export default function HrUserProfile() {
                   onSelect={setEmployeeType}
                 />
               </Field>
-              <SectionHeader title="SALARY COMPONENTS (INR / MONTH)" />
-              <Field label="Basic">
-                <TextField
-                  value={salBasic}
-                  onChange={setSalBasic}
-                  placeholder="50000"
-                  keyboardType="decimal-pad"
-                />
-              </Field>
-              <Field label="House Rent Allowance">
-                <AmountOrPctField
-                  value={salHra}
-                  onChange={setSalHra}
-                  pctMode={pctHra}
-                  onTogglePct={setPctHra}
-                  basis={parseFloat(salBasic) || 0}
-                  placeholder={pctHra ? "40" : "20000"}
-                />
-              </Field>
-              <Field label="Communication Allowance">
-                <AmountOrPctField
-                  value={salCommAllowance}
-                  onChange={setSalCommAllowance}
-                  pctMode={pctComm}
-                  onTogglePct={setPctComm}
-                  basis={parseFloat(salBasic) || 0}
-                  placeholder={pctComm ? "5" : "0"}
-                />
-              </Field>
-              <Field label="Other Allowance">
-                <AmountOrPctField
-                  value={salOtherAllowance}
-                  onChange={setSalOtherAllowance}
-                  pctMode={pctOther}
-                  onTogglePct={setPctOther}
-                  basis={parseFloat(salBasic) || 0}
-                  placeholder={pctOther ? "10" : "0"}
-                />
-              </Field>
 
-              <SectionHeader title="BENEFITS (EMPLOYER)" />
-              <Field label="Employer PF (blank = auto-compute)">
-                <AmountOrPctField
-                  value={salEmployerPF}
-                  onChange={setSalEmployerPF}
-                  pctMode={pctEmployerPF}
-                  onTogglePct={setPctEmployerPF}
-                  basis={parseFloat(salBasic) || 0}
-                  placeholder={pctEmployerPF ? "12" : "auto"}
-                />
-              </Field>
-              <Field label="Health Insurance">
-                <AmountOrPctField
-                  value={salEmployerInsurance}
-                  onChange={setSalEmployerInsurance}
-                  pctMode={pctEmployerIns}
-                  onTogglePct={setPctEmployerIns}
-                  basis={parseFloat(salBasic) || 0}
-                  placeholder={pctEmployerIns ? "2" : "0"}
-                />
-              </Field>
-
-              <SectionHeader title="DEDUCTIONS (EMPLOYEE)" />
-              <Field label="Employee PF (blank = auto-compute)">
-                <AmountOrPctField
-                  value={salEmployeePF}
-                  onChange={setSalEmployeePF}
-                  pctMode={pctEmployeePF}
-                  onTogglePct={setPctEmployeePF}
-                  basis={parseFloat(salBasic) || 0}
-                  placeholder={pctEmployeePF ? "12" : "auto"}
-                />
-              </Field>
-              <Field label="Health Insurance">
-                <AmountOrPctField
-                  value={salEmployeeInsurance}
-                  onChange={setSalEmployeeInsurance}
-                  pctMode={pctEmployeeIns}
-                  onTogglePct={setPctEmployeeIns}
-                  basis={parseFloat(salBasic) || 0}
-                  placeholder={pctEmployeeIns ? "2" : "0"}
-                />
-              </Field>
-              <Field label="Professional Tax">
-                <TextField
-                  value={salProfTax}
-                  onChange={setSalProfTax}
-                  placeholder="200"
-                  keyboardType="decimal-pad"
-                />
-              </Field>
-              <Field label="TDS">
-                <TextField
-                  value={salTds}
-                  onChange={setSalTds}
-                  placeholder="0"
-                  keyboardType="decimal-pad"
-                />
-              </Field>
-
-              <TouchableOpacity
-                style={[
-                  styles.saveReqBtn,
-                  savingSalary && { opacity: 0.7 },
-                ]}
-                onPress={saveSalary}
-                disabled={savingSalary}
-              >
-                {savingSalary ? (
-                  <ActivityIndicator color="#fff" />
-                ) : (
-                  <Text style={styles.saveReqText}>
-                    Save salary structure
+              {isSimplifiedEmployee ? (
+                <Text style={[styles.hint, { marginTop: 14 }]}>
+                  {employeeType === "Internship"
+                    ? "Interns receive a stipend — only the wage amount above is captured. Full salary structure (HRA / PF / TDS) is skipped."
+                    : "Consultants are paid the wage amount above on the chosen duration. No salary structure required."}
+                </Text>
+              ) : (
+                <>
+                  {/* QUICK FILL FROM MONTHLY CTC */}
+                  <SectionHeader title="QUICK FILL FROM CTC" />
+                  <Field label="Monthly CTC (₹)">
+                    <TextField
+                      value={monthlyCTC}
+                      onChange={setMonthlyCTC}
+                      placeholder="e.g. 100000"
+                      keyboardType="decimal-pad"
+                    />
+                  </Field>
+                  <Text style={[styles.hint, { marginTop: 4 }]}>
+                    Basic 50% · HRA 20% · Comm 5% · Other 19% · Employer
+                    PF 6% (cap ₹{PF_MONTHLY_CAP})
                   </Text>
-                )}
-              </TouchableOpacity>
+                  <TouchableOpacity
+                    style={[styles.saveReqBtn, { marginTop: 10 }]}
+                    onPress={applyFormula}
+                  >
+                    <Text style={styles.saveReqText}>Apply formula</Text>
+                  </TouchableOpacity>
 
-              <Text style={[styles.hint, { marginTop: 14 }]}>
-                Salary is stored separately from the employee profile so
-                history is preserved when you raise it. Leave PF fields
-                blank to auto-compute from Basic with the EPF cap.
-              </Text>
+                  {/* PCT BASIS TOGGLE */}
+                  <SectionHeader title="PERCENTAGE BASIS" />
+                  <Text style={[styles.hint, { marginBottom: 8 }]}>
+                    When a field is in % mode the value is read against
+                    this basis.
+                  </Text>
+                  <View style={styles.chipRow}>
+                    {(["CTC", "Basic"] as const).map((b) => (
+                      <TouchableOpacity
+                        key={b}
+                        style={[
+                          styles.chip,
+                          pctBasis === b && styles.chipActive,
+                        ]}
+                        onPress={() => setPctBasis(b)}
+                      >
+                        <Text
+                          style={[
+                            styles.chipText,
+                            pctBasis === b && styles.chipTextActive,
+                          ]}
+                        >
+                          % of {b}
+                        </Text>
+                      </TouchableOpacity>
+                    ))}
+                  </View>
+
+                  <SectionHeader title="SALARY COMPONENTS (INR / MONTH)" />
+                  <Field label="Basic">
+                    <TextField
+                      value={salBasic}
+                      onChange={setSalBasic}
+                      placeholder="50000"
+                      keyboardType="decimal-pad"
+                    />
+                  </Field>
+                  <Field label="House Rent Allowance">
+                    <AmountOrPctField
+                      value={salHra}
+                      onChange={setSalHra}
+                      pctMode={pctHra}
+                      onTogglePct={setPctHra}
+                      basis={pctBasisAmount}
+                      placeholder={pctHra ? "20" : "20000"}
+                    />
+                  </Field>
+                  <Field label="Communication Allowance">
+                    <AmountOrPctField
+                      value={salCommAllowance}
+                      onChange={setSalCommAllowance}
+                      pctMode={pctComm}
+                      onTogglePct={setPctComm}
+                      basis={pctBasisAmount}
+                      placeholder={pctComm ? "5" : "0"}
+                    />
+                  </Field>
+                  <Field label="Other Allowance">
+                    <AmountOrPctField
+                      value={salOtherAllowance}
+                      onChange={setSalOtherAllowance}
+                      pctMode={pctOther}
+                      onTogglePct={setPctOther}
+                      basis={pctBasisAmount}
+                      placeholder={pctOther ? "19" : "0"}
+                    />
+                  </Field>
+
+                  <SectionHeader title="BENEFITS (EMPLOYER)" />
+                  <Field label="Employer PF (blank = auto-compute)">
+                    <AmountOrPctField
+                      value={salEmployerPF}
+                      onChange={setSalEmployerPF}
+                      pctMode={pctEmployerPF}
+                      onTogglePct={setPctEmployerPF}
+                      basis={pctBasisAmount}
+                      placeholder={pctEmployerPF ? "6" : "auto"}
+                    />
+                  </Field>
+                  <Field label="Health Insurance">
+                    <AmountOrPctField
+                      value={salEmployerInsurance}
+                      onChange={setSalEmployerInsurance}
+                      pctMode={pctEmployerIns}
+                      onTogglePct={setPctEmployerIns}
+                      basis={pctBasisAmount}
+                      placeholder={pctEmployerIns ? "2" : "0"}
+                    />
+                  </Field>
+
+                  <SectionHeader title="DEDUCTIONS (EMPLOYEE)" />
+                  <Field label="Employee PF (blank = auto-compute)">
+                    <AmountOrPctField
+                      value={salEmployeePF}
+                      onChange={setSalEmployeePF}
+                      pctMode={pctEmployeePF}
+                      onTogglePct={setPctEmployeePF}
+                      basis={pctBasisAmount}
+                      placeholder={pctEmployeePF ? "12" : "auto"}
+                    />
+                  </Field>
+                  <Field label="Health Insurance">
+                    <AmountOrPctField
+                      value={salEmployeeInsurance}
+                      onChange={setSalEmployeeInsurance}
+                      pctMode={pctEmployeeIns}
+                      onTogglePct={setPctEmployeeIns}
+                      basis={pctBasisAmount}
+                      placeholder={pctEmployeeIns ? "2" : "0"}
+                    />
+                  </Field>
+                  <Field label="Professional Tax">
+                    <TextField
+                      value={salProfTax}
+                      onChange={setSalProfTax}
+                      placeholder="200"
+                      keyboardType="decimal-pad"
+                    />
+                  </Field>
+                  <Field label="TDS">
+                    <TextField
+                      value={salTds}
+                      onChange={setSalTds}
+                      placeholder="0"
+                      keyboardType="decimal-pad"
+                    />
+                  </Field>
+
+                  <TouchableOpacity
+                    style={[
+                      styles.saveReqBtn,
+                      savingSalary && { opacity: 0.7 },
+                    ]}
+                    onPress={saveSalary}
+                    disabled={savingSalary}
+                  >
+                    {savingSalary ? (
+                      <ActivityIndicator color="#fff" />
+                    ) : (
+                      <Text style={styles.saveReqText}>
+                        Save salary structure
+                      </Text>
+                    )}
+                  </TouchableOpacity>
+
+                  <Text style={[styles.hint, { marginTop: 14 }]}>
+                    Salary is stored separately from the employee profile so
+                    history is preserved when you raise it. Leave PF fields
+                    blank to auto-compute from Basic with the EPF cap.
+                  </Text>
+                </>
+              )}
             </>
           )}
 

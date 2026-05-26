@@ -490,17 +490,11 @@ export default function Profile() {
             {user.email}
           </Text>
 
+          {/* Only the designation (tag) is shown to the employee — the
+              raw role (USER/MANAGER/HR) is HR-internal. TEAM LEAD chip
+              stays because it reflects something the employee actively
+              does (leads a team), not a permission tier. */}
           <View style={styles.chipsRow}>
-            <View
-              style={[
-                styles.chip,
-                { backgroundColor: roleTint.bg },
-              ]}
-            >
-              <Text style={[styles.chipText, { color: roleTint.fg }]}>
-                {user.role}
-              </Text>
-            </View>
             {user.tag && (
               <View
                 style={[styles.chip, { backgroundColor: c.pastelSky }]}
