@@ -176,8 +176,8 @@ export default function HrUserProfile() {
   // which unmounts the TextInput and dismisses the keyboard after a
   // single keystroke.
   const TextField = useMemo(
-    () => (
-      ({
+    () =>
+      function TextFieldInner({
         value,
         onChange,
         placeholder,
@@ -194,33 +194,34 @@ export default function HrUserProfile() {
           | "phone-pad"
           | "decimal-pad";
         autoCapitalize?: "none" | "sentences" | "characters";
-      }) => (
-        <TextInput
-          style={[
-            styles.input,
-            multiline && { minHeight: 60, textAlignVertical: "top" },
-          ]}
-          value={value}
-          onChangeText={onChange}
-          placeholder={placeholder}
-          placeholderTextColor={c.textFaint}
-          multiline={multiline}
-          keyboardType={keyboardType || "default"}
-          autoCapitalize={autoCapitalize || "sentences"}
-        />
-      )
-    ),
+      }) {
+        return (
+          <TextInput
+            style={[
+              styles.input,
+              multiline && { minHeight: 60, textAlignVertical: "top" },
+            ]}
+            value={value}
+            onChangeText={onChange}
+            placeholder={placeholder}
+            placeholderTextColor={c.textFaint}
+            multiline={multiline}
+            keyboardType={keyboardType || "default"}
+            autoCapitalize={autoCapitalize || "sentences"}
+          />
+        );
+      },
     [styles, c.textFaint]
   );
 
   const Field = useMemo(
-    () => (
-      ({
+    () =>
+      function FieldInner({
         label,
         children }: {
         label: string;
         children: React.ReactNode;
-      }) => {
+      }) {
         const child =
           React.isValidElement(children) &&
           (children.props as any).placeholder === undefined &&
@@ -234,8 +235,7 @@ export default function HrUserProfile() {
             {child}
           </View>
         );
-      }
-    ),
+      },
     [styles, TextField]
   );
 
@@ -280,17 +280,16 @@ export default function HrUserProfile() {
   );
 
   const SectionHeader = useMemo(
-    () => (
-      ({ title }: { title: string }) => (
-        <Text style={styles.sectionHeader}>{title}</Text>
-      )
-    ),
+    () =>
+      function SectionHeaderInner({ title }: { title: string }) {
+        return <Text style={styles.sectionHeader}>{title}</Text>;
+      },
     [styles]
   );
 
   const AmountOrPctField = useMemo(
-    () => (
-      ({
+    () =>
+      function AmountOrPctFieldInner({
         value,
         onChange,
         pctMode,
@@ -303,7 +302,7 @@ export default function HrUserProfile() {
         onTogglePct: (next: boolean) => void;
         basis: number;
         placeholder?: string;
-      }) => {
+      }) {
         const parsed = parseFloat(value);
         const numeric = Number.isFinite(parsed) ? parsed : 0;
         const derivedAmount = pctMode
@@ -364,8 +363,7 @@ export default function HrUserProfile() {
             )}
           </View>
         );
-      }
-    ),
+      },
     [styles, amtStyles, c.textFaint]
   );
 
