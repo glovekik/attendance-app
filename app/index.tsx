@@ -156,18 +156,9 @@ export default function Home() {
             }
             return;
           }
-          // chat_message events don't create a bell notification row, so
-          // they shouldn't bump unread. Refresh the chat badge only and
-          // skip the rest.
-          if (n && n.type === "chat_message") {
-            try {
-              const chat = await getChatUnreadCount(token);
-              setChatUnread(chat.count || 0);
-            } catch {
-              /* ignore */
-            }
-            return;
-          }
+          // chat_message events now DO write a bell row (per-recipient),
+          // so they bump unread + refresh chat badge like any other
+          // notification. The fall-through below handles it.
           setUnreadCount((c) => c + 1);
           try {
             const { count } = await getUnreadCount(token);

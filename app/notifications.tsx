@@ -36,6 +36,7 @@ const iconForType = (
   if (type.startsWith("goal")) return "flag-outline";
   if (type.startsWith("review")) return "star-outline";
   if (type.startsWith("feedback")) return "chatbubbles-outline";
+  if (type.startsWith("chat")) return "chatbubble-ellipses-outline";
   return "notifications-outline";
 };
 
@@ -50,6 +51,7 @@ const colorForType = (type: string): string => {
   if (type.startsWith("goal")) return "#06b6d4";
   if (type.startsWith("review")) return "#eab308";
   if (type.startsWith("feedback")) return "#a855f7";
+  if (type.startsWith("chat")) return "#0ea5e9";
   return "#64748b";
 };
 
@@ -164,6 +166,17 @@ export default function NotificationsScreen() {
     } else if (n.type.startsWith("reimbursement"))
       router.push("/expenses");
     else if (n.type.startsWith("timesheet")) router.push("/");
+    else if (n.type.startsWith("chat")) {
+      // chat_mention + chat_message both carry channelType / channelId
+      // in data. Office chat has no channelId; team chat does.
+      const channelType = (d as any).channelType;
+      const channelId = (d as any).channelId;
+      if (channelType === "team" && channelId) {
+        router.push(`/chat/team/${channelId}` as any);
+      } else {
+        router.push("/chat/office" as any);
+      }
+    }
     // others: stay on screen
   };
 
