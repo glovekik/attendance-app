@@ -156,9 +156,18 @@ export default function Home() {
             }
             return;
           }
-          // chat_message events now DO write a bell row (per-recipient),
-          // so they bump unread + refresh chat badge like any other
-          // notification. The fall-through below handles it.
+          // chat_message events don't write a bell row (chat traffic
+          // would flood Mongo). Refresh the dashboard chat-tile badge
+          // only and skip the bell unread bump.
+          if (n && n.type === "chat_message") {
+            try {
+              const chat = await getChatUnreadCount(token);
+              setChatUnread(chat.count || 0);
+            } catch {
+              /* ignore */
+            }
+            return;
+          }
           setUnreadCount((c) => c + 1);
           try {
             const { count } = await getUnreadCount(token);
