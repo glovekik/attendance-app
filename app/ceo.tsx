@@ -22,6 +22,9 @@ import { KpiCard } from "../src/components/KpiCard";
 import { BottomTabBar } from "../src/components/BottomTabBar";
 
 import { useTheme } from "../src/theme/ThemeProvider";
+
+const COLLAPSE_KEY = "ceoConsoleCollapsed";
+
 // CEO console — read-only org-wide KPIs. Reuses HR's dashboard endpoint
 // (backend opens it to CEO via require_hr_or_ceo). No write actions
 // surface here; any mutate-style buttons belong on the HR Console.
@@ -34,6 +37,7 @@ export default function CEOConsole() {
   const [me, setMe] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const [collapsed, setCollapsed] = useState<Record<string, boolean>>({});
 
   const load = useCallback(async () => {
     try {
@@ -60,6 +64,14 @@ export default function CEOConsole() {
   }, [router]);
 
   useEffect(() => {
+    (async () => {
+      try {
+        const raw = await AsyncStorage.getItem(COLLAPSE_KEY);
+        if (raw) setCollapsed(JSON.parse(raw));
+      } catch {
+        /* ignore */
+      }
+    })();
     load();
   }, [load]);
 
@@ -67,6 +79,22 @@ export default function CEOConsole() {
     setRefreshing(true);
     load();
   };
+
+  const toggleSection = useCallback((title: string) => {
+    setCollapsed((prev) => {
+      const next = { ...prev, [title]: !prev[title] };
+      AsyncStorage.setItem(COLLAPSE_KEY, JSON.stringify(next)).catch(() => {});
+      return next;
+    });
+  }, []);
+
+  const sectionProps = (title: string) => ({
+    title,
+    collapsed: !!collapsed[title],
+    onToggle: () => toggleSection(title),
+    styles,
+    c,
+  });
 
   if (loading) {
     return (
@@ -84,6 +112,38 @@ export default function CEOConsole() {
   const pendingCorrections = dash?.pendingCorrectionApprovals ?? 0;
   const presencePct =
     headcount > 0 ? Math.round((present / headcount) * 100) : 0;
+
+  // Org-wide pending approvals — surfaced as a strip. The CEO can drill
+  // into each queue read-only (the list endpoints allow CEO; the actual
+  // approve/reject stays HR/manager-only on the backend).
+  const pendingQueues = [
+    {
+      label: "Leaves",
+      count: pendingLeaves,
+      icon: "paper-plane" as const,
+      color: "#0f766e",
+      route: "/leave-requests" },
+    {
+      label: "Corrections",
+      count: pendingCorrections,
+      icon: "alert-circle" as const,
+      color: "#a16207",
+      route: "/corrections" },
+    {
+      label: "Manual",
+      count: dash?.pendingManualAttendanceApprovals || 0,
+      icon: "document-text" as const,
+      color: "#6d28d9",
+      route: "/hr-manual-requests" },
+    {
+      label: "Reimburse",
+      count: dash?.pendingReimbursementApprovals || 0,
+      icon: "card" as const,
+      color: "#0369a1",
+      route: "/hr-reimbursements" },
+  ];
+  const activeQueues = pendingQueues.filter((q) => q.count > 0);
+  const totalPending = activeQueues.reduce((s, q) => s + q.count, 0);
 
   return (
     <SafeAreaView style={styles.safe}>
@@ -111,15 +171,54 @@ export default function CEOConsole() {
           />
         }
       >
+        {/* ===== NEEDS ATTENTION (org-wide, read-only) ===== */}
+        {totalPending > 0 ? (
+          <View style={styles.attentionCard}>
+            <View style={styles.attentionHeader}>
+              <Ionicons name="alert-circle" size={18} color="#d97706" />
+              <Text style={styles.attentionTitle}>
+                {totalPending} pending approval{totalPending > 1 ? "s" : ""}{" "}
+                across the org
+              </Text>
+            </View>
+            <View style={styles.pillRow}>
+              {activeQueues.map((q) => (
+                <TouchableOpacity
+                  key={q.label}
+                  style={styles.pill}
+                  onPress={() => router.push(q.route as any)}
+                  activeOpacity={0.8}
+                >
+                  <Ionicons name={q.icon} size={14} color={q.color} />
+                  <Text style={styles.pillText}>{q.label}</Text>
+                  <View style={styles.pillCount}>
+                    <Text style={styles.pillCountText}>
+                      {q.count > 9 ? "9+" : q.count}
+                    </Text>
+                  </View>
+                </TouchableOpacity>
+              ))}
+            </View>
+          </View>
+        ) : (
+          <View style={styles.caughtUp}>
+            <Ionicons name="checkmark-circle" size={18} color="#16a34a" />
+            <Text style={styles.caughtUpText}>
+              No pending approvals across the org.
+            </Text>
+          </View>
+        )}
+
         {/* HEADCOUNT */}
-        <Text style={styles.section}>HEADCOUNT</Text>
-        <View style={styles.bigCard}>
-          <Text style={styles.bigValue}>{headcount}</Text>
-          <Text style={styles.bigLabel}>active employees</Text>
-        </View>
+        <Section {...sectionProps("HEADCOUNT")}>
+          <View style={styles.bigCard}>
+            <Text style={styles.bigValue}>{headcount}</Text>
+            <Text style={styles.bigLabel}>active employees</Text>
+          </View>
+        </Section>
 
         {/* TODAY */}
-        <Text style={styles.section}>TODAY</Text>
+        <Section {...sectionProps("TODAY")}>
         <View style={styles.kpiGrid}>
           <View style={styles.kpi}>
             <Text style={[styles.kpiValue, { color: "#16a34a" }]}>
@@ -150,11 +249,11 @@ export default function CEOConsole() {
             </Text>
           </View>
         </View>
+        </Section>
 
         {/* VITALS — new KPI strip */}
         {dash && (
-          <>
-            <Text style={styles.section}>VITALS</Text>
+          <Section {...sectionProps("VITALS")}>
             <View style={styles.kpiStrip}>
               <KpiCard
                 label="WFH Today"
@@ -204,13 +303,12 @@ export default function CEOConsole() {
                 numericForThreshold={dash.lateArrivalRatePct ?? undefined}
               />
             </View>
-          </>
+          </Section>
         )}
 
         {/* PAYROLL */}
         {dash?.payrollStatus && (
-          <>
-            <Text style={styles.section}>CURRENT PAYROLL</Text>
+          <Section {...sectionProps("CURRENT PAYROLL")}>
             <View style={styles.payCard}>
               <View style={{ flex: 1 }}>
                 <Text style={styles.payMonth}>
@@ -228,14 +326,13 @@ export default function CEOConsole() {
               </View>
               <Ionicons name="cash-outline" size={32} color="#16a34a" />
             </View>
-          </>
+          </Section>
         )}
 
         {/* DEPARTMENT DISTRIBUTION */}
         {dash?.employeeDistribution &&
           dash.employeeDistribution.length > 0 && (
-            <>
-              <Text style={styles.section}>BY DEPARTMENT</Text>
+            <Section {...sectionProps("BY DEPARTMENT")}>
               <View style={styles.listCard}>
                 {dash.employeeDistribution.map((row) => (
                   <View
@@ -249,13 +346,12 @@ export default function CEOConsole() {
                   </View>
                 ))}
               </View>
-            </>
+            </Section>
           )}
 
         {/* UPCOMING BIRTHDAYS */}
         {dash?.upcomingBirthdays && dash.upcomingBirthdays.length > 0 && (
-          <>
-            <Text style={styles.section}>UPCOMING BIRTHDAYS</Text>
+          <Section {...sectionProps("UPCOMING BIRTHDAYS")}>
             <View style={styles.listCard}>
               {dash.upcomingBirthdays.map((b) => (
                 <View key={b.id} style={styles.listRow}>
@@ -266,11 +362,11 @@ export default function CEOConsole() {
                 </View>
               ))}
             </View>
-          </>
+          </Section>
         )}
 
         {/* QUICK LINKS */}
-        <Text style={styles.section}>EXPLORE</Text>
+        <Section {...sectionProps("EXPLORE")}>
         <View style={styles.linkGrid}>
           <LinkTile
             icon="people-outline"
@@ -301,6 +397,7 @@ export default function CEOConsole() {
             styles={styles}
           />
         </View>
+        </Section>
 
         <View style={{ height: 40 }} />
       </ScrollView>
@@ -308,6 +405,37 @@ export default function CEOConsole() {
     </SafeAreaView>
   );
 }
+
+const Section = ({
+  title,
+  collapsed,
+  onToggle,
+  children,
+  styles,
+  c }: {
+  title: string;
+  collapsed: boolean;
+  onToggle: () => void;
+  children: React.ReactNode;
+  styles: any;
+  c: any;
+}) => (
+  <>
+    <TouchableOpacity
+      style={styles.sectionHeader}
+      onPress={onToggle}
+      activeOpacity={0.7}
+    >
+      <Text style={styles.section}>{title}</Text>
+      <Ionicons
+        name={collapsed ? "chevron-forward" : "chevron-down"}
+        size={16}
+        color={c.textMuted}
+      />
+    </TouchableOpacity>
+    {!collapsed && children}
+  </>
+);
 
 interface LinkTileProps {
   icon: keyof typeof Ionicons.glyphMap;
@@ -359,13 +487,64 @@ const makeStyles = (c: any) => StyleSheet.create({
   subtitle: { color: c.textMuted, fontSize: 12, marginTop: 3 },
 
   content: { padding: 16 },
+
+  // ===== NEEDS ATTENTION (informational) =====
+  attentionCard: {
+    backgroundColor: c.surface,
+    borderRadius: 18,
+    borderWidth: 1,
+    borderColor: "rgba(245,158,11,0.4)",
+    padding: 14 },
+  attentionHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    marginBottom: 12 },
+  attentionTitle: { color: c.text, fontSize: 14, fontWeight: "800", flex: 1 },
+  pillRow: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
+  pill: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    paddingHorizontal: 10,
+    paddingVertical: 7,
+    borderRadius: 999,
+    borderWidth: 1,
+    backgroundColor: c.surfaceMuted,
+    borderColor: c.surfaceBorder },
+  pillText: { color: c.text, fontSize: 12, fontWeight: "700" },
+  pillCount: {
+    minWidth: 18,
+    height: 18,
+    borderRadius: 9,
+    paddingHorizontal: 5,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: c.dangerText },
+  pillCountText: { color: "#fff", fontSize: 10, fontWeight: "800" },
+  caughtUp: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    borderRadius: 18,
+    borderWidth: 1,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    backgroundColor: c.surface,
+    borderColor: c.surfaceBorder },
+  caughtUpText: { color: c.textMuted, fontSize: 13, fontWeight: "600", flex: 1 },
+
+  sectionHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    marginTop: 18,
+    marginBottom: 10 },
   section: {
     color: c.textMuted,
     fontSize: 11,
     letterSpacing: 2,
-    fontWeight: "700",
-    marginTop: 18,
-    marginBottom: 10 },
+    fontWeight: "700" },
 
   bigCard: {
     backgroundColor: c.surface,

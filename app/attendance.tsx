@@ -21,6 +21,7 @@ import {
   getToday,
   getMe } from "../src/services/api";
 import { getMyTasks } from "../src/services/tasks";
+import { listTodos } from "../src/services/todos";
 import { dateToYMD } from "../src/components/WebDateField";
 import {
   OFFICE,
@@ -35,7 +36,10 @@ import {
   BOTTOM_BAR_RESERVED_HEIGHT } from "../src/components/BottomTabBar";
 import { notify } from "../src/utils/confirm";
 
-const TYPES = ["OFFICE", "WFH", "LEAVE", "HOLIDAY"] as const;
+// LEAVE and HOLIDAY are intentionally not selectable here: leave days are
+// set automatically when a leave request is approved, and holidays are
+// declared by HR. Users only choose how they're working today.
+const TYPES = ["OFFICE", "WFH"] as const;
 type AttType = (typeof TYPES)[number];
 
 /**
@@ -57,6 +61,7 @@ export default function Attendance() {
   const [workNotes, setWorkNotes] = useState("");
   const [acting, setActing] = useState(false);
   const [pulling, setPulling] = useState(false);
+  const [pullingTodos, setPullingTodos] = useState(false);
 
   const load = useCallback(async () => {
     try {
@@ -195,7 +200,12 @@ export default function Attendance() {
         notify("Nothing today", "No tasks completed today yet.");
         return;
       }
-      const summary = done.map((t) => `- ${t.title}`).join("\n");
+      const summary = done
+        .map((t) => {
+          const desc = t.description?.trim();
+          return desc ? `- ${t.title}: ${desc}` : `- ${t.title}`;
+        })
+        .join("\n");
       setWorkNotes((prev) =>
         prev.trim() ? `${prev}\n${summary}` : summary
       );
@@ -203,6 +213,45 @@ export default function Attendance() {
       notify("Couldn't pull tasks", err?.message || "");
     } finally {
       setPulling(false);
+    }
+  };
+
+  const pullFromTodos = async () => {
+    if (pullingTodos) return;
+    try {
+      setPullingTodos(true);
+      const token = await AsyncStorage.getItem("token");
+      if (!token) return;
+      const todos = await listTodos(token, {
+        status: "DONE",
+        limit: 30 });
+      const today = new Date();
+      const done = (todos || []).filter((t) => {
+        if (!t.completedAt) return false;
+        const d = new Date(t.completedAt);
+        return (
+          d.getFullYear() === today.getFullYear() &&
+          d.getMonth() === today.getMonth() &&
+          d.getDate() === today.getDate()
+        );
+      });
+      if (done.length === 0) {
+        notify("Nothing today", "No to-dos completed today yet.");
+        return;
+      }
+      const summary = done
+        .map((t) => {
+          const desc = t.description?.trim();
+          return desc ? `- ${t.title}: ${desc}` : `- ${t.title}`;
+        })
+        .join("\n");
+      setWorkNotes((prev) =>
+        prev.trim() ? `${prev}\n${summary}` : summary
+      );
+    } catch (err: any) {
+      notify("Couldn't pull to-dos", err?.message || "");
+    } finally {
+      setPullingTodos(false);
     }
   };
 
@@ -224,19 +273,13 @@ export default function Attendance() {
 
   const typeIconBg: Record<AttType, string> = {
     OFFICE: c.pastelLavender,
-    WFH: c.pastelMint,
-    LEAVE: c.pastelPeach,
-    HOLIDAY: c.pastelYellow };
+    WFH: c.pastelMint };
   const typeIconFg: Record<AttType, string> = {
     OFFICE: "#6d28d9",
-    WFH: "#15803d",
-    LEAVE: "#c2410c",
-    HOLIDAY: "#a16207" };
+    WFH: "#15803d" };
   const typeIconName: Record<AttType, keyof typeof Ionicons.glyphMap> = {
     OFFICE: "business-outline",
-    WFH: "home-outline",
-    LEAVE: "airplane-outline",
-    HOLIDAY: "sunny-outline" };
+    WFH: "home-outline" };
 
   return (
     <SafeAreaView style={[styles.safe, { backgroundColor: c.bg }]}>
@@ -379,20 +422,37 @@ export default function Attendance() {
               <Text style={[styles.section, { color: c.textMuted }]}>
                 WORK NOTES
               </Text>
-              <TouchableOpacity
-                onPress={pullFromTasks}
-                disabled={pulling}
-                activeOpacity={0.7}
-              >
-                <Text
-                  style={{
-                    color: c.accent,
-                    fontSize: 12,
-                    fontWeight: "800" }}
+              <View style={styles.pullActions}>
+                <TouchableOpacity
+                  onPress={pullFromTasks}
+                  disabled={pulling}
+                  activeOpacity={0.7}
                 >
-                  {pulling ? "…" : "Pull from tasks"}
-                </Text>
-              </TouchableOpacity>
+                  <Text
+                    style={{
+                      color: c.accent,
+                      fontSize: 12,
+                      fontWeight: "800" }}
+                  >
+                    {pulling ? "…" : "Pull from tasks"}
+                  </Text>
+                </TouchableOpacity>
+                <Text style={{ color: c.textFaint, fontSize: 12 }}>·</Text>
+                <TouchableOpacity
+                  onPress={pullFromTodos}
+                  disabled={pullingTodos}
+                  activeOpacity={0.7}
+                >
+                  <Text
+                    style={{
+                      color: c.accent,
+                      fontSize: 12,
+                      fontWeight: "800" }}
+                  >
+                    {pullingTodos ? "…" : "Pull from to-do"}
+                  </Text>
+                </TouchableOpacity>
+              </View>
             </View>
             <TextInput
               style={[
@@ -512,6 +572,41 @@ export default function Attendance() {
             color={c.textMuted}
           />
         </TouchableOpacity>
+
+        {/* QUICK LINK to leaves */}
+        <TouchableOpacity
+          onPress={() => router.push("/leaves")}
+          activeOpacity={0.85}
+          style={[
+            styles.historyLink,
+            {
+              backgroundColor: c.surface,
+              borderColor: c.surfaceBorder,
+              shadowColor: c.shadow },
+          ]}
+        >
+          <View
+            style={[
+              styles.leavesIcon,
+              { backgroundColor: c.pastelPeach },
+            ]}
+          >
+            <Ionicons name="airplane-outline" size={20} color="#c2410c" />
+          </View>
+          <View style={{ flex: 1 }}>
+            <Text style={[styles.historyTitle, { color: c.text }]}>
+              Leaves
+            </Text>
+            <Text style={[styles.historySub, { color: c.textMuted }]}>
+              Apply for leave, view balances and requests
+            </Text>
+          </View>
+          <Ionicons
+            name="chevron-forward"
+            size={20}
+            color={c.textMuted}
+          />
+        </TouchableOpacity>
       </ScrollView>
 
       <BottomTabBar user={me} />
@@ -606,6 +701,10 @@ const makeStyles = (c: any) => StyleSheet.create({
     alignItems: "center",
     justifyContent: "space-between",
     marginRight: 4 },
+  pullActions: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8 },
   textArea: {
     minHeight: 110,
     padding: 14,
@@ -671,4 +770,10 @@ const makeStyles = (c: any) => StyleSheet.create({
     shadowOffset: { width: 0, height: 4 },
     elevation: 2 },
   historyTitle: { fontSize: 15, fontWeight: "800" },
-  historySub: { fontSize: 12, marginTop: 2 } });
+  historySub: { fontSize: 12, marginTop: 2 },
+  leavesIcon: {
+    width: 40,
+    height: 40,
+    borderRadius: 14,
+    alignItems: "center",
+    justifyContent: "center" } });

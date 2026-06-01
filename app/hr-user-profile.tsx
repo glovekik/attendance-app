@@ -399,6 +399,7 @@ export default function HrUserProfile() {
   // Editable basics — these are entered at create time in users.tsx
   // and now also editable here so HR can correct anything later.
   const [editableName, setEditableName] = useState("");
+  const [editableEmail, setEditableEmail] = useState("");
   const [editableTag, setEditableTag] = useState("");
   const [editableEmployeeCode, setEditableEmployeeCode] = useState("");
   const [editableWorkPhone, setEditableWorkPhone] = useState("");
@@ -580,6 +581,7 @@ export default function HrUserProfile() {
       // Hydrate form from response (defensive defaults)
       setProfilePictureUrl(u.profilePictureUrl || "");
       setEditableName(u.name || "");
+      setEditableEmail(u.email || "");
       setEditableTag(u.tag || "Employee");
       setEditableEmployeeCode(u.employeeCode || "");
       setEditableWorkPhone(u.workPhone || "");
@@ -611,7 +613,11 @@ export default function HrUserProfile() {
       const p = u.personal || {};
       setPersonalEmail(p.personalEmail || "");
       setPhone(p.phone || "");
-      setLegalName(p.legalName || "");
+      // Legal name defaults to the account name when HR hasn't set one
+      // explicitly — creation only captures "Name", so this keeps the
+      // field populated (and persists it on the next save) instead of
+      // showing blank on every profile.
+      setLegalName(p.legalName || u.name || "");
       setBirthday(p.birthday || "");
       setPlaceOfBirth(p.placeOfBirth || "");
       setGender(p.gender || "");
@@ -983,6 +989,7 @@ export default function HrUserProfile() {
       ...rolePayload,
       // Editable basics
       name: opt(editableName),
+      email: opt(editableEmail),
       tag: opt(editableTag),
       employeeCode: opt(editableEmployeeCode),
       workPhone: opt(editableWorkPhone),
@@ -1264,6 +1271,15 @@ export default function HrUserProfile() {
                   value={editableName}
                   onChange={setEditableName}
                   placeholder="Full name"
+                />
+              </Field>
+              <Field label="Login Email">
+                <TextField
+                  value={editableEmail}
+                  onChange={setEditableEmail}
+                  placeholder="name@company.com"
+                  keyboardType="email-address"
+                  autoCapitalize="none"
                 />
               </Field>
               <Field label="Designation">

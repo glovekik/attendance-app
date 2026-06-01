@@ -409,6 +409,10 @@ export interface Payslip {
   totalDeductions: number;
   netPay: number;
   status: PayslipStatus;
+  // Release state — whether HR has sent this payslip to the employee.
+  // Unsent payslips are invisible to the employee.
+  sent?: boolean;
+  sentAt?: string | null;
   notes?: string;
   generatedAt: string;
 }

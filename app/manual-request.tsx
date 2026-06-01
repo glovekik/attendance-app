@@ -1,7 +1,7 @@
 ﻿import React, {
   useEffect,
   useState,
-  useCallback, useMemo} from "react";
+  useCallback, useMemo, useRef} from "react";
 
 import {
   View,
@@ -19,7 +19,7 @@ import { SafeAreaView } from "react-native-safe-area-context";
 
 import AsyncStorage from "@react-native-async-storage/async-storage";
 
-import { useRouter, useFocusEffect } from "expo-router";
+import { useRouter, useFocusEffect, useLocalSearchParams } from "expo-router";
 
 import { Ionicons } from "@expo/vector-icons";
 
@@ -58,6 +58,13 @@ export default function ManualRequest() {
   const { theme } = useTheme();
   const c = theme.colors;
   const s = useMemo(() => makeStyles(c), [c]);
+
+  // When opened from History's "Request attendance" button, a `date` param
+  // pre-fills the form and pops it open automatically (once).
+  const params = useLocalSearchParams<{ date?: string }>();
+  // Remembers the last date we auto-opened for, so revisiting with a new
+  // date re-opens but the same date doesn't reopen on every re-render.
+  const prefilledForRef = useRef<string | null>(null);
 
   const [items, setItems] = useState<ManualAttendanceRequest[]>([]);
   const [loading, setLoading] = useState(true);
@@ -121,6 +128,22 @@ export default function ManualRequest() {
       load();
     }, [load])
   );
+
+  // Pre-fill + auto-open when arriving with a ?date= param from History.
+  useEffect(() => {
+    const ymd = params.date ? String(params.date) : null;
+    if (!ymd || prefilledForRef.current === ymd) return;
+    const d = ymdToDate(ymd);
+    if (!d) return;
+    prefilledForRef.current = ymd;
+    setDate(d);
+    setCheckInTime(null);
+    setCheckOutTime(null);
+    setType("OFFICE");
+    setReason("");
+    setSubmitError(null);
+    setModalVisible(true);
+  }, [params.date]);
 
   const openForm = () => {
     setDate(new Date());

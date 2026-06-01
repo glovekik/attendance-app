@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useCallback, useState } from "react";
 
 import {
   View,
@@ -8,11 +8,13 @@ import {
   Platform,
 } from "react-native";
 
-import { useRouter, usePathname } from "expo-router";
+import { useRouter, usePathname, useFocusEffect } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 
 import { useTheme } from "../theme/ThemeProvider";
+import { getChatUnreadCount } from "../services/chat";
 import { User, hasRole, isManager, isCEO } from "../types";
 
 /**
@@ -28,7 +30,7 @@ import { User, hasRole, isManager, isCEO } from "../types";
  * bar visually stable as you switch tabs.
  *
  * Role-aware:
- *   Employee:  Home / Attendance / Leaves / Tasks / Profile
+ *   Employee:  Home / Attendance / Office Chat / Tasks / Profile
  *   Manager:   Home / Team / Approvals / Tasks / Profile
  *   HR:        Home / Employees / HR Admin / Reports / Profile
  *   CEO:       Home / Console / Employees / Reports / Profile
@@ -68,12 +70,12 @@ const employeeTabs: TabDef[] = [
     matchPrefixes: ["/attendance", "/history"],
   },
   {
-    key: "leaves",
-    label: "Leaves",
-    icon: "airplane-outline",
-    iconActive: "airplane",
-    route: "/leaves",
-    matchPrefixes: ["/leaves"],
+    key: "chat",
+    label: "Office Chat",
+    icon: "chatbubbles-outline",
+    iconActive: "chatbubbles",
+    route: "/chat/office",
+    matchPrefixes: ["/chat"],
   },
   {
     key: "tasks",
@@ -201,15 +203,49 @@ const pickTabs = (user: User | null): TabDef[] => {
 
 interface Props {
   user: User | null;
+  // Optional live unread count for the Office Chat tab. When provided (e.g.
+  // the dashboard keeps it fresh via SSE) it takes precedence; otherwise the
+  // bar fetches the count itself whenever it regains focus.
+  chatUnread?: number;
+  // Optional badge counts keyed by tab key (e.g. { admin: 4 } or
+  // { approvals: 7 }) — lets a console badge its primary action tab with
+  // the aggregate pending count it already computed.
+  badges?: Record<string, number>;
 }
 
-export const BottomTabBar = ({ user }: Props) => {
+export const BottomTabBar = ({ user, chatUnread, badges }: Props) => {
   const router = useRouter();
   const pathname = usePathname() || "/";
   const { theme } = useTheme();
   const insets = useSafeAreaInsets();
 
   const tabs = pickTabs(user);
+  const showsChatTab = tabs.some((t) => t.key === "chat");
+
+  // Self-fetch the unread count when the parent doesn't supply one, so the
+  // Office Chat badge stays accurate on every screen that renders the bar.
+  const [fetchedUnread, setFetchedUnread] = useState(0);
+  useFocusEffect(
+    useCallback(() => {
+      if (chatUnread !== undefined || !showsChatTab) return;
+      let active = true;
+      (async () => {
+        try {
+          const token = await AsyncStorage.getItem("token");
+          if (!token) return;
+          const { count } = await getChatUnreadCount(token);
+          if (active) setFetchedUnread(count || 0);
+        } catch {
+          /* badge just won't update — non-fatal */
+        }
+      })();
+      return () => {
+        active = false;
+      };
+    }, [chatUnread, showsChatTab])
+  );
+
+  const unreadForChat = chatUnread ?? fetchedUnread;
 
   const isActive = (t: TabDef): boolean => {
     if (t.key === "home") {
@@ -247,6 +283,9 @@ export const BottomTabBar = ({ user }: Props) => {
         {tabs.map((t) => {
           const active = isActive(t);
           const iconName = active && t.iconActive ? t.iconActive : t.icon;
+          // Chat badge is self-fetched; all others come from the badges map.
+          const badgeCount =
+            t.key === "chat" ? unreadForChat : badges?.[t.key] ?? 0;
           return (
             <TouchableOpacity
               key={t.key}
@@ -267,6 +306,18 @@ export const BottomTabBar = ({ user }: Props) => {
                   size={20}
                   color={active ? theme.colors.accent : theme.colors.textMuted}
                 />
+                {badgeCount > 0 && (
+                  <View
+                    style={[
+                      styles.badge,
+                      { backgroundColor: theme.colors.dangerText },
+                    ]}
+                  >
+                    <Text style={styles.badgeText}>
+                      {badgeCount > 9 ? "9+" : badgeCount}
+                    </Text>
+                  </View>
+                )}
               </View>
               <Text
                 style={[
@@ -330,6 +381,22 @@ const styles = StyleSheet.create({
     borderRadius: 999,
     alignItems: "center",
     justifyContent: "center",
+  },
+  badge: {
+    position: "absolute",
+    top: -4,
+    right: 2,
+    minWidth: 18,
+    height: 18,
+    borderRadius: 9,
+    paddingHorizontal: 4,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  badgeText: {
+    color: "#fff",
+    fontSize: 10,
+    fontWeight: "800",
   },
   label: {
     fontSize: 11,

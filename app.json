@@ -1,6 +1,6 @@
 {
   "expo": {
-    "name": "4SightAI",
+    "name": "ForeSentry",
     "slug": "attendance-app",
     "version": "1.0.0",
     "orientation": "portrait",
@@ -24,6 +24,7 @@
       },
       "edgeToEdgeEnabled": true,
       "predictiveBackGestureEnabled": false,
+      "softwareKeyboardLayoutMode": "pan",
       "permissions": [
         "ACCESS_COARSE_LOCATION",
         "ACCESS_FINE_LOCATION"

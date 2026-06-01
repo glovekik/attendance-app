@@ -8,7 +8,6 @@ import {
   View,
   Text,
   StyleSheet,
-  FlatList,
   TouchableOpacity,
   ActivityIndicator,
   Modal,
@@ -43,6 +42,8 @@ import {
   listMyCorrections,
 } from "../src/services/corrections";
 
+import { listHolidays } from "../src/services/holidays";
+
 import { AttendanceCorrection, User, hasRole } from "../src/types";
 import { useTheme } from "../src/theme/ThemeProvider";
 
@@ -63,11 +64,28 @@ export default function History() {
 
   const [me, setMe] = useState<User | null>(null);
 
-  // Month filter for the table view — defaults to the current month
-  // so the screen opens on "this month's attendance till date".
+  // HR-declared holidays, keyed by YYYY-MM-DD → name. Accumulated across
+  // whatever years the user navigates to.
+  const [holidayByDate, setHolidayByDate] = useState<Record<string, string>>(
+    {}
+  );
+
+  // Month shown in the calendar — defaults to the current month so the
+  // screen opens on "this month's attendance till date".
   const todayDate = new Date();
   const [filterYear, setFilterYear] = useState(todayDate.getFullYear());
   const [filterMonth, setFilterMonth] = useState(todayDate.getMonth() + 1);
+
+  // Zero-padded date helpers + the day the user has tapped in the calendar.
+  const pad2 = (n: number) => String(n).padStart(2, "0");
+  const ymdOf = (y: number, m: number, d: number) =>
+    `${y}-${pad2(m)}-${pad2(d)}`;
+  const todayYmd = ymdOf(
+    todayDate.getFullYear(),
+    todayDate.getMonth() + 1,
+    todayDate.getDate()
+  );
+  const [selectedYmd, setSelectedYmd] = useState<string | null>(todayYmd);
 
   // ================= POPUP =================
   const [popup, setPopup] =
@@ -175,10 +193,92 @@ export default function History() {
     }
   };
 
-  const inSelectedMonth = (dateStr?: string) => {
-    if (!dateStr) return false;
-    const [yy, mm] = dateStr.split("-").map(Number);
-    return yy === filterYear && mm === filterMonth;
+  // Index attendance rows by their date string for O(1) calendar lookups.
+  const byDate = useMemo(() => {
+    const map: Record<string, any> = {};
+    for (const r of history) {
+      if (r?.date) map[r.date] = r;
+    }
+    return map;
+  }, [history]);
+
+  // Build the calendar grid (weeks of day-numbers, null = blank padding).
+  const weeks = useMemo(() => {
+    const firstWeekday = new Date(filterYear, filterMonth - 1, 1).getDay();
+    const daysInMonth = new Date(filterYear, filterMonth, 0).getDate();
+    const cells: (number | null)[] = [];
+    for (let i = 0; i < firstWeekday; i++) cells.push(null);
+    for (let d = 1; d <= daysInMonth; d++) cells.push(d);
+    while (cells.length % 7 !== 0) cells.push(null);
+    const rows: (number | null)[][] = [];
+    for (let i = 0; i < cells.length; i += 7) rows.push(cells.slice(i, i + 7));
+    return rows;
+  }, [filterYear, filterMonth]);
+
+  const prettyDate = (ymd: string) => {
+    const [y, m, d] = ymd.split("-").map(Number);
+    return new Date(y, m - 1, d).toLocaleDateString("en-US", {
+      weekday: "long",
+      year: "numeric",
+      month: "long",
+      day: "numeric",
+    });
+  };
+
+  // Calendar colour key. Sundays are treated as the weekly holiday, so a
+  // past weekday with no record is the only thing flagged "missed" (red).
+  // HR-declared holidays beyond Sunday are future work — for now only the
+  // record's own attendanceType (LEAVE / HOLIDAY) and Sundays drive those
+  // two colours.
+  const DAY_COLORS = {
+    present: "#16a34a",
+    inprogress: c.accent,
+    autoclosed: "#f59e0b",
+    leave: "#7c3aed",
+    holiday: "#64748b",
+    missed: "#dc2626",
+  };
+
+  type DayKind =
+    | "present"
+    | "inprogress"
+    | "autoclosed"
+    | "leave"
+    | "holiday"
+    | "missed"
+    | "none";
+
+  const classifyDay = (
+    ymd: string
+  ): { kind: DayKind; color: string | null } => {
+    const rec = byDate[ymd];
+    const [yy, mm, dd] = ymd.split("-").map(Number);
+    const isSunday = new Date(yy, mm - 1, dd).getDay() === 0;
+    const isPast = ymd < todayYmd;
+
+    if (rec) {
+      const t = rec.attendanceType;
+      if (t === "LEAVE") return { kind: "leave", color: DAY_COLORS.leave };
+      if (t === "HOLIDAY")
+        return { kind: "holiday", color: DAY_COLORS.holiday };
+      if (rec.autoClosedByCron)
+        return { kind: "autoclosed", color: DAY_COLORS.autoclosed };
+      if (rec.checkOut) return { kind: "present", color: DAY_COLORS.present };
+      return { kind: "inprogress", color: DAY_COLORS.inprogress };
+    }
+    // No record on this day.
+    // An HR-declared holiday takes precedence over "missed" — a past
+    // working day that was actually a holiday shouldn't be flagged red.
+    if (holidayByDate[ymd])
+      return { kind: "holiday", color: DAY_COLORS.holiday };
+    if (isSunday) return { kind: "holiday", color: DAY_COLORS.holiday };
+    if (isPast) return { kind: "missed", color: DAY_COLORS.missed };
+    return { kind: "none", color: null };
+  };
+
+  // Open the existing Manual Attendance flow pre-filled with the tapped day.
+  const goRequestAttendance = (ymd: string) => {
+    router.push({ pathname: "/manual-request", params: { date: ymd } } as any);
   };
 
   const hoursBetween = (
@@ -592,6 +692,27 @@ export default function History() {
     loadHistory();
   }, []);
 
+  // Load HR-declared holidays for the year currently shown, merging into
+  // the accumulated map so navigating across years keeps prior fetches.
+  useEffect(() => {
+    (async () => {
+      try {
+        const token = await AsyncStorage.getItem("token");
+        if (!token) return;
+        const hols = await listHolidays(token, { year: filterYear });
+        setHolidayByDate((prev) => {
+          const next = { ...prev };
+          for (const h of hols || []) {
+            if (h?.date) next[h.date] = h.name || "Holiday";
+          }
+          return next;
+        });
+      } catch {
+        // Non-fatal — calendar just won't show declared holidays.
+      }
+    })();
+  }, [filterYear]);
+
   // ================= LOADING =================
   if (loading) {
 
@@ -657,256 +778,307 @@ export default function History() {
 
       </View>
 
-      {/* Manual entry is no longer surfaced here — employees raise a
-          request via /manual-request, and HR/Manager approve from their
-          own consoles. HR can still mark attendance for an employee from
-          the HR Admin → Daily Attendance flow. */}
-
-      {/* MONTH FILTER + TABLE */}
-      <View style={styles.monthNav}>
-        <TouchableOpacity onPress={goPrevMonth} hitSlop={10}>
-          <Ionicons name="chevron-back" size={20} color={c.textMuted} />
-        </TouchableOpacity>
-        <Text style={styles.monthLabel}>
-          {monthLabel(filterYear, filterMonth)}
-        </Text>
-        <TouchableOpacity onPress={goNextMonth} hitSlop={10}>
-          <Ionicons name="chevron-forward" size={20} color={c.textMuted} />
-        </TouchableOpacity>
-      </View>
-
-      <View style={styles.tableCard}>
-        <View style={[styles.tableRow, styles.tableHead]}>
-          <Text style={[styles.tableCell, styles.tableCellDate, styles.tableHeadText]}>
-            Date
+      <ScrollView
+        showsVerticalScrollIndicator={false}
+        contentContainerStyle={{ paddingBottom: 40 }}
+      >
+        {/* MONTH NAV */}
+        <View style={styles.monthNav}>
+          <TouchableOpacity onPress={goPrevMonth} hitSlop={10}>
+            <Ionicons name="chevron-back" size={20} color={c.textMuted} />
+          </TouchableOpacity>
+          <Text style={styles.monthLabel}>
+            {monthLabel(filterYear, filterMonth)}
           </Text>
-          <Text style={[styles.tableCell, styles.tableHeadText]}>Clock In</Text>
-          <Text style={[styles.tableCell, styles.tableHeadText]}>Clock Out</Text>
-          <Text style={[styles.tableCell, styles.tableHeadText]}>Total</Text>
+          <TouchableOpacity onPress={goNextMonth} hitSlop={10}>
+            <Ionicons name="chevron-forward" size={20} color={c.textMuted} />
+          </TouchableOpacity>
         </View>
 
-        {(() => {
-          const monthRows = history.filter((r) => inSelectedMonth(r.date));
-          if (monthRows.length === 0) {
-            return (
-              <View style={styles.tableEmpty}>
-                <Text style={styles.tableEmptyText}>
-                  No attendance recorded for {monthLabel(filterYear, filterMonth)}.
-                </Text>
-              </View>
-            );
-          }
-          return monthRows.map((r) => (
-            <View key={`tbl-${r.id}`} style={styles.tableRow}>
-              <Text style={[styles.tableCell, styles.tableCellDate]}>
-                {r.date}
+        {/* CALENDAR */}
+        <View style={styles.calCard}>
+          <View style={styles.weekHeader}>
+            {["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].map((d) => (
+              <Text key={d} style={styles.weekHeadCell}>
+                {d}
               </Text>
-              <Text style={styles.tableCell}>{shortTime(r.checkIn)}</Text>
-              <Text style={styles.tableCell}>{shortTime(r.checkOut)}</Text>
-              <Text style={[styles.tableCell, { color: "#22c55e" }]}>
-                {hoursBetween(r.checkIn, r.checkOut)}
-              </Text>
+            ))}
+          </View>
+
+          {weeks.map((row, ri) => (
+            <View key={`w-${ri}`} style={styles.weekRow}>
+              {row.map((day, ci) => {
+                if (day === null) {
+                  return <View key={`b-${ci}`} style={styles.dayCell} />;
+                }
+                const ymd = ymdOf(filterYear, filterMonth, day);
+                const isToday = ymd === todayYmd;
+                const isSelected = ymd === selectedYmd;
+                const { color: dotColor } = classifyDay(ymd);
+                return (
+                  <TouchableOpacity
+                    key={`d-${day}`}
+                    style={[
+                      styles.dayCell,
+                      isToday && !isSelected && styles.dayCellToday,
+                      isSelected && styles.dayCellSelected,
+                    ]}
+                    onPress={() => setSelectedYmd(ymd)}
+                    activeOpacity={0.7}
+                  >
+                    <Text
+                      style={[
+                        styles.dayNum,
+                        isSelected && { color: "#fff" },
+                      ]}
+                    >
+                      {day}
+                    </Text>
+                    {dotColor && (
+                      <View
+                        style={[
+                          styles.dayDot,
+                          {
+                            backgroundColor: isSelected ? "#fff" : dotColor,
+                          },
+                        ]}
+                      />
+                    )}
+                  </TouchableOpacity>
+                );
+              })}
             </View>
-          ));
-        })()}
-      </View>
+          ))}
+        </View>
 
-      {/* LIST */}
-      <FlatList
-        data={history}
-        keyExtractor={(item) =>
-          item.id
-        }
-        contentContainerStyle={{
-          paddingBottom: 40,
-        }}
-        renderItem={({ item }) => {
+        {/* LEGEND */}
+        <View style={styles.legend}>
+          <View style={styles.legendItem}>
+            <View
+              style={[styles.legendDot, { backgroundColor: DAY_COLORS.present }]}
+            />
+            <Text style={styles.legendText}>Present</Text>
+          </View>
+          <View style={styles.legendItem}>
+            <View
+              style={[
+                styles.legendDot,
+                { backgroundColor: DAY_COLORS.inprogress },
+              ]}
+            />
+            <Text style={styles.legendText}>In progress</Text>
+          </View>
+          <View style={styles.legendItem}>
+            <View
+              style={[
+                styles.legendDot,
+                { backgroundColor: DAY_COLORS.autoclosed },
+              ]}
+            />
+            <Text style={styles.legendText}>Auto-closed</Text>
+          </View>
+          <View style={styles.legendItem}>
+            <View
+              style={[styles.legendDot, { backgroundColor: DAY_COLORS.missed }]}
+            />
+            <Text style={styles.legendText}>Missed</Text>
+          </View>
+          <View style={styles.legendItem}>
+            <View
+              style={[styles.legendDot, { backgroundColor: DAY_COLORS.leave }]}
+            />
+            <Text style={styles.legendText}>Leave</Text>
+          </View>
+          <View style={styles.legendItem}>
+            <View
+              style={[styles.legendDot, { backgroundColor: DAY_COLORS.holiday }]}
+            />
+            <Text style={styles.legendText}>Holiday</Text>
+          </View>
+        </View>
 
-          const corr = correctionFor(item.id);
-          const isPending = corr?.status === "PENDING";
-          const isRejected = corr?.status === "REJECTED";
-          const showCorrectionBtn =
-            item.autoClosedByCron && !isPending;
+        {/* DAY DETAIL */}
+        {selectedYmd &&
+          (() => {
+            const item = byDate[selectedYmd];
 
-          return (
-          <View style={styles.card}>
-
-            {/* TOP */}
-            <View style={styles.topRow}>
-
-              <View>
-
-                <Text style={styles.date}>
-                  {item.date}
-                </Text>
-
-                <Text style={styles.type}>
-                  {
-                    item.attendanceType
-                  }
-                </Text>
-
-              </View>
-
-              <View
-                style={[
-
-                  styles.badge,
-
-                  item.status ===
-                  "COMPLETED"
-
-                    ? styles.completedBadge
-
-                    : styles.activeBadge,
-                ]}
-              >
-
-                <Text
-                  style={styles.badgeText}
-                >
-                  {item.status}
-                </Text>
-
-              </View>
-
-            </View>
-
-            {/* FLAG BANNER */}
-            {item.autoClosedByCron && (
-              <View style={styles.flagBanner}>
-                <Ionicons
-                  name="alert-circle-outline"
-                  size={16}
-                  color="#fb923c"
-                />
-                <View style={{ flex: 1 }}>
-                  <Text style={styles.flagTitle}>
-                    Auto-closed at midnight
+            if (!item) {
+              const cls = classifyDay(selectedYmd);
+              const isFuture = selectedYmd > todayYmd;
+              const declaredHoliday = holidayByDate[selectedYmd];
+              return (
+                <View style={styles.detailCard}>
+                  <Text style={styles.detailDate}>
+                    {prettyDate(selectedYmd)}
                   </Text>
-                  <Text style={styles.flagSub}>
-                    Looks like you forgot to check out.
-                    {isPending
-                      ? " Correction request pending HR review."
-                      : isRejected && corr?.rejectionReason
-                      ? ` Last request rejected: ${corr.rejectionReason}`
-                      : isRejected
-                      ? " Last correction was rejected."
-                      : " Request a correction to set the right time."}
+                  <View style={styles.emptyDetail}>
+                    <Ionicons
+                      name={
+                        cls.kind === "holiday"
+                          ? "sunny-outline"
+                          : isFuture
+                          ? "calendar-outline"
+                          : "alert-circle-outline"
+                      }
+                      size={28}
+                      color={cls.color || c.textMuted}
+                    />
+                    <Text style={styles.emptyDetailText}>
+                      {cls.kind === "holiday"
+                        ? declaredHoliday
+                          ? `Holiday — ${declaredHoliday}`
+                          : "Weekly holiday (Sunday)."
+                        : isFuture
+                        ? "Upcoming day."
+                        : "No attendance recorded — looks like a missed day."}
+                    </Text>
+                    {!isFuture &&
+                      (cls.kind === "missed" || cls.kind === "holiday") && (
+                        <TouchableOpacity
+                          style={styles.requestBtn}
+                          onPress={() => goRequestAttendance(selectedYmd)}
+                        >
+                          <Ionicons
+                            name="add-circle-outline"
+                            size={16}
+                            color="#fff"
+                          />
+                          <Text style={styles.correctionBtnText}>
+                            {cls.kind === "holiday"
+                              ? "Worked this day? Request attendance"
+                              : "Request attendance"}
+                          </Text>
+                        </TouchableOpacity>
+                      )}
+                  </View>
+                </View>
+              );
+            }
+
+            const corr = correctionFor(item.id);
+            const isPending = corr?.status === "PENDING";
+            const isRejected = corr?.status === "REJECTED";
+
+            return (
+              <View style={styles.detailCard}>
+                {/* HEADER */}
+                <View style={styles.topRow}>
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.detailDate}>
+                      {prettyDate(selectedYmd)}
+                    </Text>
+                    <Text style={styles.type}>{item.attendanceType}</Text>
+                  </View>
+                  <View
+                    style={[
+                      styles.badge,
+                      item.status === "COMPLETED"
+                        ? styles.completedBadge
+                        : styles.activeBadge,
+                    ]}
+                  >
+                    <Text style={styles.badgeText}>{item.status}</Text>
+                  </View>
+                </View>
+
+                {/* FLAG BANNER */}
+                {item.autoClosedByCron && (
+                  <View style={styles.flagBanner}>
+                    <Ionicons
+                      name="alert-circle-outline"
+                      size={16}
+                      color="#fb923c"
+                    />
+                    <View style={{ flex: 1 }}>
+                      <Text style={styles.flagTitle}>
+                        Auto-closed at midnight
+                      </Text>
+                      <Text style={styles.flagSub}>
+                        Looks like you forgot to check out.
+                        {isPending
+                          ? " Correction request pending HR review."
+                          : isRejected && corr?.rejectionReason
+                          ? ` Last request rejected: ${corr.rejectionReason}`
+                          : isRejected
+                          ? " Last correction was rejected."
+                          : " Request a correction to set the right time."}
+                      </Text>
+                    </View>
+                  </View>
+                )}
+
+                {/* TIMING */}
+                <View style={styles.infoRow}>
+                  <Text style={styles.label}>Check In</Text>
+                  <Text style={styles.value}>{shortTime(item.checkIn)}</Text>
+                </View>
+                <View style={styles.infoRow}>
+                  <Text style={styles.label}>Check Out</Text>
+                  <Text style={styles.value}>{shortTime(item.checkOut)}</Text>
+                </View>
+                <View style={styles.infoRow}>
+                  <Text style={styles.label}>Total</Text>
+                  <Text style={[styles.value, { color: "#22c55e" }]}>
+                    {hoursBetween(item.checkIn, item.checkOut)}
                   </Text>
                 </View>
+
+                {/* NOTES */}
+                <View style={styles.notesBox}>
+                  <Text style={styles.notesLabel}>Work notes</Text>
+                  <Text style={styles.notes}>
+                    {item.workNotes || "No notes"}
+                  </Text>
+                </View>
+
+                {/* PENDING CORRECTION NOTE (non-HR) */}
+                {!hasRole(me, "HR") && isPending && (
+                  <Text style={styles.pendingNote}>
+                    Correction request pending review.
+                  </Text>
+                )}
+
+                {/* ACTIONS */}
+                {hasRole(me, "HR") ? (
+                  <View style={styles.actions}>
+                    <TouchableOpacity
+                      style={styles.editBtn}
+                      onPress={() => openEdit(item)}
+                    >
+                      <Ionicons
+                        name="create-outline"
+                        size={18}
+                        color="#fff"
+                      />
+                      <Text style={styles.btnText}>Edit</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      style={styles.deleteBtn}
+                      onPress={() => handleDelete(item.id)}
+                    >
+                      <Ionicons
+                        name="trash-outline"
+                        size={18}
+                        color="#fff"
+                      />
+                      <Text style={styles.btnText}>Delete</Text>
+                    </TouchableOpacity>
+                  </View>
+                ) : !isPending ? (
+                  <TouchableOpacity
+                    style={styles.correctionBtn}
+                    onPress={() => openCorrection(item)}
+                  >
+                    <Ionicons name="time-outline" size={16} color="#fff" />
+                    <Text style={styles.correctionBtnText}>
+                      {isRejected ? "Request again" : "Request correction"}
+                    </Text>
+                  </TouchableOpacity>
+                ) : null}
               </View>
-            )}
-
-            {/* CHECKIN */}
-            <View style={styles.infoRow}>
-
-              <Text style={styles.label}>
-                Check In
-              </Text>
-
-              <Text style={styles.value}>
-
-                {item.checkIn
-
-                  ? new Date(
-                      item.checkIn
-                    ).toLocaleTimeString()
-
-                  : "-"}
-
-              </Text>
-
-            </View>
-
-            {/* CHECKOUT */}
-            <View style={styles.infoRow}>
-
-              <Text style={styles.label}>
-                Check Out
-              </Text>
-
-              <Text style={styles.value}>
-
-                {item.checkOut
-
-                  ? new Date(
-                      item.checkOut
-                    ).toLocaleTimeString()
-
-                  : "-"}
-
-              </Text>
-
-            </View>
-
-            {/* NOTES */}
-            <View style={styles.notesBox}>
-
-              <Text style={styles.notesLabel}>
-                Notes
-              </Text>
-
-              <Text style={styles.notes}>
-                {item.workNotes ||
-                  "No notes"}
-              </Text>
-
-            </View>
-
-            {/* ACTIONS — single bottom action row. HR can edit/delete
-                directly; non-HR can request a correction (unless one is
-                already pending). */}
-            {hasRole(me, "HR") ? (
-              <View style={styles.actions}>
-                <TouchableOpacity
-                  style={styles.editBtn}
-                  onPress={() => openEdit(item)}
-                >
-                  <Ionicons
-                    name="create-outline"
-                    size={18}
-                    color="#fff"
-                  />
-                  <Text style={styles.btnText}>Edit</Text>
-                </TouchableOpacity>
-
-                <TouchableOpacity
-                  style={styles.deleteBtn}
-                  onPress={() => handleDelete(item.id)}
-                >
-                  <Ionicons
-                    name="trash-outline"
-                    size={18}
-                    color="#fff"
-                  />
-                  <Text style={styles.btnText}>Delete</Text>
-                </TouchableOpacity>
-              </View>
-            ) : !isPending ? (
-              <TouchableOpacity
-                style={styles.correctionBtn}
-                onPress={() => openCorrection(item)}
-              >
-                <Ionicons
-                  name="time-outline"
-                  size={16}
-                  color="#fff"
-                />
-                <Text style={styles.correctionBtnText}>
-                  {isRejected
-                    ? "Request again"
-                    : showCorrectionBtn
-                    ? "Request correction"
-                    : "Request correction"}
-                </Text>
-              </TouchableOpacity>
-            ) : null}
-
-          </View>
-          );
-        }}
-      />
+            );
+          })()}
+      </ScrollView>
 
       {/* EDIT MODAL */}
       <Modal
@@ -1678,6 +1850,130 @@ const makeStyles = (c: any) => StyleSheet.create({
     fontSize: 14,
     fontWeight: "800",
     letterSpacing: 0.3,
+  },
+
+  // ===== CALENDAR =====
+  calCard: {
+    backgroundColor: c.surface,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: c.surfaceBorder,
+    padding: 10,
+    marginBottom: 14,
+  },
+  weekHeader: {
+    flexDirection: "row",
+    marginBottom: 8,
+  },
+  weekHeadCell: {
+    flex: 1,
+    // Match the day cells' 2px horizontal margin so each weekday label
+    // sits centered directly above its column.
+    marginHorizontal: 2,
+    textAlign: "center",
+    color: c.textMuted,
+    fontSize: 11,
+    fontWeight: "800",
+    letterSpacing: 0.3,
+  },
+  weekRow: {
+    flexDirection: "row",
+  },
+  dayCell: {
+    flex: 1,
+    aspectRatio: 1,
+    alignItems: "center",
+    justifyContent: "center",
+    borderRadius: 10,
+    marginHorizontal: 2,
+    marginVertical: 2,
+    position: "relative",
+  },
+  dayCellToday: {
+    borderWidth: 1.5,
+    borderColor: c.accent,
+  },
+  dayCellSelected: {
+    backgroundColor: c.accent,
+  },
+  dayNum: {
+    color: c.text,
+    fontSize: 14,
+    fontWeight: "700",
+  },
+  // Absolutely positioned so the presence of a dot never shifts the day
+  // number off-center — every cell's number stays vertically aligned.
+  dayDot: {
+    position: "absolute",
+    bottom: 6,
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+  },
+
+  legend: {
+    flexDirection: "row",
+    justifyContent: "center",
+    flexWrap: "wrap",
+    gap: 16,
+    marginBottom: 16,
+  },
+  legendItem: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+  },
+  legendDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+  },
+  legendText: {
+    color: c.textMuted,
+    fontSize: 12,
+    fontWeight: "600",
+  },
+
+  // ===== DAY DETAIL =====
+  detailCard: {
+    backgroundColor: c.surface,
+    borderRadius: 20,
+    padding: 18,
+    borderWidth: 1,
+    borderColor: c.surfaceBorder,
+  },
+  detailDate: {
+    color: c.text,
+    fontSize: 17,
+    fontWeight: "800",
+  },
+  emptyDetail: {
+    alignItems: "center",
+    paddingVertical: 28,
+    gap: 10,
+  },
+  emptyDetailText: {
+    color: c.textMuted,
+    fontSize: 13,
+    fontWeight: "600",
+    textAlign: "center",
+  },
+  requestBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: c.accent,
+    paddingVertical: 10,
+    paddingHorizontal: 16,
+    borderRadius: 10,
+    gap: 6,
+    marginTop: 4,
+  },
+  pendingNote: {
+    color: "#f59e0b",
+    fontSize: 12,
+    fontWeight: "700",
+    marginTop: 14,
   },
 
   tableCard: {

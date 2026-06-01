@@ -10,11 +10,12 @@ import {
   TouchableOpacity,
   TextInput,
   ActivityIndicator,
-  SafeAreaView,
   KeyboardAvoidingView,
   Platform,
   Alert,
 } from "react-native";
+
+import { SafeAreaView } from "react-native-safe-area-context";
 
 import AsyncStorage from "@react-native-async-storage/async-storage";
 

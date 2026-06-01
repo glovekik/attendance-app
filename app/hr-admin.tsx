@@ -1,4 +1,4 @@
-﻿import React, { useEffect, useState, useMemo} from "react";
+import React, { useEffect, useState, useMemo, useCallback } from "react";
 
 import {
   View,
@@ -20,9 +20,12 @@ import {
   BottomTabBar,
   BOTTOM_BAR_RESERVED_HEIGHT } from "../src/components/BottomTabBar";
 
+const COLLAPSE_KEY = "hrConsoleCollapsed";
+
 /**
- * HR Admin Console — Koru-style category grid grouped by section.
- * White cards with pastel icon containers and red badge counts.
+ * HR Admin Console — "needs-attention first" layout. A summary strip
+ * surfaces the pending approval queues, then collapsible sections group
+ * the rest, with config split out of the approval queues.
  */
 export default function HRAdmin() {
   const router = useRouter();
@@ -30,8 +33,18 @@ export default function HRAdmin() {
   const [dash, setDash] = useState<DashboardHR | null>(null);
   const [me, setMe] = useState<User | null>(null);
 
+  // Collapsed-section state, persisted per-user so the console remembers
+  // how HR likes it laid out.
+  const [collapsed, setCollapsed] = useState<Record<string, boolean>>({});
+
   useEffect(() => {
     (async () => {
+      try {
+        const raw = await AsyncStorage.getItem(COLLAPSE_KEY);
+        if (raw) setCollapsed(JSON.parse(raw));
+      } catch {
+        /* ignore */
+      }
       try {
         const token = await AsyncStorage.getItem("token");
         if (!token) {
@@ -50,9 +63,57 @@ export default function HRAdmin() {
     })();
   }, [router]);
 
+  const toggleSection = useCallback((title: string) => {
+    setCollapsed((prev) => {
+      const next = { ...prev, [title]: !prev[title] };
+      AsyncStorage.setItem(COLLAPSE_KEY, JSON.stringify(next)).catch(
+        () => {}
+      );
+      return next;
+    });
+  }, []);
+
   const c = theme.colors;
 
   const styles = useMemo(() => makeStyles(c), [c]);
+
+  // The pending approval queues that drive the "needs attention" strip.
+  const pendingQueues = [
+    {
+      label: "Leaves",
+      count: dash?.pendingLeaveApprovals || 0,
+      icon: "paper-plane" as const,
+      color: "#0f766e",
+      route: "/leave-requests" },
+    {
+      label: "Corrections",
+      count: dash?.pendingCorrectionApprovals || 0,
+      icon: "alert-circle" as const,
+      color: "#a16207",
+      route: "/corrections" },
+    {
+      label: "Manual",
+      count: dash?.pendingManualAttendanceApprovals || 0,
+      icon: "document-text" as const,
+      color: "#6d28d9",
+      route: "/hr-manual-requests" },
+    {
+      label: "Reimburse",
+      count: dash?.pendingReimbursementApprovals || 0,
+      icon: "card" as const,
+      color: "#0369a1",
+      route: "/hr-reimbursements" },
+  ];
+  const activeQueues = pendingQueues.filter((q) => q.count > 0);
+  const totalPending = activeQueues.reduce((s, q) => s + q.count, 0);
+
+  const sectionProps = (title: string) => ({
+    title,
+    collapsed: !!collapsed[title],
+    onToggle: () => toggleSection(title),
+    theme,
+    styles,
+  });
 
   return (
     <SafeAreaView style={[styles.safe, { backgroundColor: c.bg }]}>
@@ -78,18 +139,79 @@ export default function HRAdmin() {
             <Ionicons name="chevron-back" size={22} color={c.text} />
           </TouchableOpacity>
           <View style={{ flex: 1, marginLeft: 12 }}>
-            <Text style={[styles.title, { color: c.text }]}>
-              HR Admin
-            </Text>
+            <Text style={[styles.title, { color: c.text }]}>HR Admin</Text>
             <Text style={[styles.subtitle, { color: c.textMuted }]}>
               Everything HR-only, organised
             </Text>
           </View>
         </View>
 
-        {/* PEOPLE */}
-        <Section title="PEOPLE" theme={theme}
-            styles={styles}>
+        {/* ===== NEEDS ATTENTION ===== */}
+        {totalPending > 0 ? (
+          <View
+            style={[
+              styles.attentionCard,
+              { backgroundColor: c.surface, borderColor: "rgba(245,158,11,0.4)" },
+            ]}
+          >
+            <View style={styles.attentionHeader}>
+              <Ionicons name="alert-circle" size={18} color="#d97706" />
+              <Text style={[styles.attentionTitle, { color: c.text }]}>
+                {totalPending} item{totalPending > 1 ? "s" : ""} need
+                {totalPending > 1 ? "" : "s"} action
+              </Text>
+            </View>
+            <View style={styles.pillRow}>
+              {activeQueues.map((q) => (
+                <TouchableOpacity
+                  key={q.label}
+                  style={[
+                    styles.pill,
+                    {
+                      backgroundColor: c.surfaceMuted,
+                      borderColor: c.surfaceBorder },
+                  ]}
+                  onPress={() => router.push(q.route as any)}
+                  activeOpacity={0.8}
+                >
+                  <Ionicons name={q.icon} size={14} color={q.color} />
+                  <Text style={[styles.pillText, { color: c.text }]}>
+                    {q.label}
+                  </Text>
+                  <View
+                    style={[
+                      styles.pillCount,
+                      { backgroundColor: c.dangerText },
+                    ]}
+                  >
+                    <Text style={styles.pillCountText}>
+                      {q.count > 9 ? "9+" : q.count}
+                    </Text>
+                  </View>
+                </TouchableOpacity>
+              ))}
+            </View>
+          </View>
+        ) : (
+          <View
+            style={[
+              styles.caughtUp,
+              { backgroundColor: c.surface, borderColor: c.surfaceBorder },
+            ]}
+          >
+            <Ionicons
+              name="checkmark-circle"
+              size={18}
+              color="#16a34a"
+            />
+            <Text style={[styles.caughtUpText, { color: c.textMuted }]}>
+              All caught up — no pending approvals.
+            </Text>
+          </View>
+        )}
+
+        {/* ===== PEOPLE ===== */}
+        <Section {...sectionProps("PEOPLE")}>
           <Tile
             icon="person-add-outline"
             label="Employees"
@@ -138,9 +260,8 @@ export default function HRAdmin() {
           />
         </Section>
 
-        {/* ATTENDANCE */}
-        <Section title="ATTENDANCE" theme={theme}
-            styles={styles}>
+        {/* ===== ATTENDANCE & APPROVALS ===== */}
+        <Section {...sectionProps("ATTENDANCE & APPROVALS")}>
           <Tile
             icon="calendar-outline"
             label="Daily Attendance"
@@ -150,11 +271,6 @@ export default function HRAdmin() {
             theme={theme}
             styles={styles}
           />
-        </Section>
-
-        {/* APPROVALS */}
-        <Section title="APPROVALS" theme={theme}
-            styles={styles}>
           <Tile
             icon="paper-plane-outline"
             label="Leaves"
@@ -176,16 +292,6 @@ export default function HRAdmin() {
             styles={styles}
           />
           <Tile
-            icon="document-text-outline"
-            label="Manual Attendance"
-            tint={c.pastelLavender}
-            iconColor="#6d28d9"
-            count={dash?.pendingManualAttendanceApprovals}
-            onPress={() => router.push("/hr-manual-requests" as any)}
-            theme={theme}
-            styles={styles}
-          />
-          <Tile
             icon="card-outline"
             label="Reimburse"
             tint={c.pastelSky}
@@ -195,16 +301,10 @@ export default function HRAdmin() {
             theme={theme}
             styles={styles}
           />
-          <Tile
-            icon="time-outline"
-            label="Timesheets"
-            tint={c.pastelPink}
-            iconColor="#be185d"
-            count={dash?.pendingTimesheetApprovals}
-            onPress={() => router.push("/hr-timesheets" as any)}
-            theme={theme}
-            styles={styles}
-          />
+        </Section>
+
+        {/* ===== CONFIGURE (setup, no pending queues) ===== */}
+        <Section {...sectionProps("CONFIGURE")}>
           <Tile
             icon="options-outline"
             label="Leave Types"
@@ -243,9 +343,8 @@ export default function HRAdmin() {
           />
         </Section>
 
-        {/* FINANCE */}
-        <Section title="FINANCE" theme={theme}
-            styles={styles}>
+        {/* ===== FINANCE ===== */}
+        <Section {...sectionProps("FINANCE")}>
           <Tile
             icon="cash-outline"
             label="Payroll"
@@ -266,9 +365,8 @@ export default function HRAdmin() {
           />
         </Section>
 
-        {/* ASSETS */}
-        <Section title="ASSETS" theme={theme}
-            styles={styles}>
+        {/* ===== ASSETS ===== */}
+        <Section {...sectionProps("ASSETS")}>
           <Tile
             icon="cube-outline"
             label="Inventory"
@@ -280,7 +378,7 @@ export default function HRAdmin() {
           />
           <Tile
             icon="warning-outline"
-            label="Reports"
+            label="Asset Reports"
             tint={c.pastelPink}
             iconColor="#be185d"
             onPress={() => router.push("/asset-reports")}
@@ -289,9 +387,8 @@ export default function HRAdmin() {
           />
         </Section>
 
-        {/* INSIGHTS */}
-        <Section title="INSIGHTS" theme={theme}
-            styles={styles}>
+        {/* ===== INSIGHTS ===== */}
+        <Section {...sectionProps("INSIGHTS")}>
           <Tile
             icon="bar-chart-outline"
             label="Reports"
@@ -313,7 +410,7 @@ export default function HRAdmin() {
         </Section>
       </ScrollView>
 
-      <BottomTabBar user={me} />
+      <BottomTabBar user={me} badges={{ admin: totalPending }} />
     </SafeAreaView>
   );
 }
@@ -324,19 +421,34 @@ export default function HRAdmin() {
 
 const Section = ({
   title,
+  collapsed,
+  onToggle,
   children,
   theme,
   styles }: {
   title: string;
+  collapsed: boolean;
+  onToggle: () => void;
   children: React.ReactNode;
   theme: any;
   styles: any;
 }) => (
   <>
-    <Text style={[styles.section, { color: theme.colors.textMuted }]}>
-      {title}
-    </Text>
-    <View style={styles.grid}>{children}</View>
+    <TouchableOpacity
+      style={styles.sectionHeader}
+      onPress={onToggle}
+      activeOpacity={0.7}
+    >
+      <Text style={[styles.section, { color: theme.colors.textMuted }]}>
+        {title}
+      </Text>
+      <Ionicons
+        name={collapsed ? "chevron-forward" : "chevron-down"}
+        size={16}
+        color={theme.colors.textMuted}
+      />
+    </TouchableOpacity>
+    {!collapsed && <View style={styles.grid}>{children}</View>}
   </>
 );
 
@@ -374,7 +486,9 @@ const Tile = ({
     </View>
     <Text
       style={[styles.tileLabel, { color: theme.colors.text }]}
-      numberOfLines={2}
+      numberOfLines={1}
+      adjustsFontSizeToFit
+      minimumFontScale={0.75}
     >
       {label}
     </Text>
@@ -406,12 +520,62 @@ const makeStyles = (c: any) => StyleSheet.create({
     justifyContent: "center" },
   title: { fontSize: 26, fontWeight: "800" },
   subtitle: { fontSize: 13, marginTop: 2 },
+
+  // ===== NEEDS ATTENTION =====
+  attentionCard: {
+    borderRadius: 18,
+    borderWidth: 1,
+    padding: 14,
+    marginBottom: 4 },
+  attentionHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    marginBottom: 12 },
+  attentionTitle: { fontSize: 14, fontWeight: "800" },
+  pillRow: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 8 },
+  pill: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    paddingHorizontal: 10,
+    paddingVertical: 7,
+    borderRadius: 999,
+    borderWidth: 1 },
+  pillText: { fontSize: 12, fontWeight: "700" },
+  pillCount: {
+    minWidth: 18,
+    height: 18,
+    borderRadius: 9,
+    paddingHorizontal: 5,
+    alignItems: "center",
+    justifyContent: "center" },
+  pillCountText: { color: "#fff", fontSize: 10, fontWeight: "800" },
+  caughtUp: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    borderRadius: 18,
+    borderWidth: 1,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    marginBottom: 4 },
+  caughtUpText: { fontSize: 13, fontWeight: "600" },
+
+  sectionHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    marginTop: 22,
+    marginBottom: 10,
+    paddingRight: 4 },
   section: {
     fontSize: 11,
     fontWeight: "800",
     letterSpacing: 1.4,
-    marginTop: 22,
-    marginBottom: 10,
     marginLeft: 4 },
   // 3-up grid. flexGrow is intentionally 0 so tiles in a partial last
   // row (e.g. 4 or 5 tiles in a section) don't stretch to fill the

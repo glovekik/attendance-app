@@ -116,8 +116,26 @@ const humanizeKey = (k: string) =>
     .trim()
     .toLowerCase();
 
-// Cross-platform XLSX save. Web → anchor download. Native → fall back
-// to an info alert because we don't have expo-file-system wired up.
+const XLSX_MIME =
+  "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
+const XLSX_UTI = "org.openxmlformats.spreadsheetml.sheet";
+
+// Read a Blob's contents as a bare base64 string (no data-URL prefix).
+// RN's Blob has no arrayBuffer(), so we go through FileReader.
+const blobToBase64 = (blob: Blob): Promise<string> =>
+  new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => {
+      const dataUrl = String(reader.result);
+      resolve(dataUrl.slice(dataUrl.indexOf(",") + 1));
+    };
+    reader.onerror = () => reject(reader.error);
+    reader.readAsDataURL(blob);
+  });
+
+// Cross-platform XLSX save. Web → anchor download. Native → write the
+// blob into the cache dir and open the share sheet (expo-file-system +
+// expo-sharing, same path as src/utils/download.ts).
 const saveXlsx = async (result: DownloadResult) => {
   if (Platform.OS === "web") {
     // @ts-ignore — web-only
@@ -135,12 +153,26 @@ const saveXlsx = async (result: DownloadResult) => {
     URL.revokeObjectURL(url);
     return;
   }
-  Alert.alert(
-    "XLSX downloaded",
-    `${result.fileName} (${Math.round(result.blob.size / 1024)} KB). ` +
-      "To save the file, open this in the web app — RN doesn't currently " +
-      "have file-save support wired up."
-  );
+
+  // Native — needs expo-file-system + expo-sharing
+  const { File, Paths } = require("expo-file-system");
+  const Sharing = require("expo-sharing");
+
+  const base64 = await blobToBase64(result.blob);
+  const file = new File(Paths.cache, result.fileName);
+  file.create({ overwrite: true });
+  file.write(base64, { encoding: "base64" });
+
+  const canShare = await Sharing.isAvailableAsync();
+  if (canShare) {
+    await Sharing.shareAsync(file.uri, {
+      mimeType: XLSX_MIME,
+      dialogTitle: result.fileName,
+      UTI: XLSX_UTI,
+    });
+  } else {
+    Alert.alert("XLSX saved", `${result.fileName} saved to the app cache.`);
+  }
 };
 
 export default function HrReports() {

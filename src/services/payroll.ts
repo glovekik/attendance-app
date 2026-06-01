@@ -136,6 +136,20 @@ export const hrEmailPayslip = (token: string, id: string) =>
     token,
   });
 
+// Releases a payslip to the employee (makes it visible in My Payslips and
+// fires the push + in-app notification). Separate from email (PDF delivery).
+export const hrSendPayslip = (token: string, id: string) =>
+  apiCall<{ message: string; payslipId: string }>(
+    `/hr/payslips/${id}/send`,
+    { method: "POST", token }
+  );
+
+export const hrSendAllPayslips = (token: string, runId: string) =>
+  apiCall<{ message: string; sentCount: number }>(
+    `/hr/payroll/runs/${runId}/send-all`,
+    { method: "POST", token }
+  );
+
 export const hrPayslipPdfUrl = (id: string) =>
   `${API_URL}/hr/payslips/${id}/pdf`;
 

@@ -22,6 +22,7 @@ import { getDashboardMe } from "../src/services/dashboard";
 import { getUnreadCount } from "../src/services/inbox";
 import { getChatUnreadCount } from "../src/services/chat";
 import { openNotificationStream } from "../src/services/sse";
+import { registerPushToken } from "../src/services/notifications";
 
 import { dateToYMD } from "../src/components/WebDateField";
 
@@ -51,6 +52,9 @@ export default function Home() {
   const [dash, setDash] = useState<DashboardMe | null>(null);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  // True when the initial load failed for a non-auth reason (offline,
+  // server hiccup). Drives a retry screen instead of logging the user out.
+  const [loadError, setLoadError] = useState(false);
   const [tick, setTick] = useState(0);
   const [unreadCount, setUnreadCount] = useState(0);
   const [chatUnread, setChatUnread] = useState(0);
@@ -68,13 +72,27 @@ export default function Home() {
         router.replace("/login");
         return;
       }
-      const meRes = await getMe(token);
-      if (!meRes) {
-        await AsyncStorage.removeItem("token");
+
+      // Validate the session. Only a real 401 means the token is dead and
+      // we should log out — a network error or 5xx (very common in the
+      // first seconds after the app is relaunched from a recents swipe)
+      // must keep the session so the user isn't kicked out for a blip.
+      let meRes;
+      try {
+        meRes = await getMe(token);
+      } catch (err: any) {
+        if (err?.status === 401) {
+          await AsyncStorage.removeItem("token");
+          setLoading(false);
+          router.replace("/login");
+          return;
+        }
+        console.log("DASHBOARD LOAD ERROR (kept session):", err);
+        setLoadError(true);
         setLoading(false);
-        router.replace("/login");
         return;
       }
+      setLoadError(false);
       setUser(meRes);
       try {
         const todayRes = await getToday(token, dateToYMD(new Date()));
@@ -102,10 +120,12 @@ export default function Home() {
       }
       setLoading(false);
     } catch (err) {
-      console.log("DASHBOARD ERROR:", err);
-      await AsyncStorage.removeItem("token");
+      // The token check above already handled auth. Anything reaching here
+      // is a non-auth failure — keep the session, surface a retry instead
+      // of silently logging the user out.
+      console.log("DASHBOARD ERROR (kept session):", err);
+      setLoadError(true);
       setLoading(false);
-      router.replace("/login");
     }
   };
 
@@ -131,6 +151,11 @@ export default function Home() {
     (async () => {
       const token = await AsyncStorage.getItem("token");
       if (!token) return;
+      // Register this device's push token on every authenticated launch,
+      // not just at login. Returning users (already logged in) would never
+      // re-register otherwise, so a token that failed to send, rotated, or
+      // changed after an app update stays stale and pushes silently stop.
+      registerPushToken(token).catch(() => {});
       cleanup = openNotificationStream(token, {
         onNotification: async (n) => {
           if (n && n.poll) {
@@ -212,10 +237,51 @@ export default function Home() {
 
   if (!user) {
     return (
-      <View style={[styles.loader, { backgroundColor: c.bg }]}>
-        <Text style={{ color: c.text, fontSize: 16 }}>
-          Unable to load user
+      <View style={[styles.loader, { backgroundColor: c.bg, padding: 32 }]}>
+        <Ionicons
+          name={loadError ? "cloud-offline-outline" : "person-outline"}
+          size={40}
+          color={c.textMuted}
+          style={{ marginBottom: 14 }}
+        />
+        <Text
+          style={{
+            color: c.text,
+            fontSize: 16,
+            fontWeight: "700",
+            textAlign: "center",
+          }}
+        >
+          {loadError ? "Couldn't reach the server" : "Unable to load user"}
         </Text>
+        {loadError && (
+          <Text
+            style={{
+              color: c.textMuted,
+              fontSize: 13,
+              textAlign: "center",
+              marginTop: 6,
+              lineHeight: 18,
+            }}
+          >
+            You're still signed in — check your connection and try again.
+          </Text>
+        )}
+        <TouchableOpacity
+          style={{
+            marginTop: 20,
+            backgroundColor: c.accent,
+            paddingHorizontal: 24,
+            paddingVertical: 12,
+            borderRadius: 12,
+          }}
+          onPress={() => loadEverything()}
+          activeOpacity={0.85}
+        >
+          <Text style={{ color: "#fff", fontWeight: "800", fontSize: 14 }}>
+            Retry
+          </Text>
+        </TouchableOpacity>
       </View>
     );
   }
@@ -223,8 +289,10 @@ export default function Home() {
   const isHR = hasRole(user, "HR");
   const isMgr = isManager(user);
   const isCeo = isCEO(user);
-  const ledTeamCount = user.ledTeamIds?.length || 0;
-  const showTeams = isHR || isCeo || ledTeamCount > 0;
+  // Teams card is shown to everyone. HR/CEO/leads get their full list;
+  // a plain employee currently lands on an empty list until the backend
+  // exposes a "teams I'm a member of" endpoint (see app/teams/index.tsx).
+  const showTeams = true;
 
   const todayStatus = todayStatusInfo(today, tick, c);
   const checkedIn = today?.status === "CHECKED_IN";
@@ -404,7 +472,7 @@ export default function Home() {
         {dash && (
           <>
             <Text style={[styles.section, { color: c.textMuted }]}>
-              MY KPIs
+              AT A GLANCE
             </Text>
             <View style={styles.kpiGrid}>
               <SimpleKpi
@@ -414,6 +482,7 @@ export default function Home() {
                 icon="calendar-outline"
                 tint={c.pastelLavender}
                 iconColor="#6d28d9"
+                onPress={() => router.push("/attendance")}
                 theme={theme}
             styles={styles}
               />
@@ -457,19 +526,11 @@ export default function Home() {
         </Text>
         <View style={styles.tilesGrid}>
           <CategoryTile
-            icon="calendar-outline"
-            label="Attendance"
-            tint={c.pastelLavender}
-            iconColor="#6d28d9"
-            onPress={() => router.push("/attendance")}
-            theme={theme}
-            styles={styles}
-          />
-          <CategoryTile
             icon="checkbox-outline"
             label="Tasks"
             tint={c.pastelMint}
             iconColor="#15803d"
+            count={dash?.openTasksCount}
             onPress={() => router.push("/tasks")}
             theme={theme}
             styles={styles}
@@ -480,25 +541,6 @@ export default function Home() {
             tint={c.pastelPink}
             iconColor="#be185d"
             onPress={() => router.push("/todos" as any)}
-            theme={theme}
-            styles={styles}
-          />
-          <CategoryTile
-            icon="time-outline"
-            label="Timesheet"
-            tint={c.pastelSky}
-            iconColor="#0369a1"
-            onPress={() => router.push("/my-timesheet" as any)}
-            theme={theme}
-            styles={styles}
-          />
-          <CategoryTile
-            icon="airplane-outline"
-            label="Leaves"
-            tint={c.pastelPeach}
-            iconColor="#c2410c"
-            count={dash?.pendingLeaveRequests}
-            onPress={() => router.push("/leaves")}
             theme={theme}
             styles={styles}
           />
@@ -526,16 +568,6 @@ export default function Home() {
             iconColor="#0369a1"
             count={dash?.pendingReimbursementRequests}
             onPress={() => router.push("/reimbursements" as any)}
-            theme={theme}
-            styles={styles}
-          />
-          <CategoryTile
-            icon="chatbubbles-outline"
-            label="Chat"
-            tint={c.pastelLavender}
-            iconColor="#6d28d9"
-            count={chatUnread}
-            onPress={() => router.push("/chat/office")}
             theme={theme}
             styles={styles}
           />
@@ -654,7 +686,7 @@ export default function Home() {
         )}
       </ScrollView>
 
-      <BottomTabBar user={user} />
+      <BottomTabBar user={user} chatUnread={chatUnread} />
     </SafeAreaView>
   );
 }
@@ -769,6 +801,7 @@ const SimpleKpi = ({
   icon,
   tint,
   iconColor,
+  onPress,
   theme,
   styles }: {
   label: string;
@@ -777,32 +810,42 @@ const SimpleKpi = ({
   icon: keyof typeof Ionicons.glyphMap;
   tint: string;
   iconColor: string;
+  onPress?: () => void;
   theme: any;
   styles: any;
-}) => (
-  <View
-    style={[
-      styles.kpiCell,
-      {
-        backgroundColor: theme.colors.surface,
-        borderColor: theme.colors.surfaceBorder,
-        shadowColor: theme.colors.shadow },
-    ]}
-  >
-    <View style={[styles.kpiIcon, { backgroundColor: tint }]}>
-      <Ionicons name={icon} size={16} color={iconColor} />
-    </View>
-    <Text style={[styles.kpiValue, { color: theme.colors.text }]}>
-      {value}
-    </Text>
-    <Text style={[styles.kpiLabel, { color: theme.colors.text }]}>
-      {label}
-    </Text>
-    <Text style={[styles.kpiSub, { color: theme.colors.textMuted }]}>
-      {sub}
-    </Text>
-  </View>
-);
+}) => {
+  const body = (
+    <>
+      <View style={[styles.kpiIcon, { backgroundColor: tint }]}>
+        <Ionicons name={icon} size={16} color={iconColor} />
+      </View>
+      <Text style={[styles.kpiValue, { color: theme.colors.text }]}>
+        {value}
+      </Text>
+      <Text style={[styles.kpiLabel, { color: theme.colors.text }]}>
+        {label}
+      </Text>
+      <Text style={[styles.kpiSub, { color: theme.colors.textMuted }]}>
+        {sub}
+      </Text>
+    </>
+  );
+  const cellStyle = [
+    styles.kpiCell,
+    {
+      backgroundColor: theme.colors.surface,
+      borderColor: theme.colors.surfaceBorder,
+      shadowColor: theme.colors.shadow },
+  ];
+  if (onPress) {
+    return (
+      <TouchableOpacity style={cellStyle} onPress={onPress} activeOpacity={0.85}>
+        {body}
+      </TouchableOpacity>
+    );
+  }
+  return <View style={cellStyle}>{body}</View>;
+};
 
 const CategoryTile = ({
   icon,
@@ -836,7 +879,12 @@ const CategoryTile = ({
     <View style={[styles.tileIcon, { backgroundColor: tint }]}>
       <Ionicons name={icon} size={22} color={iconColor} />
     </View>
-    <Text style={[styles.tileLabel, { color: theme.colors.text }]}>
+    <Text
+      style={[styles.tileLabel, { color: theme.colors.text }]}
+      numberOfLines={1}
+      adjustsFontSizeToFit
+      minimumFontScale={0.75}
+    >
       {label}
     </Text>
     {typeof count === "number" && count > 0 && (

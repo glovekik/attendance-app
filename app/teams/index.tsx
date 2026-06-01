@@ -10,6 +10,8 @@ import {
   TouchableOpacity,
   TextInput,
   ActivityIndicator,
+  KeyboardAvoidingView,
+  Platform,
   Modal } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 
@@ -22,6 +24,7 @@ import { Ionicons } from "@expo/vector-icons";
 import {
   listTeams,
   createTeam,
+  updateTeam,
   listMyLedTeams } from "../../src/services/teams";
 
 import { listUsers } from "../../src/services/users";
@@ -49,10 +52,15 @@ export default function Teams() {
   const [loading, setLoading] = useState(true);
 
   const [modalVisible, setModalVisible] = useState(false);
+  // null = creating a new team; a team id = editing that team.
+  const [editingId, setEditingId] = useState<string | null>(null);
   const [name, setName] = useState("");
   const [leadId, setLeadId] = useState<string>("");
   const [memberIds, setMemberIds] = useState<string[]>([]);
   const [saving, setSaving] = useState(false);
+  // Search filters for the manager / member pickers in the modal.
+  const [leadSearch, setLeadSearch] = useState("");
+  const [memberSearch, setMemberSearch] = useState("");
 
   const [popup, setPopup] = useState({
     visible: false,
@@ -114,7 +122,9 @@ export default function Teams() {
 
   const userName = (id: string) => {
     const u = users.find((x) => x.id === id);
-    return u?.name || id.slice(-6);
+    // User no longer exists (deleted / re-created with a new id) — show a
+    // clear label rather than a cryptic id slice or "?".
+    return u?.name || "Unknown user";
   };
 
   const toggleMember = (id: string) => {
@@ -126,13 +136,31 @@ export default function Teams() {
   };
 
   const openCreate = () => {
+    setEditingId(null);
     setName("");
     setLeadId("");
     setMemberIds([]);
+    setLeadSearch("");
+    setMemberSearch("");
     setModalVisible(true);
   };
 
-  // ================= CREATE =================
+  const openEdit = (t: Team) => {
+    setEditingId(t.id);
+    setName(t.name);
+    setLeadSearch("");
+    setMemberSearch("");
+    // Drop any lead/member whose user no longer exists (deleted &
+    // re-created with a new id) — `users` only holds live, non-terminated
+    // accounts. This both hides the broken "Former member" rows from the
+    // picker and removes those stale ids when HR saves, correcting the team.
+    const live = new Set(users.map((u) => u.id));
+    setLeadId(live.has(t.teamLeadId) ? t.teamLeadId : "");
+    setMemberIds((t.memberIds || []).filter((id) => live.has(id)));
+    setModalVisible(true);
+  };
+
+  // ================= CREATE / UPDATE =================
   const save = async () => {
 
     if (saving) return;
@@ -142,7 +170,7 @@ export default function Teams() {
       return;
     }
     if (!leadId) {
-      showPopup("Pick a team lead", "error");
+      showPopup("Pick a manager", "error");
       return;
     }
 
@@ -151,17 +179,28 @@ export default function Teams() {
       const token = await AsyncStorage.getItem("token");
       if (!token) return;
 
-      await createTeam(token, {
-        name: name.trim(),
-        teamLeadId: leadId,
-        memberIds });
+      if (editingId) {
+        await updateTeam(token, editingId, {
+          name: name.trim(),
+          teamLeadId: leadId,
+          memberIds });
+        showPopup("Team updated");
+      } else {
+        await createTeam(token, {
+          name: name.trim(),
+          teamLeadId: leadId,
+          memberIds });
+        showPopup("Team created");
+      }
 
-      showPopup("Team created");
       setModalVisible(false);
       await load();
 
     } catch (err: any) {
-      showPopup(err?.message || "Failed to create", "error");
+      showPopup(
+        err?.message || (editingId ? "Failed to update" : "Failed to create"),
+        "error"
+      );
     } finally {
       setSaving(false);
     }
@@ -174,6 +213,23 @@ export default function Teams() {
       </View>
     );
   }
+
+  // ---- Modal picker helpers ----
+  const matches = (u: User, q: string) =>
+    !q.trim() ||
+    `${u.name} ${u.email || ""}`.toLowerCase().includes(q.trim().toLowerCase());
+
+  const leadMatches = users.filter((u) => matches(u, leadSearch));
+  // Members already chosen, resolved to user objects (in selection order).
+  const selectedMembers = memberIds
+    .map((id) => users.find((u) => u.id === id))
+    .filter((u): u is User => !!u);
+  // Everyone not yet a member, narrowed by the search box.
+  const availableMembers = users.filter(
+    (u) => !memberIds.includes(u.id) && matches(u, memberSearch)
+  );
+
+  const initial = (s: string) => (s || "?").charAt(0).toUpperCase();
 
   return (
     <SafeAreaView style={styles.safe}>
@@ -207,7 +263,7 @@ export default function Teams() {
           <View style={{ flex: 1 }}>
             <Text style={styles.title}>Teams</Text>
             <Text style={styles.subtitle}>
-              {teams.length} {isHR ? "total" : "you lead"}
+              {teams.length} {isHR ? "total" : "you manage"}
             </Text>
           </View>
 
@@ -249,9 +305,23 @@ export default function Teams() {
               <View style={{ flex: 1 }}>
                 <Text style={styles.cardName}>{t.name}</Text>
                 <Text style={styles.cardMeta}>
-                  Lead: {leadDisplay}  ·  {t.memberIds.length} members
+                  Manager: {leadDisplay}  ·  {t.memberIds.length} members
                 </Text>
               </View>
+
+              {isHR && (
+                <TouchableOpacity
+                  style={styles.editBtn}
+                  onPress={() => openEdit(t)}
+                  hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                >
+                  <Ionicons
+                    name="create-outline"
+                    size={20}
+                    color={c.textMuted}
+                  />
+                </TouchableOpacity>
+              )}
 
               <Ionicons
                 name="chevron-forward"
@@ -268,7 +338,7 @@ export default function Teams() {
             <Text style={styles.emptySub}>
               {isHR
                 ? "Tap + to create your first team."
-                : "You're not leading any team yet."}
+                : "No teams to show yet."}
             </Text>
           </View>
         )}
@@ -282,11 +352,19 @@ export default function Teams() {
         animationType="slide"
         onRequestClose={() => setModalVisible(false)}
       >
-        <View style={styles.modalOverlay}>
+        <KeyboardAvoidingView
+          style={styles.modalOverlay}
+          behavior={Platform.OS === "ios" ? "padding" : undefined}
+        >
           <View style={styles.modalCard}>
-            <ScrollView showsVerticalScrollIndicator={false}>
+            <ScrollView
+              showsVerticalScrollIndicator={false}
+              keyboardShouldPersistTaps="handled"
+            >
 
-              <Text style={styles.modalTitle}>New Team</Text>
+              <Text style={styles.modalTitle}>
+                {editingId ? "Edit Team" : "New Team"}
+              </Text>
 
               <Text style={styles.label}>Team Name</Text>
               <TextInput
@@ -297,53 +375,123 @@ export default function Teams() {
                 placeholderTextColor={c.textFaint}
               />
 
-              <Text style={styles.label}>Team Lead</Text>
-              <View style={styles.userPicker}>
-                {users.map((u) => (
-                  <TouchableOpacity
-                    key={u.id}
-                    style={[
-                      styles.userPickBtn,
-                      leadId === u.id && styles.userPickActive,
-                    ]}
-                    onPress={() => setLeadId(u.id)}
-                  >
-                    <Text
-                      style={[
-                        styles.userPickText,
-                        leadId === u.id && { color: "#fff" },
-                      ]}
-                    >
-                      {u.name}
-                    </Text>
-                  </TouchableOpacity>
-                ))}
+              <Text style={styles.label}>Manager</Text>
+              <View style={styles.searchBox}>
+                <Ionicons name="search" size={16} color={c.textMuted} />
+                <TextInput
+                  style={styles.searchInput}
+                  value={leadSearch}
+                  onChangeText={setLeadSearch}
+                  placeholder="Search to pick a manager"
+                  placeholderTextColor={c.textFaint}
+                />
               </View>
-
-              <Text style={styles.label}>Members</Text>
-              <View style={styles.userPicker}>
-                {users.map((u) => {
-                  const active = memberIds.includes(u.id);
+              <View style={styles.pickList}>
+                {leadMatches.length === 0 && (
+                  <Text style={styles.pickHint}>No matching people.</Text>
+                )}
+                {leadMatches.map((u) => {
+                  const active = leadId === u.id;
                   return (
                     <TouchableOpacity
                       key={u.id}
-                      style={[
-                        styles.userPickBtn,
-                        active && styles.userPickActive,
-                      ]}
-                      onPress={() => toggleMember(u.id)}
+                      style={[styles.personRow, active && styles.personRowActive]}
+                      onPress={() => setLeadId(u.id)}
+                      activeOpacity={0.7}
                     >
-                      <Text
-                        style={[
-                          styles.userPickText,
-                          active && { color: "#fff" },
-                        ]}
-                      >
-                        {u.name}
-                      </Text>
+                      <View style={styles.personAvatar}>
+                        <Text style={styles.personAvatarText}>
+                          {initial(u.name)}
+                        </Text>
+                      </View>
+                      <View style={{ flex: 1 }}>
+                        <Text style={styles.personName} numberOfLines={1}>
+                          {u.name}
+                        </Text>
+                        {!!u.email && (
+                          <Text style={styles.personEmail} numberOfLines={1}>
+                            {u.email}
+                          </Text>
+                        )}
+                      </View>
+                      <Ionicons
+                        name={active ? "radio-button-on" : "radio-button-off"}
+                        size={20}
+                        color={active ? c.accent : c.textMuted}
+                      />
                     </TouchableOpacity>
                   );
                 })}
+              </View>
+
+              <Text style={styles.label}>
+                Members ({selectedMembers.length})
+              </Text>
+              {/* Chosen members — tap × to remove */}
+              {selectedMembers.length > 0 ? (
+                <View style={styles.chipWrap}>
+                  {selectedMembers.map((u) => (
+                    <View key={u.id} style={styles.memberChip}>
+                      <Text style={styles.memberChipText} numberOfLines={1}>
+                        {u.name}
+                      </Text>
+                      <TouchableOpacity
+                        onPress={() => toggleMember(u.id)}
+                        hitSlop={{ top: 8, bottom: 8, left: 4, right: 4 }}
+                      >
+                        <Ionicons name="close-circle" size={18} color="#fff" />
+                      </TouchableOpacity>
+                    </View>
+                  ))}
+                </View>
+              ) : (
+                <Text style={styles.pickHint}>No members added yet.</Text>
+              )}
+
+              {/* Search + add people */}
+              <View style={styles.searchBox}>
+                <Ionicons name="search" size={16} color={c.textMuted} />
+                <TextInput
+                  style={styles.searchInput}
+                  value={memberSearch}
+                  onChangeText={setMemberSearch}
+                  placeholder="Search people to add"
+                  placeholderTextColor={c.textFaint}
+                />
+              </View>
+              <View style={styles.pickList}>
+                {availableMembers.length === 0 && (
+                  <Text style={styles.pickHint}>
+                    {memberSearch.trim()
+                      ? "No matching people."
+                      : "Everyone is already a member."}
+                  </Text>
+                )}
+                {availableMembers.map((u) => (
+                  <TouchableOpacity
+                    key={u.id}
+                    style={styles.personRow}
+                    onPress={() => toggleMember(u.id)}
+                    activeOpacity={0.7}
+                  >
+                    <View style={styles.personAvatar}>
+                      <Text style={styles.personAvatarText}>
+                        {initial(u.name)}
+                      </Text>
+                    </View>
+                    <View style={{ flex: 1 }}>
+                      <Text style={styles.personName} numberOfLines={1}>
+                        {u.name}
+                      </Text>
+                      {!!u.email && (
+                        <Text style={styles.personEmail} numberOfLines={1}>
+                          {u.email}
+                        </Text>
+                      )}
+                    </View>
+                    <Ionicons name="add-circle" size={22} color={c.accent} />
+                  </TouchableOpacity>
+                ))}
               </View>
 
               <View style={styles.modalActions}>
@@ -361,14 +509,16 @@ export default function Teams() {
                   {saving ? (
                     <ActivityIndicator color="#fff" />
                   ) : (
-                    <Text style={styles.modalBtnText}>Create</Text>
+                    <Text style={styles.modalBtnText}>
+                      {editingId ? "Save" : "Create"}
+                    </Text>
                   )}
                 </TouchableOpacity>
               </View>
 
             </ScrollView>
           </View>
-        </View>
+        </KeyboardAvoidingView>
       </Modal>
 
     </SafeAreaView>
@@ -419,6 +569,14 @@ const makeStyles = (c: any) => StyleSheet.create({
     backgroundColor: c.accent,
     justifyContent: "center",
     alignItems: "center" },
+  editBtn: {
+    width: 34,
+    height: 34,
+    borderRadius: 10,
+    backgroundColor: c.surfaceMuted,
+    justifyContent: "center",
+    alignItems: "center",
+    marginRight: 6 },
   title: { color: c.text, fontSize: 24, fontWeight: "800" },
   subtitle: { color: c.textMuted, fontSize: 13, marginTop: 3 },
 
@@ -487,17 +645,76 @@ const makeStyles = (c: any) => StyleSheet.create({
     borderColor: "#1e293b",
     fontSize: 14 },
 
-  userPicker: {
+  // Search box for the manager / member pickers.
+  searchBox: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    backgroundColor: c.surfaceMuted,
+    borderRadius: 12,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    borderWidth: 1,
+    borderColor: c.surfaceBorder },
+  searchInput: {
+    flex: 1,
+    color: c.text,
+    fontSize: 14,
+    padding: 0 },
+
+  // Selectable person rows (manager + add-member lists).
+  pickList: {
+    marginTop: 8,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: c.surfaceBorder,
+    overflow: "hidden" },
+  pickHint: {
+    color: c.textMuted,
+    fontSize: 13,
+    paddingVertical: 12,
+    paddingHorizontal: 12,
+    textAlign: "center" },
+  personRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+    paddingVertical: 9,
+    paddingHorizontal: 10,
+    borderBottomWidth: 1,
+    borderBottomColor: c.surfaceBorder },
+  personRowActive: { backgroundColor: c.accentSoft },
+  personAvatar: {
+    width: 34,
+    height: 34,
+    borderRadius: 17,
+    backgroundColor: c.surfaceMuted,
+    justifyContent: "center",
+    alignItems: "center" },
+  personAvatarText: { color: c.accent, fontWeight: "800", fontSize: 14 },
+  personName: { color: c.text, fontSize: 14, fontWeight: "600" },
+  personEmail: { color: c.textMuted, fontSize: 11, marginTop: 1 },
+
+  // Chosen-member chips with a remove (×) action.
+  chipWrap: {
     flexDirection: "row",
     gap: 8,
     flexWrap: "wrap" },
-  userPickBtn: {
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    borderRadius: 10,
-    backgroundColor: "#1e293b" },
-  userPickActive: { backgroundColor: c.accent },
-  userPickText: { color: c.textMuted, fontWeight: "600", fontSize: 13 },
+  memberChip: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    backgroundColor: c.accent,
+    borderRadius: 999,
+    paddingLeft: 12,
+    paddingRight: 8,
+    paddingVertical: 7,
+    maxWidth: "100%" },
+  memberChipText: {
+    color: "#fff",
+    fontWeight: "700",
+    fontSize: 13,
+    flexShrink: 1 },
 
   modalActions: {
     flexDirection: "row",

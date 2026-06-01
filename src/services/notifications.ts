@@ -1,4 +1,5 @@
 import * as Notifications from "expo-notifications";
+import Constants from "expo-constants";
 import { Platform } from "react-native";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 
@@ -6,6 +7,7 @@ import { apiCall } from "./http";
 
 const isWeb = Platform.OS === "web";
 const PUSH_TOKEN_KEY = "expo_push_token";
+export const ANDROID_CHANNEL_ID = "default";
 
 if (!isWeb) {
   Notifications.setNotificationHandler({
@@ -20,6 +22,24 @@ if (!isWeb) {
     }),
   });
 }
+
+// On Android a notification channel must exist for notifications to show
+// (and to surface as heads-up). Expo's auto-created channel uses default
+// importance, which can suppress the banner; create an explicit high-
+// importance channel so pushes actually pop. Safe to call repeatedly.
+const ensureAndroidChannel = async () => {
+  if (Platform.OS !== "android") return;
+  try {
+    await Notifications.setNotificationChannelAsync(ANDROID_CHANNEL_ID, {
+      name: "Default",
+      importance: Notifications.AndroidImportance.MAX,
+      vibrationPattern: [0, 250, 250, 250],
+      lightColor: "#2563eb",
+    });
+  } catch (err) {
+    console.log("Android channel setup failed:", err);
+  }
+};
 
 export const requestNotificationPermission = async () => {
 
@@ -48,8 +68,19 @@ const getDevicePushToken =
     const granted = await requestNotificationPermission();
     if (!granted) return null;
 
-    const result =
-      await Notifications.getExpoPushTokenAsync();
+    await ensureAndroidChannel();
+
+    // In a dev/standalone build (not Expo Go), getExpoPushTokenAsync needs
+    // the EAS projectId explicitly — otherwise it throws "No projectId
+    // found" and no token is ever registered. Resolve it from the Expo
+    // config (app.json → extra.eas.projectId).
+    const projectId =
+      (Constants?.expoConfig as any)?.extra?.eas?.projectId ??
+      (Constants as any)?.easConfig?.projectId;
+
+    const result = await Notifications.getExpoPushTokenAsync(
+      projectId ? { projectId } : undefined
+    );
 
     return result.data || null;
   } catch (err) {

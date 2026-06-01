@@ -17,6 +17,7 @@ import * as Notifications from "expo-notifications";
 import { ErrorBoundary } from "../src/components/ErrorBoundary";
 import { ThemeProvider, useTheme } from "../src/theme/ThemeProvider";
 import { toastConfig } from "../src/components/toast";
+import { checkForOtaUpdate } from "../src/utils/otaUpdates";
 // Side-effect import — patches Alert.alert so all the existing
 // `Alert.alert("Failed", err.message)` calls in 56 screens render as
 // our themed toast instead of the dated Material dialog. Destructive
@@ -59,6 +60,11 @@ const handleNotificationData = (
 export default function RootLayout() {
 
   const router = useRouter();
+
+  // Apply any published OTA update on launch (no-op in dev / Expo Go).
+  useEffect(() => {
+    checkForOtaUpdate();
+  }, []);
 
   useEffect(() => {
     if (Platform.OS === "web") return;

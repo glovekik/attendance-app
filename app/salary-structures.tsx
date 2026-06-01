@@ -368,7 +368,7 @@ export default function SalaryStructures() {
                 <Field label="Other Allowance" value={other} onChange={setOther} styles={s} faintColor={c.textFaint} />
               </View>
               <View style={s.twoCol}>
-                <Field label="Employer Insurance" value={employerInsurance} onChange={setEmployerInsurance} styles={s} faintColor={c.textFaint} />
+                <Field label="Health Insurance" value={employerInsurance} onChange={setEmployerInsurance} styles={s} faintColor={c.textFaint} />
                 <View style={{ flex: 1 }} />
               </View>
 
@@ -379,7 +379,7 @@ export default function SalaryStructures() {
                 <Field label="TDS" value={tds} onChange={setTds} styles={s} faintColor={c.textFaint} />
               </View>
               <View style={s.twoCol}>
-                <Field label="Employee Insurance" value={employeeInsurance} onChange={setEmployeeInsurance} styles={s} faintColor={c.textFaint} />
+                <Field label="Health Insurance" value={employeeInsurance} onChange={setEmployeeInsurance} styles={s} faintColor={c.textFaint} />
                 <View style={{ flex: 1 }} />
               </View>
 

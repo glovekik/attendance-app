@@ -36,20 +36,16 @@ const downloadWithAuth = async (
   }
 
   // Native — needs expo-file-system + expo-sharing
-  const FileSystem = require("expo-file-system");
+  const { File, Paths } = require("expo-file-system");
   const Sharing = require("expo-sharing");
 
-  const cacheDir =
-    FileSystem.cacheDirectory || FileSystem.documentDirectory;
-  const localPath = `${cacheDir}${filename}`;
+  const destination = new File(Paths.cache, filename);
 
-  const result = await FileSystem.downloadAsync(url, localPath, {
+  // Throws on failure; `idempotent` overwrites a stale cached copy.
+  const result = await File.downloadFileAsync(url, destination, {
     headers: { Authorization: `Bearer ${token}` },
+    idempotent: true,
   });
-
-  if (result.status !== 200) {
-    throw new Error(`Download failed (${result.status})`);
-  }
 
   const canShare = await Sharing.isAvailableAsync();
   if (canShare) {

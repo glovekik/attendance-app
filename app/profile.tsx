@@ -172,6 +172,7 @@ export default function Profile() {
   const [profile, setProfile] = useState<MyProfile | null>(null);
   const [loading, setLoading] = useState(true);
   const [loggingOut, setLoggingOut] = useState(false);
+  const [showLogoutModal, setShowLogoutModal] = useState(false);
   // Per-field edit. editingPath is whichever single field the employee
   // is currently filling in; null when nothing is being edited.
   const [editingPath, setEditingPath] = useState<string | null>(null);
@@ -326,12 +327,7 @@ export default function Profile() {
   };
 
   const handleLogout = async () => {
-    const ok = await confirmAction({
-      title: "Sign out?",
-      message: "You'll need to enter your credentials again to come back.",
-      confirmLabel: "Sign out",
-      destructive: true });
-    if (!ok) return;
+    setShowLogoutModal(false);
     try {
       setLoggingOut(true);
       const token = await AsyncStorage.getItem("token");
@@ -372,11 +368,17 @@ export default function Profile() {
   const roleTint = roleTints(theme, user.role);
 
   // Blank editable fields = "pending from HR" the employee can complete.
+  // Legal name is excluded — it falls back to the account name (see the
+  // PersonalRow render below), so it's never genuinely "pending".
   const pendingCount = profile
     ? PERSONAL_GROUPS.reduce(
         (n, g) =>
           n +
-          g.fields.filter((f) => readPath(profile, f.path) === "").length,
+          g.fields.filter(
+            (f) =>
+              f.path !== "personal.legalName" &&
+              readPath(profile, f.path) === ""
+          ).length,
         0
       )
     : 0;
@@ -615,7 +617,12 @@ export default function Profile() {
                     key={f.path}
                     path={f.path}
                     label={f.label}
-                    stored={readPath(profile, f.path)}
+                    stored={
+                      f.path === "personal.legalName" &&
+                      readPath(profile, f.path) === ""
+                        ? user.name
+                        : readPath(profile, f.path)
+                    }
                     editingPath={editingPath}
                     draft={draft}
                     saving={saving}
@@ -851,7 +858,7 @@ export default function Profile() {
               backgroundColor: c.dangerBg,
               borderColor: c.dangerText },
           ]}
-          onPress={handleLogout}
+          onPress={() => setShowLogoutModal(true)}
           disabled={loggingOut}
           activeOpacity={0.85}
         >
@@ -976,6 +983,70 @@ export default function Profile() {
             </View>
           </View>
         </KeyboardAvoidingView>
+      </Modal>
+
+      {/* Sign-out confirmation — themed card replacing the browser's
+          default confirm dialog (which looked dated on web). */}
+      <Modal
+        visible={showLogoutModal}
+        animationType="fade"
+        transparent
+        onRequestClose={() => setShowLogoutModal(false)}
+      >
+        <TouchableOpacity
+          style={styles.logoutModalWrap}
+          activeOpacity={1}
+          onPress={() => setShowLogoutModal(false)}
+        >
+          <TouchableOpacity
+            activeOpacity={1}
+            style={[
+              styles.logoutModalCard,
+              {
+                backgroundColor: c.surface,
+                borderColor: c.surfaceBorder },
+            ]}
+          >
+            <View
+              style={[
+                styles.logoutModalIcon,
+                { backgroundColor: c.dangerBg },
+              ]}
+            >
+              <Ionicons name="log-out-outline" size={26} color={c.dangerText} />
+            </View>
+            <Text style={[styles.logoutModalTitle, { color: c.text }]}>
+              Sign out?
+            </Text>
+            <Text style={[styles.logoutModalSub, { color: c.textMuted }]}>
+              You&apos;ll need to enter your credentials again to come back.
+            </Text>
+            <View style={styles.logoutModalActions}>
+              <TouchableOpacity
+                style={[
+                  styles.logoutModalBtn,
+                  { backgroundColor: c.surfaceMuted },
+                ]}
+                onPress={() => setShowLogoutModal(false)}
+              >
+                <Text style={{ color: c.text, fontWeight: "700", fontSize: 14 }}>
+                  Cancel
+                </Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[
+                  styles.logoutModalBtn,
+                  { backgroundColor: c.dangerText },
+                ]}
+                onPress={handleLogout}
+              >
+                <Text style={{ color: "#fff", fontWeight: "800", fontSize: 14 }}>
+                  Sign out
+                </Text>
+              </TouchableOpacity>
+            </View>
+          </TouchableOpacity>
+        </TouchableOpacity>
       </Modal>
 
       <BottomTabBar user={user} />
@@ -1472,5 +1543,41 @@ const makeStyles = (c: any) => StyleSheet.create({
   compModalBtn: {
     flex: 1,
     paddingVertical: 12,
+    borderRadius: 12,
+    alignItems: "center" },
+
+  logoutModalWrap: {
+    flex: 1,
+    justifyContent: "center",
+    alignItems: "center",
+    backgroundColor: c.overlay,
+    paddingHorizontal: 28 },
+  logoutModalCard: {
+    width: "100%",
+    maxWidth: 360,
+    borderRadius: 20,
+    borderWidth: 1,
+    padding: 22,
+    alignItems: "center" },
+  logoutModalIcon: {
+    width: 56,
+    height: 56,
+    borderRadius: 28,
+    alignItems: "center",
+    justifyContent: "center",
+    marginBottom: 14 },
+  logoutModalTitle: { fontSize: 18, fontWeight: "800", marginBottom: 6 },
+  logoutModalSub: {
+    fontSize: 13,
+    lineHeight: 19,
+    textAlign: "center",
+    marginBottom: 20 },
+  logoutModalActions: {
+    flexDirection: "row",
+    gap: 10,
+    width: "100%" },
+  logoutModalBtn: {
+    flex: 1,
+    paddingVertical: 13,
     borderRadius: 12,
     alignItems: "center" } });

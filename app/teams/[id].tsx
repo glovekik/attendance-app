@@ -9,10 +9,11 @@ import {
   ScrollView,
   TouchableOpacity,
   ActivityIndicator,
-  SafeAreaView,
   Alert,
   Platform,
 } from "react-native";
+
+import { SafeAreaView } from "react-native-safe-area-context";
 
 import AsyncStorage from "@react-native-async-storage/async-storage";
 
@@ -154,13 +155,15 @@ export default function TeamDetail() {
     }
     if (isHR) {
       const u = users.find((x) => x.id === id);
-      return u?.name || id.slice(-6);
+      if (u?.name) return u.name;
     }
     if (team?.members) {
       const m = team.members.find((x) => x.id === id);
       if (m) return m.name;
     }
-    return id.slice(-6);
+    // The referenced user no longer exists (e.g. deleted and re-created
+    // with a new id). Show a clear label instead of a cryptic id slice.
+    return "Unknown user";
   };
 
   const userEmail = (id: string) => {
@@ -268,7 +271,7 @@ export default function TeamDetail() {
           <View style={{ flex: 1 }}>
             <Text style={styles.title}>{team.name}</Text>
             <Text style={styles.subtitle}>
-              Lead: {userName(team.teamLeadId)}
+              Manager: {userName(team.teamLeadId)}
             </Text>
           </View>
 
@@ -383,7 +386,7 @@ export default function TeamDetail() {
         {!isLead && isHR && (
           <View style={styles.emptyBox}>
             <Text style={styles.emptySub}>
-              Only the team lead can view and manage this team&apos;s tasks.
+              Only the manager can view and manage this team&apos;s tasks.
             </Text>
           </View>
         )}

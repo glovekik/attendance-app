@@ -162,284 +162,234 @@ export default function Login() {
         <ScrollView
           contentContainerStyle={styles.scroll}
           keyboardShouldPersistTaps="handled"
+          keyboardDismissMode="interactive"
           showsVerticalScrollIndicator={false}
         >
-          {/* ===== BRAND BANNER ===== */}
-          <View style={[styles.banner, { backgroundColor: c.accentSoft }]}>
-            {/* decorative blobs */}
-            <View
-              style={[
-                styles.blob,
-                styles.blobOne,
-                { backgroundColor: c.accent, opacity: 0.12 },
-              ]}
-            />
-            <View
-              style={[
-                styles.blob,
-                styles.blobTwo,
-                { backgroundColor: c.accent, opacity: 0.08 },
-              ]}
-            />
-            <Image
-              source={require("../assets/images/logo.jpg")}
-              style={styles.bannerLogo}
-              resizeMode="contain"
-            />
-            <Text style={[styles.bannerTagline, { color: c.accentText }]}>
-              AI Ambitions Empowered
-            </Text>
-          </View>
+          {/* Logo — modest, top-aligned, no decoration. Same convention
+              as Microsoft 365 / Google Workspace / Stripe Dashboard. */}
+          <Image
+            source={require("../assets/images/logo.jpg")}
+            style={styles.logo}
+            resizeMode="contain"
+          />
 
-          {/* ===== SIGN-IN CARD ===== */}
-          <View
-            style={[
-              styles.card,
-              {
-                backgroundColor: c.surface,
-                borderColor: c.surfaceBorder,
-                shadowColor: c.shadow },
-            ]}
-          >
-            {/* contextual icon ring */}
-            <View
-              style={[
-                styles.cardIconRing,
-                { backgroundColor: c.pastelLavender },
-              ]}
-            >
-              <Ionicons
-                name={otpRequired ? "mail-outline" : "lock-closed-outline"}
-                size={26}
-                color={c.accent}
-              />
-            </View>
+          {/* Header — left-aligned with clear hierarchy. */}
+          <Text style={[styles.title, { color: c.text }]}>
+            {otpRequired ? "Verify your email" : "Sign in"}
+          </Text>
+          <Text style={[styles.subtitle, { color: c.textMuted }]}>
+            {otpRequired
+              ? `Enter the 6-digit code sent to ${email}.`
+              : "Use your work account to continue."}
+          </Text>
 
-            <Text style={[styles.cardTitle, { color: c.text }]}>
-              {otpRequired ? "Check your email" : "Welcome back"}
-            </Text>
-            <Text style={[styles.cardSub, { color: c.textMuted }]}>
-              {otpRequired
-                ? `We sent a 6-digit code to ${email}.`
-                : "Sign in to continue to your workspace."}
-            </Text>
-
-          {/* ===== FORM ===== */}
-          {!otpRequired ? (
-            <View style={{ marginTop: 6 }}>
-              <FieldLabel label="EMAIL" theme={theme} />
-              <View
-                style={[
-                  styles.inputWrap,
-                  {
-                    backgroundColor: c.surface,
-                    borderColor: emailError ? c.dangerText : c.surfaceBorder },
-                ]}
-              >
-                <Ionicons
-                  name="mail-outline"
-                  size={18}
-                  color={c.textMuted}
-                />
-                <TextInput
-                  style={[styles.input, { color: c.text }]}
-                  value={email}
-                  onChangeText={setEmail}
-                  placeholder="you@company.com"
-                  placeholderTextColor={c.textFaint}
-                  autoCapitalize="none"
-                  keyboardType="email-address"
-                  autoComplete="email"
-                />
-              </View>
-              {!!emailError && (
-                <Text style={[styles.fieldErr, { color: c.dangerText }]}>
-                  {emailError}
-                </Text>
-              )}
-
-              <FieldLabel label="PASSWORD" theme={theme} />
-              <View
-                style={[
-                  styles.inputWrap,
-                  {
-                    backgroundColor: c.surface,
-                    borderColor: passwordError
-                      ? c.dangerText
-                      : c.surfaceBorder },
-                ]}
-              >
-                <Ionicons
-                  name="lock-closed-outline"
-                  size={18}
-                  color={c.textMuted}
-                />
-                <TextInput
-                  style={[styles.input, { color: c.text }]}
-                  value={password}
-                  onChangeText={setPassword}
-                  placeholder="Your password"
-                  placeholderTextColor={c.textFaint}
-                  secureTextEntry={!showPassword}
-                  autoCapitalize="none"
-                  autoComplete="password"
-                />
-                <TouchableOpacity
-                  onPress={() => setShowPassword((v) => !v)}
-                  hitSlop={8}
-                >
-                  <Ionicons
-                    name={showPassword ? "eye-off-outline" : "eye-outline"}
-                    size={20}
-                    color={c.textMuted}
-                  />
-                </TouchableOpacity>
-              </View>
-              {!!passwordError && (
-                <Text style={[styles.fieldErr, { color: c.dangerText }]}>
-                  {passwordError}
-                </Text>
-              )}
-
-              <TouchableOpacity
-                onPress={() => router.push("/forgot-password")}
-                style={{ alignSelf: "flex-end", marginTop: 10 }}
-              >
-                <Text style={[styles.linkText, { color: c.accent }]}>
-                  Forgot password?
-                </Text>
-              </TouchableOpacity>
-
-              {!!serverError && (
+          {/* Form */}
+          <View style={styles.form}>
+            {!otpRequired ? (
+              <>
+                <FieldLabel label="Email address" theme={theme} />
                 <View
                   style={[
-                    styles.errorBanner,
+                    styles.inputWrap,
                     {
-                      backgroundColor: c.dangerBg,
-                      borderColor: c.dangerText },
+                      backgroundColor: c.surface,
+                      borderColor: emailError
+                        ? c.dangerText
+                        : c.surfaceBorder },
                   ]}
                 >
-                  <Ionicons
-                    name="alert-circle-outline"
-                    size={16}
-                    color={c.dangerText}
+                  <TextInput
+                    style={[styles.input, { color: c.text }]}
+                    value={email}
+                    onChangeText={setEmail}
+                    placeholder="name@company.com"
+                    placeholderTextColor={c.textFaint}
+                    autoCapitalize="none"
+                    keyboardType="email-address"
+                    autoComplete="email"
                   />
-                  <Text
-                    style={[styles.errorBannerText, { color: c.dangerText }]}
-                  >
-                    {serverError}
-                  </Text>
                 </View>
-              )}
-
-              <TouchableOpacity
-                style={[
-                  styles.cta,
-                  {
-                    backgroundColor: c.accent,
-                    shadowColor: c.shadow,
-                    opacity: loading ? 0.7 : 1 },
-                ]}
-                onPress={onSignIn}
-                disabled={loading}
-                activeOpacity={0.85}
-              >
-                {loading ? (
-                  <ActivityIndicator color="#fff" />
-                ) : (
-                  <>
-                    <Text style={styles.ctaText}>Sign in</Text>
-                    <Ionicons
-                      name="arrow-forward"
-                      size={18}
-                      color="#fff"
-                    />
-                  </>
+                {!!emailError && (
+                  <Text style={[styles.fieldErr, { color: c.dangerText }]}>
+                    {emailError}
+                  </Text>
                 )}
-              </TouchableOpacity>
-            </View>
-          ) : (
-            // ===== OTP STEP =====
-            <View style={{ marginTop: 22 }}>
-              <FieldLabel label="VERIFICATION CODE" theme={theme} />
-              <View
-                style={[
-                  styles.inputWrap,
-                  {
-                    backgroundColor: c.surface,
-                    borderColor: c.surfaceBorder },
-                ]}
-              >
-                <Ionicons
-                  name="keypad-outline"
-                  size={18}
-                  color={c.textMuted}
-                />
-                <TextInput
+
+                <View style={styles.labelRow}>
+                  <FieldLabel label="Password" theme={theme} compact />
+                  <TouchableOpacity
+                    onPress={() => router.push("/forgot-password")}
+                    hitSlop={8}
+                  >
+                    <Text style={[styles.linkText, { color: c.accent }]}>
+                      Forgot password?
+                    </Text>
+                  </TouchableOpacity>
+                </View>
+                <View
                   style={[
-                    styles.input,
+                    styles.inputWrap,
                     {
-                      color: c.text,
-                      letterSpacing: 4,
-                      textAlign: "center" },
+                      backgroundColor: c.surface,
+                      borderColor: passwordError
+                        ? c.dangerText
+                        : c.surfaceBorder },
                   ]}
-                  value={otpCode}
-                  onChangeText={setOtpCode}
-                  placeholder="••••••"
-                  placeholderTextColor={c.textFaint}
-                  keyboardType="number-pad"
-                  maxLength={8}
-                />
-              </View>
-
-              <TouchableOpacity
-                style={[
-                  styles.cta,
-                  {
-                    backgroundColor: c.accent,
-                    shadowColor: c.shadow,
-                    opacity: otpVerifying ? 0.7 : 1,
-                    marginTop: 18 },
-                ]}
-                onPress={onVerifyOtp}
-                disabled={otpVerifying}
-                activeOpacity={0.85}
-              >
-                {otpVerifying ? (
-                  <ActivityIndicator color="#fff" />
-                ) : (
-                  <Text style={styles.ctaText}>Verify & sign in</Text>
+                >
+                  <TextInput
+                    style={[styles.input, { color: c.text }]}
+                    value={password}
+                    onChangeText={setPassword}
+                    placeholder="Enter your password"
+                    placeholderTextColor={c.textFaint}
+                    secureTextEntry={!showPassword}
+                    autoCapitalize="none"
+                    autoComplete="password"
+                  />
+                  <TouchableOpacity
+                    onPress={() => setShowPassword((v) => !v)}
+                    hitSlop={8}
+                  >
+                    <Ionicons
+                      name={showPassword ? "eye-off-outline" : "eye-outline"}
+                      size={20}
+                      color={c.textMuted}
+                    />
+                  </TouchableOpacity>
+                </View>
+                {!!passwordError && (
+                  <Text style={[styles.fieldErr, { color: c.dangerText }]}>
+                    {passwordError}
+                  </Text>
                 )}
-              </TouchableOpacity>
 
-              <View style={styles.otpFooter}>
+                {!!serverError && (
+                  <View
+                    style={[
+                      styles.errorBanner,
+                      {
+                        backgroundColor: c.dangerBg,
+                        borderColor: c.dangerText },
+                    ]}
+                  >
+                    <Ionicons
+                      name="alert-circle-outline"
+                      size={16}
+                      color={c.dangerText}
+                    />
+                    <Text
+                      style={[
+                        styles.errorBannerText,
+                        { color: c.dangerText },
+                      ]}
+                    >
+                      {serverError}
+                    </Text>
+                  </View>
+                )}
+
                 <TouchableOpacity
-                  onPress={onResendOtp}
-                  disabled={otpResending}
+                  style={[
+                    styles.cta,
+                    {
+                      backgroundColor: c.accent,
+                      opacity: loading ? 0.7 : 1 },
+                  ]}
+                  onPress={onSignIn}
+                  disabled={loading}
+                  activeOpacity={0.85}
                 >
-                  <Text style={[styles.linkText, { color: c.accent }]}>
-                    {otpResending ? "Resending…" : "Resend code"}
-                  </Text>
+                  {loading ? (
+                    <ActivityIndicator color={c.textInverse} />
+                  ) : (
+                    <Text
+                      style={[styles.ctaText, { color: c.textInverse }]}
+                    >
+                      Sign in
+                    </Text>
+                  )}
                 </TouchableOpacity>
-                <Text style={[styles.dot, { color: c.textFaint }]}>·</Text>
+              </>
+            ) : (
+              // ===== OTP STEP =====
+              <>
+                <FieldLabel label="Verification code" theme={theme} />
+                <View
+                  style={[
+                    styles.inputWrap,
+                    {
+                      backgroundColor: c.surface,
+                      borderColor: c.surfaceBorder },
+                  ]}
+                >
+                  <TextInput
+                    style={[
+                      styles.input,
+                      {
+                        color: c.text,
+                        letterSpacing: 6,
+                        fontSize: 20,
+                        fontWeight: "700",
+                        textAlign: "center" },
+                    ]}
+                    value={otpCode}
+                    onChangeText={setOtpCode}
+                    placeholder="000000"
+                    placeholderTextColor={c.textFaint}
+                    keyboardType="number-pad"
+                    maxLength={8}
+                  />
+                </View>
+
                 <TouchableOpacity
-                  onPress={() => {
-                    setOtpRequired(false);
-                    setOtpCode("");
-                  }}
+                  style={[
+                    styles.cta,
+                    {
+                      backgroundColor: c.accent,
+                      opacity: otpVerifying ? 0.7 : 1 },
+                  ]}
+                  onPress={onVerifyOtp}
+                  disabled={otpVerifying}
+                  activeOpacity={0.85}
                 >
-                  <Text style={[styles.linkText, { color: c.textMuted }]}>
-                    Use different email
-                  </Text>
+                  {otpVerifying ? (
+                    <ActivityIndicator color={c.textInverse} />
+                  ) : (
+                    <Text
+                      style={[styles.ctaText, { color: c.textInverse }]}
+                    >
+                      Verify & sign in
+                    </Text>
+                  )}
                 </TouchableOpacity>
-              </View>
-            </View>
-          )}
+
+                <View style={styles.otpFooter}>
+                  <TouchableOpacity
+                    onPress={onResendOtp}
+                    disabled={otpResending}
+                  >
+                    <Text style={[styles.linkText, { color: c.accent }]}>
+                      {otpResending ? "Resending…" : "Resend code"}
+                    </Text>
+                  </TouchableOpacity>
+                  <Text style={[styles.dot, { color: c.textFaint }]}>·</Text>
+                  <TouchableOpacity
+                    onPress={() => {
+                      setOtpRequired(false);
+                      setOtpCode("");
+                    }}
+                  >
+                    <Text style={[styles.linkText, { color: c.textMuted }]}>
+                      Use different email
+                    </Text>
+                  </TouchableOpacity>
+                </View>
+              </>
+            )}
           </View>
-          {/* /sign-in card */}
 
           <Text style={[styles.footnote, { color: c.textFaint }]}>
-            By signing in you accept our policy and terms.
+            By continuing you agree to our Terms and Privacy Policy.
           </Text>
         </ScrollView>
       </KeyboardAvoidingView>
@@ -447,14 +397,20 @@ export default function Login() {
   );
 }
 
-const FieldLabel = ({ label, theme }: { label: string; theme: any }) => (
+const FieldLabel = ({
+  label,
+  theme,
+  compact }: {
+  label: string;
+  theme: any;
+  compact?: boolean;
+}) => (
   <Text
     style={{
-      color: theme.colors.textMuted,
-      fontSize: 11,
-      fontWeight: "800",
-      letterSpacing: 1.4,
-      marginTop: 16,
+      color: theme.colors.text,
+      fontSize: 13,
+      fontWeight: "600",
+      marginTop: compact ? 0 : 18,
       marginBottom: 6 }}
   >
     {label}
@@ -465,131 +421,82 @@ const FieldLabel = ({ label, theme }: { label: string; theme: any }) => (
 const makeStyles = (c: any) => StyleSheet.create({
   safe: { flex: 1 },
   scroll: {
-    paddingBottom: 40 },
+    flexGrow: 1,
+    paddingHorizontal: 28,
+    paddingTop: 48,
+    paddingBottom: 28 },
 
-  // ===== BRAND BANNER =====
-  banner: {
-    paddingTop: 36,
-    paddingBottom: 80,
-    paddingHorizontal: 24,
+  logo: {
+    width: 140,
+    height: 44,
+    alignSelf: "flex-start",
+    marginBottom: 40 },
+
+  title: {
+    fontSize: 28,
+    fontWeight: "700",
+    letterSpacing: -0.4,
+    marginBottom: 6 },
+  subtitle: {
+    fontSize: 14,
+    lineHeight: 20,
+    marginBottom: 28 },
+
+  form: { width: "100%" },
+  labelRow: {
+    flexDirection: "row",
     alignItems: "center",
-    overflow: "hidden",
-    position: "relative",
-    borderBottomLeftRadius: 32,
-    borderBottomRightRadius: 32 },
-  blob: {
-    position: "absolute",
-    borderRadius: 999 },
-  blobOne: {
-    width: 220,
-    height: 220,
-    top: -70,
-    right: -60 },
-  blobTwo: {
-    width: 160,
-    height: 160,
-    bottom: -40,
-    left: -50 },
-  bannerLogo: {
-    width: "100%",
-    maxWidth: 260,
-    height: 78 },
-  bannerTagline: {
-    fontSize: 12,
-    fontWeight: "800",
-    letterSpacing: 2,
-    marginTop: 12,
-    textTransform: "uppercase" },
-
-  // ===== CARD =====
-  card: {
-    marginHorizontal: 20,
-    marginTop: -56,
-    padding: 24,
-    paddingTop: 30,
-    borderRadius: 22,
-    borderWidth: 1,
-    alignItems: "stretch",
-    shadowOpacity: 1,
-    shadowRadius: 28,
-    shadowOffset: { width: 0, height: 12 },
-    elevation: 8 },
-  cardIconRing: {
-    width: 56,
-    height: 56,
-    borderRadius: 28,
-    alignItems: "center",
-    justifyContent: "center",
-    marginBottom: 16,
-    alignSelf: "center" },
-  cardTitle: {
-    fontSize: 22,
-    fontWeight: "800",
-    textAlign: "center",
-    marginBottom: 4 },
-  cardSub: {
-    fontSize: 13,
-    textAlign: "center",
-    lineHeight: 19,
-    marginBottom: 4 },
-
+    justifyContent: "space-between",
+    marginTop: 18,
+    marginBottom: 6 },
   inputWrap: {
     flexDirection: "row",
     alignItems: "center",
-    borderRadius: 14,
+    borderRadius: 8,
     borderWidth: 1,
-    paddingHorizontal: 14,
-    minHeight: 52,
-    gap: 10 },
+    paddingHorizontal: 12,
+    minHeight: 46 },
   input: {
     flex: 1,
     fontSize: 15,
-    paddingVertical: 12 },
+    paddingVertical: 10 },
   fieldErr: {
     fontSize: 12,
-    marginTop: 4,
-    marginLeft: 4 },
+    marginTop: 6,
+    marginLeft: 2 },
   linkText: {
     fontSize: 13,
-    fontWeight: "700" },
+    fontWeight: "600" },
   errorBanner: {
     flexDirection: "row",
     alignItems: "center",
     gap: 8,
     padding: 12,
-    borderRadius: 12,
+    borderRadius: 8,
     borderWidth: 1,
-    marginTop: 14 },
+    marginTop: 18 },
   errorBannerText: {
     fontSize: 13,
-    fontWeight: "600",
+    fontWeight: "500",
     flex: 1 },
   cta: {
-    flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
-    gap: 8,
-    paddingVertical: 16,
-    borderRadius: 16,
-    marginTop: 22,
-    shadowOpacity: 0.18,
-    shadowRadius: 14,
-    shadowOffset: { width: 0, height: 6 },
-    elevation: 4 },
+    paddingVertical: 14,
+    borderRadius: 8,
+    marginTop: 24 },
   ctaText: {
-    color: "#fff",
     fontSize: 15,
-    fontWeight: "800",
-    letterSpacing: 0.3 },
+    fontWeight: "600",
+    letterSpacing: 0.2 },
   otpFooter: {
     flexDirection: "row",
     justifyContent: "center",
     alignItems: "center",
-    gap: 8,
-    marginTop: 20 },
+    gap: 10,
+    marginTop: 22 },
   dot: { fontSize: 16 },
   footnote: {
-    fontSize: 11,
-    textAlign: "center",
-    marginTop: 24,
-    paddingHorizontal: 32 } });
+    fontSize: 12,
+    marginTop: 28,
+    lineHeight: 16 } });

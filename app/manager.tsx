@@ -1,4 +1,4 @@
-﻿import React, { useCallback, useEffect, useState, useMemo} from "react";
+import React, { useCallback, useEffect, useState, useMemo} from "react";
 
 import {
   View,
@@ -23,9 +23,12 @@ import {
   BottomTabBar,
   BOTTOM_BAR_RESERVED_HEIGHT } from "../src/components/BottomTabBar";
 
+const COLLAPSE_KEY = "managerConsoleCollapsed";
+
 /**
- * Manager hub — KPI strip, approval queues, team management entry points.
- * White cards with pastel icon containers and badge counts.
+ * Manager hub — "needs-attention first" layout: team summary, a strip of
+ * pending approval queues, then collapsible sections for team, approvals
+ * and performance.
  */
 export default function ManagerHub() {
   const router = useRouter();
@@ -35,6 +38,7 @@ export default function ManagerHub() {
   const [refreshing, setRefreshing] = useState(false);
   const [dash, setDash] = useState<DashboardManager | null>(null);
   const [me, setMe] = useState<User | null>(null);
+  const [collapsed, setCollapsed] = useState<Record<string, boolean>>({});
 
   const load = useCallback(async () => {
     try {
@@ -58,6 +62,14 @@ export default function ManagerHub() {
   }, [router]);
 
   useEffect(() => {
+    (async () => {
+      try {
+        const raw = await AsyncStorage.getItem(COLLAPSE_KEY);
+        if (raw) setCollapsed(JSON.parse(raw));
+      } catch {
+        /* ignore */
+      }
+    })();
     load();
   }, [load]);
 
@@ -72,9 +84,61 @@ export default function ManagerHub() {
     load();
   };
 
+  const toggleSection = useCallback((title: string) => {
+    setCollapsed((prev) => {
+      const next = { ...prev, [title]: !prev[title] };
+      AsyncStorage.setItem(COLLAPSE_KEY, JSON.stringify(next)).catch(() => {});
+      return next;
+    });
+  }, []);
+
   const c = theme.colors;
 
   const styles = useMemo(() => makeStyles(c), [c]);
+
+  // Pending approval queues — drive the needs-attention strip + tab badge.
+  const pendingQueues = [
+    {
+      label: "Leaves",
+      count: dash?.pendingLeaveApprovals || 0,
+      icon: "paper-plane" as const,
+      color: "#0f766e",
+      route: "/manager-leaves" },
+    {
+      label: "Corrections",
+      count: dash?.pendingCorrectionApprovals || 0,
+      icon: "alert-circle" as const,
+      color: "#a16207",
+      route: "/manager-corrections" },
+    {
+      label: "Reimburse",
+      count: dash?.pendingReimbursementApprovals || 0,
+      icon: "card" as const,
+      color: "#0369a1",
+      route: "/manager-reimbursements" },
+    {
+      label: "Manual",
+      count: dash?.pendingManualAttendanceApprovals || 0,
+      icon: "document-text" as const,
+      color: "#6d28d9",
+      route: "/manager-manual-requests" },
+    {
+      label: "Timesheets",
+      count: dash?.pendingTimesheetApprovals || 0,
+      icon: "time" as const,
+      color: "#be185d",
+      route: "/manager-timesheets" },
+  ];
+  const activeQueues = pendingQueues.filter((q) => q.count > 0);
+  const totalPending = activeQueues.reduce((s, q) => s + q.count, 0);
+
+  const sectionProps = (title: string) => ({
+    title,
+    collapsed: !!collapsed[title],
+    onToggle: () => toggleSection(title),
+    theme,
+    styles,
+  });
 
   if (loading) {
     return (
@@ -116,9 +180,7 @@ export default function ManagerHub() {
             <Ionicons name="chevron-back" size={22} color={c.text} />
           </TouchableOpacity>
           <View style={{ flex: 1, marginLeft: 12 }}>
-            <Text style={[styles.title, { color: c.text }]}>
-              Manager Hub
-            </Text>
+            <Text style={[styles.title, { color: c.text }]}>Manager Hub</Text>
             <Text style={[styles.subtitle, { color: c.textMuted }]}>
               Approvals · Team · Tasks
             </Text>
@@ -175,12 +237,69 @@ export default function ManagerHub() {
           </View>
         )}
 
+        {/* ===== NEEDS ATTENTION ===== */}
+        {totalPending > 0 ? (
+          <View
+            style={[
+              styles.attentionCard,
+              { backgroundColor: c.surface, borderColor: "rgba(245,158,11,0.4)" },
+            ]}
+          >
+            <View style={styles.attentionHeader}>
+              <Ionicons name="alert-circle" size={18} color="#d97706" />
+              <Text style={[styles.attentionTitle, { color: c.text }]}>
+                {totalPending} item{totalPending > 1 ? "s" : ""} need
+                {totalPending > 1 ? "" : "s"} action
+              </Text>
+            </View>
+            <View style={styles.pillRow}>
+              {activeQueues.map((q) => (
+                <TouchableOpacity
+                  key={q.label}
+                  style={[
+                    styles.pill,
+                    {
+                      backgroundColor: c.surfaceMuted,
+                      borderColor: c.surfaceBorder },
+                  ]}
+                  onPress={() => router.push(q.route as any)}
+                  activeOpacity={0.8}
+                >
+                  <Ionicons name={q.icon} size={14} color={q.color} />
+                  <Text style={[styles.pillText, { color: c.text }]}>
+                    {q.label}
+                  </Text>
+                  <View
+                    style={[
+                      styles.pillCount,
+                      { backgroundColor: c.dangerText },
+                    ]}
+                  >
+                    <Text style={styles.pillCountText}>
+                      {q.count > 9 ? "9+" : q.count}
+                    </Text>
+                  </View>
+                </TouchableOpacity>
+              ))}
+            </View>
+          </View>
+        ) : (
+          <View
+            style={[
+              styles.caughtUp,
+              { backgroundColor: c.surface, borderColor: c.surfaceBorder },
+            ]}
+          >
+            <Ionicons name="checkmark-circle" size={18} color="#16a34a" />
+            <Text style={[styles.caughtUpText, { color: c.textMuted }]}>
+              All caught up — no pending approvals.
+            </Text>
+          </View>
+        )}
+
         {/* KPIs */}
         {dash && (
-          <>
-            <Text style={[styles.section, { color: c.textMuted }]}>
-              KPIs
-            </Text>
+          <Section {...sectionProps("KPIS")}>
             <View style={styles.kpiGrid}>
               <SimpleKpi
                 label="Team Attendance"
@@ -190,7 +309,7 @@ export default function ManagerHub() {
                 tint={c.pastelLavender}
                 iconColor="#6d28d9"
                 theme={theme}
-          styles={styles}
+                styles={styles}
               />
               <SimpleKpi
                 label="WFH Today"
@@ -200,7 +319,7 @@ export default function ManagerHub() {
                 tint={c.pastelMint}
                 iconColor="#15803d"
                 theme={theme}
-          styles={styles}
+                styles={styles}
               />
               <SimpleKpi
                 label="On-time Tasks"
@@ -210,7 +329,7 @@ export default function ManagerHub() {
                 tint={c.pastelPink}
                 iconColor="#be185d"
                 theme={theme}
-          styles={styles}
+                styles={styles}
               />
               <SimpleKpi
                 label="Avg Hours"
@@ -224,162 +343,159 @@ export default function ManagerHub() {
                 tint={c.pastelPeach}
                 iconColor="#c2410c"
                 theme={theme}
-          styles={styles}
+                styles={styles}
               />
             </View>
-          </>
+          </Section>
         )}
 
         {/* MY TEAM */}
-        <Text style={[styles.section, { color: c.textMuted }]}>
-          MY TEAM
-        </Text>
-        <View style={styles.tileRow}>
-          <Tile
-            icon="people-outline"
-            label="My Team"
-            sub="Direct reports & assign tasks"
-            tint={c.pastelLavender}
-            iconColor="#6d28d9"
-            count={dash?.directReports}
-            onPress={() => router.push("/manager-team" as any)}
-            theme={theme}
-          styles={styles}
-          />
-          <Tile
-            icon="list-outline"
-            label="My Team Tasks"
-            sub="All tasks you assigned"
-            tint={c.pastelMint}
-            iconColor="#15803d"
-            count={dash?.openTasksForReports}
-            onPress={() => router.push("/manager-tasks" as any)}
-            theme={theme}
-          styles={styles}
-          />
-          <Tile
-            icon="calendar-outline"
-            label="Team Attendance"
-            sub="Day / month view"
-            tint={c.pastelSky}
-            iconColor="#0369a1"
-            onPress={() => router.push("/manager-attendance" as any)}
-            theme={theme}
-          styles={styles}
-          />
-          <Tile
-            icon="airplane-outline"
-            label="Leave Balances"
-            sub="Per report"
-            tint={c.pastelPeach}
-            iconColor="#c2410c"
-            onPress={() => router.push("/manager-leave-balances" as any)}
-            theme={theme}
-          styles={styles}
-          />
-          <Tile
-            icon="bar-chart-outline"
-            label="Productivity"
-            sub="Open tasks · avg hours"
-            tint={c.pastelPink}
-            iconColor="#be185d"
-            onPress={() => router.push("/manager-productivity" as any)}
-            theme={theme}
-          styles={styles}
-          />
-        </View>
+        <Section {...sectionProps("MY TEAM")}>
+          <View style={styles.tileRow}>
+            <Tile
+              icon="people-outline"
+              label="My Team"
+              sub="Direct reports & assign tasks"
+              tint={c.pastelLavender}
+              iconColor="#6d28d9"
+              count={dash?.directReports}
+              onPress={() => router.push("/manager-team" as any)}
+              theme={theme}
+              styles={styles}
+            />
+            <Tile
+              icon="list-outline"
+              label="My Team Tasks"
+              sub="All tasks you assigned"
+              tint={c.pastelMint}
+              iconColor="#15803d"
+              count={dash?.openTasksForReports}
+              onPress={() => router.push("/manager-tasks" as any)}
+              theme={theme}
+              styles={styles}
+            />
+            <Tile
+              icon="calendar-outline"
+              label="Team Attendance"
+              sub="Day / month view"
+              tint={c.pastelSky}
+              iconColor="#0369a1"
+              onPress={() => router.push("/manager-attendance" as any)}
+              theme={theme}
+              styles={styles}
+            />
+            <Tile
+              icon="airplane-outline"
+              label="Leave Balances"
+              sub="Per report"
+              tint={c.pastelPeach}
+              iconColor="#c2410c"
+              onPress={() => router.push("/manager-leave-balances" as any)}
+              theme={theme}
+              styles={styles}
+            />
+            <Tile
+              icon="bar-chart-outline"
+              label="Productivity"
+              sub="Open tasks · avg hours"
+              tint={c.pastelPink}
+              iconColor="#be185d"
+              onPress={() => router.push("/manager-productivity" as any)}
+              theme={theme}
+              styles={styles}
+            />
+          </View>
+        </Section>
 
         {/* PENDING APPROVALS */}
-        <Text style={[styles.section, { color: c.textMuted }]}>
-          PENDING APPROVALS
-        </Text>
-        <View style={styles.tileRow}>
-          <Tile
-            icon="paper-plane-outline"
-            label="Leave requests"
-            sub="Approve / reject"
-            tint={c.pastelMint}
-            iconColor="#0f766e"
-            count={dash?.pendingLeaveApprovals}
-            onPress={() => router.push("/manager-leaves" as any)}
-            theme={theme}
-          styles={styles}
-          />
-          <Tile
-            icon="alert-circle-outline"
-            label="Corrections"
-            sub="Attendance fixes"
-            tint={c.pastelYellow}
-            iconColor="#a16207"
-            count={dash?.pendingCorrectionApprovals}
-            onPress={() => router.push("/manager-corrections" as any)}
-            theme={theme}
-          styles={styles}
-          />
-          <Tile
-            icon="card-outline"
-            label="Reimbursements"
-            sub="Expense approvals"
-            tint={c.pastelSky}
-            iconColor="#0369a1"
-            count={dash?.pendingReimbursementApprovals}
-            onPress={() => router.push("/manager-reimbursements" as any)}
-            theme={theme}
-          styles={styles}
-          />
-          <Tile
-            icon="document-text-outline"
-            label="Manual attendance"
-            sub="Missed-day requests"
-            tint={c.pastelLavender}
-            iconColor="#6d28d9"
-            count={dash?.pendingManualAttendanceApprovals}
-            onPress={() => router.push("/manager-manual-requests" as any)}
-            theme={theme}
-          styles={styles}
-          />
-          <Tile
-            icon="time-outline"
-            label="Timesheets"
-            sub="Weekly approval"
-            tint={c.pastelPink}
-            iconColor="#be185d"
-            count={dash?.pendingTimesheetApprovals}
-            onPress={() => router.push("/manager-timesheets" as any)}
-            theme={theme}
-          styles={styles}
-          />
-        </View>
+        <Section {...sectionProps("PENDING APPROVALS")}>
+          <View style={styles.tileRow}>
+            <Tile
+              icon="paper-plane-outline"
+              label="Leave requests"
+              sub="Approve / reject"
+              tint={c.pastelMint}
+              iconColor="#0f766e"
+              count={dash?.pendingLeaveApprovals}
+              onPress={() => router.push("/manager-leaves" as any)}
+              theme={theme}
+              styles={styles}
+            />
+            <Tile
+              icon="alert-circle-outline"
+              label="Corrections"
+              sub="Attendance fixes"
+              tint={c.pastelYellow}
+              iconColor="#a16207"
+              count={dash?.pendingCorrectionApprovals}
+              onPress={() => router.push("/manager-corrections" as any)}
+              theme={theme}
+              styles={styles}
+            />
+            <Tile
+              icon="card-outline"
+              label="Reimbursements"
+              sub="Expense approvals"
+              tint={c.pastelSky}
+              iconColor="#0369a1"
+              count={dash?.pendingReimbursementApprovals}
+              onPress={() => router.push("/manager-reimbursements" as any)}
+              theme={theme}
+              styles={styles}
+            />
+            <Tile
+              icon="document-text-outline"
+              label="Manual attendance"
+              sub="Missed-day requests"
+              tint={c.pastelLavender}
+              iconColor="#6d28d9"
+              count={dash?.pendingManualAttendanceApprovals}
+              onPress={() => router.push("/manager-manual-requests" as any)}
+              theme={theme}
+              styles={styles}
+            />
+            <Tile
+              icon="time-outline"
+              label="Timesheets"
+              sub="Weekly approval"
+              tint={c.pastelPink}
+              iconColor="#be185d"
+              count={dash?.pendingTimesheetApprovals}
+              onPress={() => router.push("/manager-timesheets" as any)}
+              theme={theme}
+              styles={styles}
+            />
+          </View>
+        </Section>
 
         {/* PERFORMANCE */}
-        <Text style={[styles.section, { color: c.textMuted }]}>
-          PERFORMANCE
-        </Text>
-        <View style={styles.tileRow}>
-          <Tile
-            icon="flag-outline"
-            label="Goals"
-            sub="Set & track"
-            tint={c.pastelPeach}
-            iconColor="#c2410c"
-            onPress={() => router.push("/manager-goals" as any)}
-            theme={theme}
-          styles={styles}
-          />
-          <Tile
-            icon="star-outline"
-            label="Reviews"
-            sub="Create & complete"
-            tint={c.pastelYellow}
-            iconColor="#a16207"
-            onPress={() => router.push("/manager-reviews" as any)}
-            theme={theme}
-          styles={styles}
-          />
-        </View>
+        <Section {...sectionProps("PERFORMANCE")}>
+          <View style={styles.tileRow}>
+            <Tile
+              icon="flag-outline"
+              label="Goals"
+              sub="Set & track"
+              tint={c.pastelPeach}
+              iconColor="#c2410c"
+              onPress={() => router.push("/manager-goals" as any)}
+              theme={theme}
+              styles={styles}
+            />
+            <Tile
+              icon="star-outline"
+              label="Reviews"
+              sub="Create & complete"
+              tint={c.pastelYellow}
+              iconColor="#a16207"
+              onPress={() => router.push("/manager-reviews" as any)}
+              theme={theme}
+              styles={styles}
+            />
+          </View>
+        </Section>
       </ScrollView>
 
-      <BottomTabBar user={me} />
+      <BottomTabBar user={me} badges={{ approvals: totalPending }} />
     </SafeAreaView>
   );
 }
@@ -388,6 +504,39 @@ const fmtPct = (v: number | null | undefined) => {
   if (v === null || v === undefined || !Number.isFinite(v)) return "—";
   return `${Math.round(v)}%`;
 };
+
+const Section = ({
+  title,
+  collapsed,
+  onToggle,
+  children,
+  theme,
+  styles }: {
+  title: string;
+  collapsed: boolean;
+  onToggle: () => void;
+  children: React.ReactNode;
+  theme: any;
+  styles: any;
+}) => (
+  <>
+    <TouchableOpacity
+      style={styles.sectionHeader}
+      onPress={onToggle}
+      activeOpacity={0.7}
+    >
+      <Text style={[styles.section, { color: theme.colors.textMuted }]}>
+        {title}
+      </Text>
+      <Ionicons
+        name={collapsed ? "chevron-forward" : "chevron-down"}
+        size={16}
+        color={theme.colors.textMuted}
+      />
+    </TouchableOpacity>
+    {!collapsed && children}
+  </>
+);
 
 const Tile = ({
   icon,
@@ -424,7 +573,12 @@ const Tile = ({
       <Ionicons name={icon} size={22} color={iconColor} />
     </View>
     <View style={{ flex: 1 }}>
-      <Text style={[styles.tileLabel, { color: theme.colors.text }]}>
+      <Text
+        style={[styles.tileLabel, { color: theme.colors.text }]}
+        numberOfLines={1}
+        adjustsFontSizeToFit
+        minimumFontScale={0.75}
+      >
         {label}
       </Text>
       {!!sub && (
@@ -516,6 +670,7 @@ const makeStyles = (c: any) => StyleSheet.create({
     padding: 18,
     borderRadius: 20,
     borderWidth: 1,
+    marginBottom: 4,
     shadowOpacity: 1,
     shadowRadius: 16,
     shadowOffset: { width: 0, height: 6 },
@@ -525,12 +680,58 @@ const makeStyles = (c: any) => StyleSheet.create({
   summaryLabel: { fontSize: 11, marginTop: 4, letterSpacing: 0.5 },
   summaryDivider: { width: 1, height: 36 },
 
+  // ===== NEEDS ATTENTION =====
+  attentionCard: {
+    borderRadius: 18,
+    borderWidth: 1,
+    padding: 14,
+    marginTop: 12 },
+  attentionHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    marginBottom: 12 },
+  attentionTitle: { fontSize: 14, fontWeight: "800" },
+  pillRow: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
+  pill: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    paddingHorizontal: 10,
+    paddingVertical: 7,
+    borderRadius: 999,
+    borderWidth: 1 },
+  pillText: { fontSize: 12, fontWeight: "700" },
+  pillCount: {
+    minWidth: 18,
+    height: 18,
+    borderRadius: 9,
+    paddingHorizontal: 5,
+    alignItems: "center",
+    justifyContent: "center" },
+  pillCountText: { color: "#fff", fontSize: 10, fontWeight: "800" },
+  caughtUp: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    borderRadius: 18,
+    borderWidth: 1,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    marginTop: 12 },
+  caughtUpText: { fontSize: 13, fontWeight: "600" },
+
+  sectionHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    marginTop: 24,
+    marginBottom: 10,
+    paddingRight: 4 },
   section: {
     fontSize: 11,
     fontWeight: "800",
     letterSpacing: 1.4,
-    marginTop: 24,
-    marginBottom: 10,
     marginLeft: 4 },
 
   kpiGrid: { flexDirection: "row", flexWrap: "wrap", gap: 10 },

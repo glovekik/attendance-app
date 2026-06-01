@@ -184,10 +184,16 @@ export const getMe =
 
       if (!response.ok) {
 
-        throw new Error(
+        // Attach the HTTP status so callers can tell a genuine auth
+        // failure (401 → session is actually invalid) apart from a
+        // transient server error. Without this the dashboard can't
+        // distinguish "logged out" from "server hiccup".
+        const err: any = new Error(
           result.detail ||
           "Failed to fetch user"
         );
+        err.status = response.status;
+        throw err;
       }
 
       return result;

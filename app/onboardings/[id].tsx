@@ -9,10 +9,11 @@ import {
   ScrollView,
   TouchableOpacity,
   ActivityIndicator,
-  SafeAreaView,
   Platform,
   Alert,
 } from "react-native";
+
+import { SafeAreaView } from "react-native-safe-area-context";
 
 import AsyncStorage from "@react-native-async-storage/async-storage";
 

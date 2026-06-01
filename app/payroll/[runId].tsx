@@ -9,12 +9,13 @@ import {
   ScrollView,
   TouchableOpacity,
   ActivityIndicator,
-  SafeAreaView,
   Platform,
   Alert,
   Modal,
   TextInput,
 } from "react-native";
+
+import { SafeAreaView } from "react-native-safe-area-context";
 
 import AsyncStorage from "@react-native-async-storage/async-storage";
 
@@ -34,6 +35,8 @@ import {
   hrEmailPayslip,
   hrPayslipPdfUrl,
   hrUpdatePayslip,
+  hrSendPayslip,
+  hrSendAllPayslips,
 } from "../../src/services/payroll";
 
 import { downloadPdfWithAuth } from "../../src/utils/download";
@@ -65,6 +68,7 @@ export default function HRPayrollRun() {
   const [busy, setBusy] = useState(false);
   const [downloadingId, setDownloadingId] = useState<string | null>(null);
   const [emailingId, setEmailingId] = useState<string | null>(null);
+  const [sendingId, setSendingId] = useState<string | null>(null);
 
   // Per-payslip working-days edit
   const [editPayslip, setEditPayslip] = useState<Payslip | null>(null);
@@ -214,6 +218,38 @@ export default function HRPayrollRun() {
     }
   };
 
+  // Releases a payslip to the employee — makes it visible in My Payslips
+  // and notifies them. Distinct from "Email" (which sends the PDF).
+  const sendOne = async (p: Payslip) => {
+    try {
+      setSendingId(p.id);
+      const token = await AsyncStorage.getItem("token");
+      if (!token) return;
+      await hrSendPayslip(token, p.id);
+      showPopup(`Payslip sent to ${p.user?.name || "employee"}`);
+      await load();
+    } catch (err: any) {
+      showPopup(err?.message || "Failed to send", "error");
+    } finally {
+      setSendingId(null);
+    }
+  };
+
+  const sendAll = async () => {
+    try {
+      setBusy(true);
+      const token = await AsyncStorage.getItem("token");
+      if (!token) return;
+      const r = await hrSendAllPayslips(token, runId);
+      showPopup(`Sent ${r.sentCount} payslip${r.sentCount === 1 ? "" : "s"}`);
+      await load();
+    } catch (err: any) {
+      showPopup(err?.message || "Failed to send", "error");
+    } finally {
+      setBusy(false);
+    }
+  };
+
   const openEditDays = (p: Payslip) => {
     setEditPayslip(p);
     setEditWorkingDays(String(p.workingDays ?? ""));
@@ -351,6 +387,20 @@ export default function HRPayrollRun() {
           )}
           {items.length > 0 && (
             <TouchableOpacity
+              style={s.sendAllBtn}
+              onPress={sendAll}
+              disabled={busy}
+            >
+              <Ionicons
+                name="paper-plane-outline"
+                size={16}
+                color="#fff"
+              />
+              <Text style={s.actionText}>Send all</Text>
+            </TouchableOpacity>
+          )}
+          {items.length > 0 && (
+            <TouchableOpacity
               style={s.emailAllBtn}
               onPress={emailAll}
               disabled={busy}
@@ -390,9 +440,34 @@ export default function HRPayrollRun() {
                     : ""}
                 </Text>
               </View>
-              <Text style={s.netPay}>
-                ₹ {p.netPay.toLocaleString("en-IN")}
-              </Text>
+              <View style={{ alignItems: "flex-end" }}>
+                <Text style={s.netPay}>
+                  ₹ {p.netPay.toLocaleString("en-IN")}
+                </Text>
+                <View
+                  style={[
+                    s.sentChip,
+                    {
+                      backgroundColor: p.sent
+                        ? "rgba(22,163,74,0.14)"
+                        : "rgba(245,158,11,0.14)" },
+                  ]}
+                >
+                  <Ionicons
+                    name={p.sent ? "checkmark-circle" : "ellipse-outline"}
+                    size={11}
+                    color={p.sent ? "#16a34a" : "#f59e0b"}
+                  />
+                  <Text
+                    style={[
+                      s.sentChipText,
+                      { color: p.sent ? "#16a34a" : "#f59e0b" },
+                    ]}
+                  >
+                    {p.sent ? "Sent" : "Not sent"}
+                  </Text>
+                </View>
+              </View>
             </View>
 
             <View style={s.metaRow}>
@@ -425,6 +500,26 @@ export default function HRPayrollRun() {
                   <Text style={s.smallBtnText}>Edit days</Text>
                 </TouchableOpacity>
               )}
+              <TouchableOpacity
+                style={[s.smallBtn, { backgroundColor: "#2563eb" }]}
+                onPress={() => sendOne(p)}
+                disabled={sendingId === p.id}
+              >
+                {sendingId === p.id ? (
+                  <ActivityIndicator color="#fff" size="small" />
+                ) : (
+                  <>
+                    <Ionicons
+                      name="paper-plane-outline"
+                      size={14}
+                      color="#fff"
+                    />
+                    <Text style={s.smallBtnText}>
+                      {p.sent ? "Resend" : "Send"}
+                    </Text>
+                  </>
+                )}
+              </TouchableOpacity>
               <TouchableOpacity
                 style={s.smallBtn}
                 onPress={() => downloadPdf(p)}
@@ -488,6 +583,42 @@ export default function HRPayrollRun() {
                 ? `  ·  ${editPayslip.user.employeeCode}`
                 : ""}
             </Text>
+
+            {/* PREVIEW — current computed figures HR is reviewing. They
+                recalculate from the days below when saved. */}
+            {editPayslip && (
+              <View style={s.previewBox}>
+                <View style={s.previewRow}>
+                  <Text style={s.previewLabel}>Gross</Text>
+                  <Text style={s.previewValue}>
+                    ₹ {editPayslip.totalGross.toLocaleString("en-IN")}
+                  </Text>
+                </View>
+                <View style={s.previewRow}>
+                  <Text style={s.previewLabel}>Deductions</Text>
+                  <Text style={s.previewValue}>
+                    ₹ {editPayslip.totalDeductions.toLocaleString("en-IN")}
+                  </Text>
+                </View>
+                {editPayslip.lopDays > 0 && (
+                  <View style={s.previewRow}>
+                    <Text style={s.previewLabel}>
+                      LOP ({editPayslip.lopDays}d)
+                    </Text>
+                    <Text style={s.previewValue}>
+                      − ₹ {editPayslip.lopDeduction.toLocaleString("en-IN")}
+                    </Text>
+                  </View>
+                )}
+                <View style={[s.previewRow, s.previewNetRow]}>
+                  <Text style={s.previewNetLabel}>Net pay</Text>
+                  <Text style={s.previewNetValue}>
+                    ₹ {editPayslip.netPay.toLocaleString("en-IN")}
+                  </Text>
+                </View>
+              </View>
+            )}
+
             <Text style={s.modalLabel}>Working days</Text>
             <TextInput
               style={s.modalInput}
@@ -562,6 +693,7 @@ const makeStyles = (c: any) => StyleSheet.create({
   processBtn: { flexDirection: "row", alignItems: "center", backgroundColor: c.accent, paddingHorizontal: 14, paddingVertical: 10, borderRadius: 10, gap: 5 },
   lockBtn: { flexDirection: "row", alignItems: "center", backgroundColor: "#16a34a", paddingHorizontal: 14, paddingVertical: 10, borderRadius: 10, gap: 5 },
   emailAllBtn: { flexDirection: "row", alignItems: "center", backgroundColor: "#0d9488", paddingHorizontal: 14, paddingVertical: 10, borderRadius: 10, gap: 5 },
+  sendAllBtn: { flexDirection: "row", alignItems: "center", backgroundColor: "#2563eb", paddingHorizontal: 14, paddingVertical: 10, borderRadius: 10, gap: 5 },
   actionText: { color: c.text, fontWeight: "700", fontSize: 13 },
 
   empty: { padding: 30, backgroundColor: c.surface, borderRadius: 14, borderWidth: 1, borderColor: c.surfaceBorder, alignItems: "center" },
@@ -573,6 +705,8 @@ const makeStyles = (c: any) => StyleSheet.create({
   cardName: { color: c.text, fontSize: 14, fontWeight: "700" },
   cardMeta: { color: c.textMuted, fontSize: 11, marginTop: 2 },
   netPay: { color: "#16a34a", fontSize: 16, fontWeight: "800" },
+  sentChip: { flexDirection: "row", alignItems: "center", gap: 3, paddingHorizontal: 7, paddingVertical: 3, borderRadius: 999, marginTop: 4 },
+  sentChipText: { fontSize: 10, fontWeight: "800" },
 
   metaRow: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginTop: 8 },
   metaText: { color: c.textMuted, fontSize: 11, flex: 1 },
@@ -595,4 +729,12 @@ const makeStyles = (c: any) => StyleSheet.create({
   modalCancel: { flex: 1, backgroundColor: c.surfaceMuted, padding: 13, borderRadius: 11, alignItems: "center" },
   modalSave: { flex: 1, backgroundColor: "#16a34a", padding: 13, borderRadius: 11, alignItems: "center" },
   modalBtnText: { color: c.text, fontWeight: "700" },
+
+  previewBox: { backgroundColor: c.surfaceMuted, borderRadius: 12, borderWidth: 1, borderColor: c.surfaceBorder, padding: 12, marginTop: 12 },
+  previewRow: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", paddingVertical: 3 },
+  previewLabel: { color: c.textMuted, fontSize: 12 },
+  previewValue: { color: c.text, fontSize: 12, fontWeight: "700" },
+  previewNetRow: { borderTopWidth: 1, borderTopColor: c.surfaceBorder, marginTop: 4, paddingTop: 7 },
+  previewNetLabel: { color: c.text, fontSize: 13, fontWeight: "800" },
+  previewNetValue: { color: "#16a34a", fontSize: 15, fontWeight: "800" },
 });

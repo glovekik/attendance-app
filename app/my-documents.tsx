@@ -21,13 +21,14 @@ import { useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 
 import { FilePickButton } from "../src/components/FilePickButton";
+import { getMe } from "../src/services/api";
 import {
   listMyDocuments,
   addMyDocument,
   deleteMyDocument,
   listMyRequiredDocuments,
   RequiredDocument } from "../src/services/documents";
-import { EmployeeDocument } from "../src/types";
+import { EmployeeDocument, hasRole } from "../src/types";
 import { confirmAction, notify } from "../src/utils/confirm";
 import { useTheme } from "../src/theme/ThemeProvider";
 
@@ -58,37 +59,17 @@ const HR_ONLY_CATEGORIES = new Set([
   "PhD",
 ]);
 
-// Single category card — extracted so the Educational Certificates
-// group can reuse the same layout for its sub-slots without duplicating
-// the markup.
-function renderCategoryCard(
-  cat: string,
-  ctx: {
-    latestByCategory: Map<string, EmployeeDocument>;
-    requiredByCategory: Map<string, RequiredDocument>;
-    pendingNotes: Record<string, string>;
-    styles: any;
-    c: any;
-    onDelete: (d: EmployeeDocument) => void;
-    onUploaded: (cat: string, url: string, name: string) => void;
-    openNoteFor: (cat: string) => void;
-  }
-) {
-  const {
-    latestByCategory,
-    requiredByCategory,
-    pendingNotes,
-    styles,
-    c,
-    onDelete,
-    onUploaded,
-    openNoteFor } = ctx;
-  const doc = latestByCategory.get(cat);
-  const req = requiredByCategory.get(cat);
-  const note = pendingNotes[cat];
-  const lockedByHR = !!doc?.lockedByHR;
+type DocStatus = "VERIFIED" | "IN_REVIEW" | "REQUIRED" | "OPTIONAL";
 
-  const status: "VERIFIED" | "IN_REVIEW" | "REQUIRED" | "OPTIONAL" =
+// Derives the display status + colour tone for a category from its
+// latest doc and any HR requirement. Shared by the tile and the sheet.
+function computeStatus(
+  doc: EmployeeDocument | undefined,
+  req: RequiredDocument | undefined,
+  c: any
+): { status: DocStatus; tone: { bg: string; fg: string }; label: string } {
+  const lockedByHR = !!doc?.lockedByHR;
+  const status: DocStatus =
     req?.status === "VERIFIED"
       ? "VERIFIED"
       : doc
@@ -96,7 +77,6 @@ function renderCategoryCard(
       : req
       ? "REQUIRED"
       : "OPTIONAL";
-
   const tone =
     status === "VERIFIED"
       ? { bg: "rgba(22,163,74,0.12)", fg: "#16a34a" }
@@ -105,143 +85,71 @@ function renderCategoryCard(
       : status === "REQUIRED"
       ? { bg: "rgba(245,158,11,0.12)", fg: "#f59e0b" }
       : { bg: c.surfaceMuted, fg: c.textMuted };
-
-  const statusLabel =
+  const label =
     status === "VERIFIED"
       ? "Verified"
       : status === "IN_REVIEW"
       ? lockedByHR
-        ? "Provided by HR"
+        ? "By HR"
         : "In review"
       : status === "REQUIRED"
       ? "Required"
       : "Optional";
+  return { status, tone, label };
+}
 
+// Compact square tile for the 2-column grid. Tapping it opens the action
+// sheet for that category.
+function DocTile({
+  cat,
+  doc,
+  req,
+  hasNote,
+  styles,
+  c,
+  onPress }: {
+  cat: string;
+  doc: EmployeeDocument | undefined;
+  req: RequiredDocument | undefined;
+  hasNote: boolean;
+  styles: any;
+  c: any;
+  onPress: () => void;
+}) {
+  const { tone, label } = computeStatus(doc, req, c);
+  const has = !!doc;
   return (
-    <View key={cat} style={styles.catCard}>
-      <View style={styles.catHeader}>
-        <View style={{ flex: 1 }}>
-          <Text style={styles.catName}>{cat}</Text>
-          {!!req?.note && (
-            <Text style={styles.catReqNote} numberOfLines={2}>
-              HR: {req.note}
-            </Text>
-          )}
-        </View>
-        <View style={[styles.statusPill, { backgroundColor: tone.bg }]}>
-          <Text style={[styles.statusPillText, { color: tone.fg }]}>
-            {statusLabel}
-          </Text>
-        </View>
-        {doc && !lockedByHR && (
-          <TouchableOpacity
-            style={styles.cornerDelete}
-            onPress={() => onDelete(doc)}
-          >
-            <Ionicons name="trash-outline" size={15} color={c.dangerText} />
-          </TouchableOpacity>
-        )}
+    <TouchableOpacity style={styles.tile} activeOpacity={0.85} onPress={onPress}>
+      <View
+        style={[
+          styles.tileIcon,
+          { backgroundColor: has ? tone.bg : c.surfaceMuted },
+        ]}
+      >
+        <Ionicons
+          name={has ? "document-text" : "cloud-upload-outline"}
+          size={22}
+          color={has ? tone.fg : c.textFaint}
+        />
       </View>
-
-      {doc ? (
-        <View style={styles.fileBlock}>
-          <Ionicons
-            name="document-text-outline"
-            size={18}
-            color={c.textMuted}
-          />
-          <View style={{ flex: 1 }}>
-            <Text style={styles.fileName} numberOfLines={1}>
-              {doc.fileName}
-            </Text>
-            <Text style={styles.fileMeta}>
-              {doc.uploadedAt
-                ? `Uploaded ${String(doc.uploadedAt).slice(0, 10)}`
-                : "Uploaded"}
-              {lockedByHR ? " · by HR" : " · by you"}
-            </Text>
-            {!!doc.notes && (
-              <Text style={styles.fileNote} numberOfLines={2}>
-                Note: {doc.notes}
-              </Text>
-            )}
-          </View>
-        </View>
-      ) : (
-        <View style={styles.emptyBlock}>
-          <Ionicons
-            name="cloud-upload-outline"
-            size={18}
-            color={c.textFaint}
-          />
-          <Text style={styles.emptyBlockText}>No file yet</Text>
+      <Text style={styles.tileName} numberOfLines={2}>
+        {cat}
+      </Text>
+      <View style={styles.tileStatusRow}>
+        <View style={[styles.tileDot, { backgroundColor: tone.fg }]} />
+        <Text
+          style={[styles.tileStatusText, { color: tone.fg }]}
+          numberOfLines={1}
+        >
+          {label}
+        </Text>
+      </View>
+      {(!!req?.note || hasNote) && (
+        <View style={styles.tileNoteBadge}>
+          <Ionicons name="chatbubble-ellipses" size={11} color="#60a5fa" />
         </View>
       )}
-
-      {!!note && !doc && (
-        <View style={styles.pendingNote}>
-          <Ionicons
-            name="chatbubble-ellipses-outline"
-            size={13}
-            color="#60a5fa"
-          />
-          <Text style={styles.pendingNoteText} numberOfLines={2}>
-            Note saved (will attach with next upload): {note}
-          </Text>
-        </View>
-      )}
-
-      <View style={styles.actionRow}>
-        {doc ? (
-          <>
-            <TouchableOpacity
-              style={[styles.actionBtn, styles.actionBtnGhost]}
-              onPress={() =>
-                doc.fileUrl
-                  ? Linking.openURL(doc.fileUrl).catch(() => {})
-                  : Alert.alert("No file URL on record")
-              }
-            >
-              <Ionicons name="eye-outline" size={16} color={c.text} />
-              <Text style={styles.actionBtnGhostText}>View</Text>
-            </TouchableOpacity>
-            {lockedByHR ? (
-              <View style={[styles.actionBtn, styles.actionBtnLocked]}>
-                <Ionicons
-                  name="lock-closed-outline"
-                  size={14}
-                  color={c.textMuted}
-                />
-                <Text style={styles.actionBtnLockedText}>Locked by HR</Text>
-              </View>
-            ) : (
-              <FilePickButton
-                label="Replace"
-                style={styles.actionBtnPrimary}
-                onUploaded={(url, name) => onUploaded(cat, url, name)}
-              />
-            )}
-          </>
-        ) : (
-          <>
-            <FilePickButton
-              label="Upload"
-              style={styles.actionBtnPrimary}
-              onUploaded={(url, name) => onUploaded(cat, url, name)}
-            />
-            <TouchableOpacity
-              style={[styles.actionBtn, styles.actionBtnGhost]}
-              onPress={() => openNoteFor(cat)}
-            >
-              <Ionicons name="create-outline" size={16} color={c.text} />
-              <Text style={styles.actionBtnGhostText}>
-                {note ? "Edit note" : "Note"}
-              </Text>
-            </TouchableOpacity>
-          </>
-        )}
-      </View>
-    </View>
+    </TouchableOpacity>
   );
 }
 
@@ -254,6 +162,12 @@ export default function MyDocuments() {
   const [required, setRequired] = useState<RequiredDocument[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  // Only HR may add custom document slots; normal users just fill the
+  // slots HR defines, so the header "+" is hidden for them.
+  const [isHr, setIsHr] = useState(false);
+
+  // Which category's action sheet is open (tile tap target).
+  const [sheetCat, setSheetCat] = useState<string | null>(null);
 
   // Note buffers per-category, held in local state until the next upload
   // happens for that category. We don't persist note-only entries because
@@ -281,12 +195,14 @@ export default function MyDocuments() {
         router.replace("/login");
         return;
       }
-      const [data, req] = await Promise.all([
+      const [data, req, me] = await Promise.all([
         listMyDocuments(token),
         listMyRequiredDocuments(token).catch(() => []),
+        getMe(token).catch(() => null),
       ]);
       setItems(data || []);
       setRequired(req || []);
+      setIsHr(hasRole(me, "HR"));
     } catch (err: any) {
       Alert.alert(
         "Couldn't load documents",
@@ -442,12 +358,16 @@ export default function MyDocuments() {
           <Ionicons name="arrow-back" size={24} color={c.text} />
         </TouchableOpacity>
         <Text style={styles.title}>My Documents</Text>
-        <TouchableOpacity
-          style={styles.addBtn}
-          onPress={() => setShowAddCat(true)}
-        >
-          <Ionicons name="add" size={20} color="#fff" />
-        </TouchableOpacity>
+        {isHr ? (
+          <TouchableOpacity
+            style={styles.addBtn}
+            onPress={() => setShowAddCat(true)}
+          >
+            <Ionicons name="add" size={20} color="#fff" />
+          </TouchableOpacity>
+        ) : (
+          <View style={{ width: 32 }} />
+        )}
       </View>
 
       <View style={styles.infoBanner}>
@@ -474,59 +394,239 @@ export default function MyDocuments() {
             />
           }
         >
-          {/* Educational Certificates — grouped card with an Add button
-              that opens the 10th/12th/UG/PG/Ph.D picker. Slot cards
-              appear inside the group. */}
-          <View style={styles.eduGroup}>
-            <View style={styles.eduGroupHeader}>
-              <Ionicons name="school-outline" size={16} color={c.text} />
-              <Text style={styles.eduGroupTitle}>Educational Certificates</Text>
-              <TouchableOpacity
-                style={styles.eduAddBtn}
-                onPress={() => setShowEducationalPicker(true)}
-              >
-                <Ionicons name="add" size={14} color="#fff" />
-                <Text style={styles.eduAddBtnText}>Add</Text>
-              </TouchableOpacity>
-            </View>
-            {educationalCategories.length === 0 ? (
-              <View style={styles.eduEmpty}>
-                <Text style={styles.eduEmptyText}>
-                  No certificate slots yet — tap Add to start with 10th,
-                  12th, UG, PG or Ph.D.
-                </Text>
-              </View>
-            ) : (
-              <View style={{ gap: 10 }}>
-                {educationalCategories.map((cat) =>
-                  renderCategoryCard(cat, {
-                    latestByCategory,
-                    requiredByCategory,
-                    pendingNotes,
-                    styles,
-                    c,
-                    onDelete,
-                    onUploaded,
-                    openNoteFor })
-                )}
-              </View>
-            )}
+          {/* Personal / required documents — 2-column tile grid. */}
+          <Text style={styles.sectionLabel}>DOCUMENTS</Text>
+          <View style={styles.tileGrid}>
+            {categories.map((cat) => (
+              <DocTile
+                key={cat}
+                cat={cat}
+                doc={latestByCategory.get(cat)}
+                req={requiredByCategory.get(cat)}
+                hasNote={!!pendingNotes[cat]}
+                styles={styles}
+                c={c}
+                onPress={() => setSheetCat(cat)}
+              />
+            ))}
           </View>
 
-          {categories.map((cat) =>
-            renderCategoryCard(cat, {
-              latestByCategory,
-              requiredByCategory,
-              pendingNotes,
-              styles,
-              c,
-              onDelete,
-              onUploaded,
-              openNoteFor })
+          {/* Educational Certificates — same tile grid, plus an Add button
+              that opens the 10th/12th/UG/PG/Ph.D picker. */}
+          <View style={styles.eduGroupHeader}>
+            <Ionicons name="school-outline" size={16} color={c.text} />
+            <Text style={styles.eduGroupTitle}>Educational Certificates</Text>
+            <TouchableOpacity
+              style={styles.eduAddBtn}
+              onPress={() => setShowEducationalPicker(true)}
+            >
+              <Ionicons name="add" size={14} color="#fff" />
+              <Text style={styles.eduAddBtnText}>Add</Text>
+            </TouchableOpacity>
+          </View>
+          {educationalCategories.length === 0 ? (
+            <View style={styles.eduEmpty}>
+              <Text style={styles.eduEmptyText}>
+                No certificate slots yet — tap Add to start with 10th, 12th,
+                UG, PG or Ph.D.
+              </Text>
+            </View>
+          ) : (
+            <View style={styles.tileGrid}>
+              {educationalCategories.map((cat) => (
+                <DocTile
+                  key={cat}
+                  cat={cat}
+                  doc={latestByCategory.get(cat)}
+                  req={requiredByCategory.get(cat)}
+                  hasNote={!!pendingNotes[cat]}
+                  styles={styles}
+                  c={c}
+                  onPress={() => setSheetCat(cat)}
+                />
+              ))}
+            </View>
           )}
           <View style={{ height: 24 }} />
         </ScrollView>
       )}
+
+      {/* Action sheet — opens when a document tile is tapped. Holds the
+          full detail (file info, HR note) and the View/Replace/Upload/
+          Note/Delete actions that used to live on each card. */}
+      <Modal
+        visible={!!sheetCat}
+        animationType="slide"
+        transparent
+        onRequestClose={() => setSheetCat(null)}
+      >
+        <TouchableOpacity
+          style={styles.sheetWrap}
+          activeOpacity={1}
+          onPress={() => setSheetCat(null)}
+        >
+          <TouchableOpacity activeOpacity={1} style={styles.sheetCard}>
+            {(() => {
+              if (!sheetCat) return null;
+              const doc = latestByCategory.get(sheetCat);
+              const req = requiredByCategory.get(sheetCat);
+              const note = pendingNotes[sheetCat];
+              const lockedByHR = !!doc?.lockedByHR;
+              const { tone, label } = computeStatus(doc, req, c);
+              return (
+                <>
+                  <View style={styles.sheetHandle} />
+                  <View style={styles.sheetHeader}>
+                    <Text style={styles.sheetTitle}>{sheetCat}</Text>
+                    <View
+                      style={[styles.statusPill, { backgroundColor: tone.bg }]}
+                    >
+                      <Text style={[styles.statusPillText, { color: tone.fg }]}>
+                        {label}
+                      </Text>
+                    </View>
+                  </View>
+
+                  {!!req?.note && (
+                    <Text style={styles.catReqNote} numberOfLines={3}>
+                      HR: {req.note}
+                    </Text>
+                  )}
+
+                  {doc ? (
+                    <View style={styles.fileBlock}>
+                      <Ionicons
+                        name="document-text-outline"
+                        size={18}
+                        color={c.textMuted}
+                      />
+                      <View style={{ flex: 1 }}>
+                        <Text style={styles.fileName} numberOfLines={1}>
+                          {doc.fileName}
+                        </Text>
+                        <Text style={styles.fileMeta}>
+                          {doc.uploadedAt
+                            ? `Uploaded ${String(doc.uploadedAt).slice(0, 10)}`
+                            : "Uploaded"}
+                          {lockedByHR ? " · by HR" : " · by you"}
+                        </Text>
+                        {!!doc.notes && (
+                          <Text style={styles.fileNote} numberOfLines={3}>
+                            Note: {doc.notes}
+                          </Text>
+                        )}
+                      </View>
+                      {!lockedByHR && (
+                        <TouchableOpacity
+                          style={styles.cornerDelete}
+                          onPress={() => {
+                            const d = doc;
+                            setSheetCat(null);
+                            onDelete(d);
+                          }}
+                        >
+                          <Ionicons
+                            name="trash-outline"
+                            size={15}
+                            color={c.dangerText}
+                          />
+                        </TouchableOpacity>
+                      )}
+                    </View>
+                  ) : (
+                    <View style={styles.emptyBlock}>
+                      <Ionicons
+                        name="cloud-upload-outline"
+                        size={18}
+                        color={c.textFaint}
+                      />
+                      <Text style={styles.emptyBlockText}>No file yet</Text>
+                    </View>
+                  )}
+
+                  {!!note && !doc && (
+                    <View style={styles.pendingNote}>
+                      <Ionicons
+                        name="chatbubble-ellipses-outline"
+                        size={13}
+                        color="#60a5fa"
+                      />
+                      <Text style={styles.pendingNoteText} numberOfLines={2}>
+                        Note saved (attaches with next upload): {note}
+                      </Text>
+                    </View>
+                  )}
+
+                  <View style={styles.actionRow}>
+                    {doc ? (
+                      <>
+                        <TouchableOpacity
+                          style={[styles.actionBtn, styles.actionBtnGhost]}
+                          onPress={() =>
+                            doc.fileUrl
+                              ? Linking.openURL(doc.fileUrl).catch(() => {})
+                              : Alert.alert("No file URL on record")
+                          }
+                        >
+                          <Ionicons name="eye-outline" size={16} color={c.text} />
+                          <Text style={styles.actionBtnGhostText}>View</Text>
+                        </TouchableOpacity>
+                        {lockedByHR ? (
+                          <View style={[styles.actionBtn, styles.actionBtnLocked]}>
+                            <Ionicons
+                              name="lock-closed-outline"
+                              size={14}
+                              color={c.textMuted}
+                            />
+                            <Text style={styles.actionBtnLockedText}>
+                              Locked by HR
+                            </Text>
+                          </View>
+                        ) : (
+                          <FilePickButton
+                            label="Replace"
+                            style={styles.actionBtnPrimary}
+                            onUploaded={(url, name) =>
+                              onUploaded(sheetCat, url, name)
+                            }
+                          />
+                        )}
+                      </>
+                    ) : (
+                      <>
+                        <FilePickButton
+                          label="Upload"
+                          style={styles.actionBtnPrimary}
+                          onUploaded={(url, name) =>
+                            onUploaded(sheetCat, url, name)
+                          }
+                        />
+                        <TouchableOpacity
+                          style={[styles.actionBtn, styles.actionBtnGhost]}
+                          onPress={() => {
+                            const cat = sheetCat;
+                            setSheetCat(null);
+                            openNoteFor(cat);
+                          }}
+                        >
+                          <Ionicons
+                            name="create-outline"
+                            size={16}
+                            color={c.text}
+                          />
+                          <Text style={styles.actionBtnGhostText}>
+                            {note ? "Edit note" : "Note"}
+                          </Text>
+                        </TouchableOpacity>
+                      </>
+                    )}
+                  </View>
+                </>
+              );
+            })()}
+          </TouchableOpacity>
+        </TouchableOpacity>
+      </Modal>
 
       {/* Educational sub-category picker */}
       <Modal
@@ -716,7 +816,94 @@ const makeStyles = (c: any) =>
       fontSize: 12,
       lineHeight: 17,
       flex: 1 },
-    listWrap: { padding: 12, gap: 10 },
+    listWrap: { padding: 12 },
+
+    sectionLabel: {
+      color: c.textMuted,
+      fontSize: 11,
+      fontWeight: "800",
+      letterSpacing: 1.2,
+      marginLeft: 4,
+      marginBottom: 10 },
+
+    // 2-column tile grid.
+    tileGrid: {
+      flexDirection: "row",
+      flexWrap: "wrap",
+      columnGap: 10,
+      rowGap: 10 },
+    tile: {
+      width: "48%",
+      flexGrow: 1,
+      backgroundColor: c.surface,
+      borderRadius: 16,
+      borderWidth: 1,
+      borderColor: c.surfaceBorder,
+      padding: 14,
+      minHeight: 124,
+      justifyContent: "flex-start",
+      position: "relative" },
+    tileIcon: {
+      width: 42,
+      height: 42,
+      borderRadius: 12,
+      alignItems: "center",
+      justifyContent: "center",
+      marginBottom: 10 },
+    tileName: {
+      color: c.text,
+      fontSize: 14,
+      fontWeight: "800",
+      marginBottom: 8 },
+    tileStatusRow: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 6,
+      marginTop: "auto" },
+    tileDot: { width: 7, height: 7, borderRadius: 4 },
+    tileStatusText: { fontSize: 11, fontWeight: "700", flex: 1 },
+    tileNoteBadge: {
+      position: "absolute",
+      top: 12,
+      right: 12,
+      width: 22,
+      height: 22,
+      borderRadius: 11,
+      alignItems: "center",
+      justifyContent: "center",
+      backgroundColor: "rgba(96,165,250,0.14)" },
+
+    // Bottom action sheet.
+    sheetWrap: {
+      flex: 1,
+      justifyContent: "flex-end",
+      backgroundColor: c.overlay },
+    sheetCard: {
+      backgroundColor: c.surface,
+      borderTopLeftRadius: 22,
+      borderTopRightRadius: 22,
+      padding: 18,
+      paddingBottom: 28,
+      borderTopWidth: 1,
+      borderColor: c.surfaceBorder },
+    sheetHandle: {
+      alignSelf: "center",
+      width: 38,
+      height: 4,
+      borderRadius: 2,
+      backgroundColor: c.surfaceBorder,
+      marginBottom: 14 },
+    sheetHeader: {
+      flexDirection: "row",
+      alignItems: "center",
+      justifyContent: "space-between",
+      gap: 10,
+      marginBottom: 10 },
+    sheetTitle: {
+      color: c.text,
+      fontSize: 18,
+      fontWeight: "800",
+      flex: 1 },
 
     // One rectangle per category — the heart of the new design.
     catCard: {
@@ -868,6 +1055,7 @@ const makeStyles = (c: any) =>
       alignItems: "center",
       gap: 8,
       paddingHorizontal: 4,
+      marginTop: 22,
       paddingBottom: 10 },
     eduGroupTitle: {
       color: c.text,

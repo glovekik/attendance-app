@@ -60,6 +60,7 @@ export interface CreateUserResponse {
 
 export interface UpdateUserPayload extends ExpandedProfilePayload {
   name?: string;
+  email?: string;
   role?: Role;
 }
 
