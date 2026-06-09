@@ -8,12 +8,12 @@ import {
   View,
   Text,
   StyleSheet,
-  ScrollView,
   TouchableOpacity,
   TextInput,
   ActivityIndicator,
   Alert,
 } from "react-native";
+import { KeyboardAwareScrollView } from "react-native-keyboard-controller";
 
 import AsyncStorage from "@react-native-async-storage/async-storage";
 
@@ -200,10 +200,12 @@ export default function Worksheet() {
   }
 
   return (
-    <ScrollView
+    <KeyboardAwareScrollView
       style={styles.container}
       contentContainerStyle={styles.content}
       showsVerticalScrollIndicator={false}
+      bottomOffset={24}
+      keyboardShouldPersistTaps="handled"
     >
 
       {/* HEADER */}
@@ -379,7 +381,7 @@ export default function Worksheet() {
         </View>
       )}
 
-    </ScrollView>
+    </KeyboardAwareScrollView>
   );
 }
 

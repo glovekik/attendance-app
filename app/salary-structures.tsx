@@ -11,6 +11,7 @@ import {
   TextInput,
   ActivityIndicator,
   Modal } from "react-native";
+import { KeyboardAwareScrollView } from "react-native-keyboard-controller";
 import { SafeAreaView } from "react-native-safe-area-context";
 
 import AsyncStorage from "@react-native-async-storage/async-storage";
@@ -308,7 +309,11 @@ export default function SalaryStructures() {
       >
         <View style={s.modalOverlay}>
           <View style={s.modalCard}>
-            <ScrollView showsVerticalScrollIndicator={false}>
+            <KeyboardAwareScrollView
+              showsVerticalScrollIndicator={false}
+              keyboardShouldPersistTaps="handled"
+              bottomOffset={24}
+            >
 
               <Text style={s.modalTitle}>
                 {target?.name}
@@ -472,7 +477,7 @@ export default function SalaryStructures() {
                 </TouchableOpacity>
               </View>
 
-            </ScrollView>
+            </KeyboardAwareScrollView>
           </View>
         </View>
       </Modal>

@@ -15,6 +15,7 @@ import {
   ScrollView,
   Platform,
 } from "react-native";
+import { KeyboardAwareScrollView } from "react-native-keyboard-controller";
 
 import AsyncStorage from "@react-native-async-storage/async-storage";
 
@@ -1091,9 +1092,10 @@ export default function History() {
 
           <View style={styles.modalContent}>
 
-            <ScrollView
+            <KeyboardAwareScrollView
               showsVerticalScrollIndicator={false}
               keyboardShouldPersistTaps="handled"
+              bottomOffset={24}
             >
 
               <Text style={styles.modalTitle}>
@@ -1412,7 +1414,7 @@ export default function History() {
 
               </View>
 
-            </ScrollView>
+            </KeyboardAwareScrollView>
 
           </View>
 
@@ -1429,9 +1431,10 @@ export default function History() {
       >
         <View style={styles.modalOverlay}>
           <View style={styles.modalContent}>
-            <ScrollView
+            <KeyboardAwareScrollView
               showsVerticalScrollIndicator={false}
               keyboardShouldPersistTaps="handled"
+              bottomOffset={24}
             >
 
               <Text style={styles.modalTitle}>
@@ -1751,7 +1754,7 @@ export default function History() {
                 </TouchableOpacity>
               </View>
 
-            </ScrollView>
+            </KeyboardAwareScrollView>
           </View>
         </View>
       </Modal>

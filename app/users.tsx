@@ -10,6 +10,7 @@ import {
   ActivityIndicator,
   Modal,
   Platform } from "react-native";
+import { KeyboardAvoidingView, KeyboardAwareScrollView } from "react-native-keyboard-controller";
 import { SafeAreaView } from "react-native-safe-area-context";
 
 import AsyncStorage from "@react-native-async-storage/async-storage";
@@ -450,7 +451,11 @@ export default function Users() {
               { backgroundColor: c.surface, shadowColor: c.shadow },
             ]}
           >
-            <ScrollView showsVerticalScrollIndicator={false}>
+            <KeyboardAwareScrollView
+              showsVerticalScrollIndicator={false}
+              keyboardShouldPersistTaps="handled"
+              bottomOffset={24}
+            >
               <View style={styles.modalHeader}>
                 <Text style={[styles.modalTitle, { color: c.text }]}>
                   New employee
@@ -743,7 +748,7 @@ export default function Users() {
                   )}
                 </TouchableOpacity>
               </View>
-            </ScrollView>
+            </KeyboardAwareScrollView>
           </View>
         </View>
       </Modal>
@@ -755,6 +760,7 @@ export default function Users() {
         animationType="fade"
         onRequestClose={() => setTerminateModalVisible(false)}
       >
+        <KeyboardAvoidingView behavior="padding" style={{ flex: 1 }}>
         <View
           style={[
             styles.modalScrim,
@@ -823,6 +829,7 @@ export default function Users() {
             </View>
           </View>
         </View>
+        </KeyboardAvoidingView>
       </Modal>
 
       <BottomTabBar user={me} />

@@ -11,6 +11,7 @@ import {
   TextInput,
   ActivityIndicator,
   Modal } from "react-native";
+import { KeyboardAwareScrollView } from "react-native-keyboard-controller";
 import { SafeAreaView } from "react-native-safe-area-context";
 
 import AsyncStorage from "@react-native-async-storage/async-storage";
@@ -287,7 +288,7 @@ export default function AssetReports() {
       >
         <View style={styles.modalOverlay}>
           <View style={styles.modalCard}>
-            <ScrollView showsVerticalScrollIndicator={false}>
+            <KeyboardAwareScrollView showsVerticalScrollIndicator={false} bottomOffset={24} keyboardShouldPersistTaps="handled">
 
               <Text style={styles.modalTitle}>
                 {action === "RESOLVE"
@@ -371,7 +372,7 @@ export default function AssetReports() {
                 </TouchableOpacity>
               </View>
 
-            </ScrollView>
+            </KeyboardAwareScrollView>
           </View>
         </View>
       </Modal>

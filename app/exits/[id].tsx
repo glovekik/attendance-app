@@ -6,13 +6,13 @@ import {
   View,
   Text,
   StyleSheet,
-  ScrollView,
   TouchableOpacity,
   TextInput,
   ActivityIndicator,
   Modal,
   Platform,
 } from "react-native";
+import { KeyboardAwareScrollView } from "react-native-keyboard-controller";
 
 import { SafeAreaView } from "react-native-safe-area-context";
 
@@ -315,9 +315,11 @@ export default function HRExitDetail() {
         </View>
       )}
 
-      <ScrollView
+      <KeyboardAwareScrollView
         style={s.container}
         contentContainerStyle={s.content}
+        bottomOffset={24}
+        keyboardShouldPersistTaps="handled"
       >
 
         <View style={s.header}>
@@ -575,7 +577,7 @@ export default function HRExitDetail() {
           </>
         )}
 
-      </ScrollView>
+      </KeyboardAwareScrollView>
 
       {/* DECIDE MODAL */}
       <Modal
@@ -586,7 +588,11 @@ export default function HRExitDetail() {
       >
         <View style={s.modalOverlay}>
           <View style={s.modalCard}>
-            <ScrollView showsVerticalScrollIndicator={false}>
+            <KeyboardAwareScrollView
+              showsVerticalScrollIndicator={false}
+              bottomOffset={24}
+              keyboardShouldPersistTaps="handled"
+            >
 
               <Text style={s.modalTitle}>
                 {decideAction === "APPROVE"
@@ -686,7 +692,7 @@ export default function HRExitDetail() {
                 </TouchableOpacity>
               </View>
 
-            </ScrollView>
+            </KeyboardAwareScrollView>
           </View>
         </View>
       </Modal>

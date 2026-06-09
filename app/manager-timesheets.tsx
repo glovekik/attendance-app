@@ -11,9 +11,9 @@ import {
   Modal,
   TextInput,
   Alert,
-  KeyboardAvoidingView,
   Platform,
   ScrollView } from "react-native";
+import { KeyboardAvoidingView } from "react-native-keyboard-controller";
 import { SafeAreaView } from "react-native-safe-area-context";
 
 import AsyncStorage from "@react-native-async-storage/async-storage";
@@ -186,7 +186,7 @@ export default function ManagerTimesheets() {
         onRequestClose={close}
       >
         <KeyboardAvoidingView
-          behavior={Platform.OS === "ios" ? "padding" : undefined}
+          behavior="padding"
           style={styles.modalWrap}
         >
           <View style={styles.modal}>

@@ -12,8 +12,8 @@ import {
   TextInput,
   Alert,
   ScrollView,
-  KeyboardAvoidingView,
   Platform } from "react-native";
+import { KeyboardAvoidingView } from "react-native-keyboard-controller";
 import { SafeAreaView } from "react-native-safe-area-context";
 
 import AsyncStorage from "@react-native-async-storage/async-storage";
@@ -334,7 +334,7 @@ export default function HrCandidates() {
         onRequestClose={() => setShowForm(false)}
       >
         <KeyboardAvoidingView
-          behavior={Platform.OS === "ios" ? "padding" : undefined}
+          behavior="padding"
           style={styles.modalWrap}
         >
           <View style={styles.modal}>
@@ -533,7 +533,7 @@ export default function HrCandidates() {
         onRequestClose={() => setMoveTarget(null)}
       >
         <KeyboardAvoidingView
-          behavior={Platform.OS === "ios" ? "padding" : undefined}
+          behavior="padding"
           style={styles.modalWrap}
         >
           <View style={styles.modal}>

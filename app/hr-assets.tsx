@@ -13,6 +13,7 @@ import {
   Modal,
   Platform,
   Alert } from "react-native";
+import { KeyboardAwareScrollView } from "react-native-keyboard-controller";
 import { SafeAreaView } from "react-native-safe-area-context";
 
 import AsyncStorage from "@react-native-async-storage/async-storage";
@@ -549,7 +550,7 @@ export default function HRAssets() {
       >
         <View style={styles.modalOverlay}>
           <View style={styles.modalCard}>
-            <ScrollView showsVerticalScrollIndicator={false}>
+            <KeyboardAwareScrollView showsVerticalScrollIndicator={false} bottomOffset={24} keyboardShouldPersistTaps="handled">
 
               <Text style={styles.modalTitle}>
                 {editingId ? "Edit Asset" : "New Asset"}
@@ -630,7 +631,7 @@ export default function HRAssets() {
                 </TouchableOpacity>
               </View>
 
-            </ScrollView>
+            </KeyboardAwareScrollView>
           </View>
         </View>
       </Modal>
@@ -644,7 +645,7 @@ export default function HRAssets() {
       >
         <View style={styles.modalOverlay}>
           <View style={styles.modalCard}>
-            <ScrollView showsVerticalScrollIndicator={false}>
+            <KeyboardAwareScrollView showsVerticalScrollIndicator={false} bottomOffset={24} keyboardShouldPersistTaps="handled">
 
               <Text style={styles.modalTitle}>Assign Asset</Text>
               <Text style={styles.hint}>
@@ -717,7 +718,7 @@ export default function HRAssets() {
                 </TouchableOpacity>
               </View>
 
-            </ScrollView>
+            </KeyboardAwareScrollView>
           </View>
         </View>
       </Modal>
@@ -731,7 +732,7 @@ export default function HRAssets() {
       >
         <View style={styles.modalOverlay}>
           <View style={styles.modalCard}>
-            <ScrollView showsVerticalScrollIndicator={false}>
+            <KeyboardAwareScrollView showsVerticalScrollIndicator={false} bottomOffset={24} keyboardShouldPersistTaps="handled">
 
               <Text style={styles.modalTitle}>Return Asset</Text>
               <Text style={styles.hint}>
@@ -798,7 +799,7 @@ export default function HRAssets() {
                 </TouchableOpacity>
               </View>
 
-            </ScrollView>
+            </KeyboardAwareScrollView>
           </View>
         </View>
       </Modal>

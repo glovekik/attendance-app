@@ -11,8 +11,8 @@ import {
   TextInput,
   Modal,
   Alert,
-  KeyboardAvoidingView,
   Platform } from "react-native";
+import { KeyboardAvoidingView } from "react-native-keyboard-controller";
 import { SafeAreaView } from "react-native-safe-area-context";
 
 import AsyncStorage from "@react-native-async-storage/async-storage";
@@ -22,6 +22,7 @@ import { Ionicons } from "@expo/vector-icons";
 import {
   listTodos,
   createTodo,
+  updateTodo,
   completeTodo,
   reopenTodo,
   deleteTodo } from "../src/services/todos";
@@ -36,6 +37,21 @@ const priorityColor = (p?: TodoPriority): string => {
   return "#94a3b8";
 };
 
+// ISO timestamp → "Jun 9, 2026, 3:04 PM". Returns "" for empty values.
+const fmtDateTime = (iso?: string | null): string => {
+  if (!iso) return "";
+  try {
+    return new Date(iso).toLocaleString([], {
+      month: "short",
+      day: "numeric",
+      year: "numeric",
+      hour: "numeric",
+      minute: "2-digit" });
+  } catch {
+    return iso;
+  }
+};
+
 export default function TodosScreen() {
   const router = useRouter();
   const { theme } = useTheme();
@@ -46,13 +62,17 @@ export default function TodosScreen() {
   const [refreshing, setRefreshing] = useState(false);
   const [showDone, setShowDone] = useState(false);
 
-  // Create modal state
+  // Create / edit modal state. editingId === null → create; otherwise edit.
   const [showCreate, setShowCreate] = useState(false);
+  const [editingId, setEditingId] = useState<string | null>(null);
   const [newTitle, setNewTitle] = useState("");
   const [newDesc, setNewDesc] = useState("");
   const [newDueDate, setNewDueDate] = useState("");
   const [newPriority, setNewPriority] = useState<TodoPriority>("MEDIUM");
   const [saving, setSaving] = useState(false);
+
+  // Full-task detail modal (tap a row to open).
+  const [detailTodo, setDetailTodo] = useState<Todo | null>(null);
 
   const load = useCallback(async () => {
     try {
@@ -117,6 +137,25 @@ export default function TodosScreen() {
     }
   };
 
+  const openCreate = () => {
+    setEditingId(null);
+    setNewTitle("");
+    setNewDesc("");
+    setNewDueDate("");
+    setNewPriority("MEDIUM");
+    setShowCreate(true);
+  };
+
+  const openEdit = (t: Todo) => {
+    setEditingId(t.id);
+    setNewTitle(t.title);
+    setNewDesc(t.description || "");
+    setNewDueDate(t.dueDate || "");
+    setNewPriority(t.priority || "MEDIUM");
+    setDetailTodo(null);
+    setShowCreate(true);
+  };
+
   const onSave = async () => {
     if (!newTitle.trim()) {
       Alert.alert("Title required");
@@ -126,12 +165,18 @@ export default function TodosScreen() {
     try {
       const token = await AsyncStorage.getItem("token");
       if (!token) return;
-      await createTodo(token, {
+      const payload = {
         title: newTitle.trim(),
         description: newDesc.trim() || undefined,
         dueDate: newDueDate.trim() || undefined,
-        priority: newPriority });
+        priority: newPriority };
+      if (editingId) {
+        await updateTodo(token, editingId, payload);
+      } else {
+        await createTodo(token, payload);
+      }
       setShowCreate(false);
+      setEditingId(null);
       setNewTitle("");
       setNewDesc("");
       setNewDueDate("");
@@ -159,7 +204,7 @@ export default function TodosScreen() {
           <Ionicons name="arrow-back" size={24} color={c.text} />
         </TouchableOpacity>
         <Text style={styles.title}>My To-Do</Text>
-        <TouchableOpacity onPress={() => setShowCreate(true)}>
+        <TouchableOpacity onPress={openCreate}>
           <Ionicons name="add-circle" size={28} color={c.accent} />
         </TouchableOpacity>
       </View>
@@ -231,7 +276,11 @@ export default function TodosScreen() {
                 color={item.status === "DONE" ? c.successText : c.textMuted}
               />
             </TouchableOpacity>
-            <View style={{ flex: 1 }}>
+            <TouchableOpacity
+              style={{ flex: 1 }}
+              onPress={() => setDetailTodo(item)}
+              activeOpacity={0.7}
+            >
               <Text
                 style={[
                   styles.rowTitle,
@@ -262,7 +311,13 @@ export default function TodosScreen() {
                   <Text style={styles.due}>Due {item.dueDate}</Text>
                 )}
               </View>
-            </View>
+            </TouchableOpacity>
+            <TouchableOpacity
+              onPress={() => openEdit(item)}
+              style={styles.deleteBtn}
+            >
+              <Ionicons name="create-outline" size={18} color={c.textMuted} />
+            </TouchableOpacity>
             <TouchableOpacity
               onPress={() => onDelete(item)}
               style={styles.deleteBtn}
@@ -280,11 +335,13 @@ export default function TodosScreen() {
         onRequestClose={() => setShowCreate(false)}
       >
         <KeyboardAvoidingView
-          behavior={Platform.OS === "ios" ? "padding" : undefined}
+          behavior="padding"
           style={styles.modalWrap}
         >
           <View style={styles.modal}>
-            <Text style={styles.modalTitle}>New To-Do</Text>
+            <Text style={styles.modalTitle}>
+              {editingId ? "Edit To-Do" : "New To-Do"}
+            </Text>
 
             <Text style={styles.label}>Title</Text>
             <TextInput
@@ -351,12 +408,115 @@ export default function TodosScreen() {
                 disabled={saving}
               >
                 <Text style={styles.btnPrimaryText}>
-                  {saving ? "Saving..." : "Save"}
+                  {saving
+                    ? "Saving..."
+                    : editingId
+                    ? "Update"
+                    : "Save"}
                 </Text>
               </TouchableOpacity>
             </View>
           </View>
         </KeyboardAvoidingView>
+      </Modal>
+
+      {/* FULL TASK DETAIL */}
+      <Modal
+        visible={!!detailTodo}
+        animationType="slide"
+        transparent
+        onRequestClose={() => setDetailTodo(null)}
+      >
+        <View style={styles.modalWrap}>
+          <View style={styles.modal}>
+            {detailTodo && (
+              <>
+                <View style={styles.detailHeader}>
+                  <Text style={styles.modalTitle}>Task details</Text>
+                  <TouchableOpacity onPress={() => setDetailTodo(null)}>
+                    <Ionicons name="close" size={24} color={c.textMuted} />
+                  </TouchableOpacity>
+                </View>
+
+                <Text style={styles.detailTitle}>{detailTodo.title}</Text>
+                {!!detailTodo.description && (
+                  <Text style={styles.detailDesc}>
+                    {detailTodo.description}
+                  </Text>
+                )}
+
+                <View style={styles.detailRow}>
+                  <Text style={styles.detailLabel}>Status</Text>
+                  <Text style={styles.detailValue}>
+                    {detailTodo.status === "DONE" ? "Completed" : "Open"}
+                  </Text>
+                </View>
+                <View style={styles.detailRow}>
+                  <Text style={styles.detailLabel}>Priority</Text>
+                  <View
+                    style={[
+                      styles.pill,
+                      { backgroundColor: priorityColor(detailTodo.priority) },
+                    ]}
+                  >
+                    <Text style={styles.pillText}>
+                      {detailTodo.priority || "MEDIUM"}
+                    </Text>
+                  </View>
+                </View>
+                {!!detailTodo.dueDate && (
+                  <View style={styles.detailRow}>
+                    <Text style={styles.detailLabel}>Due date</Text>
+                    <Text style={styles.detailValue}>{detailTodo.dueDate}</Text>
+                  </View>
+                )}
+                {!!detailTodo.reminderAt && (
+                  <View style={styles.detailRow}>
+                    <Text style={styles.detailLabel}>Reminder</Text>
+                    <Text style={styles.detailValue}>
+                      {fmtDateTime(detailTodo.reminderAt)}
+                    </Text>
+                  </View>
+                )}
+                <View style={styles.detailRow}>
+                  <Text style={styles.detailLabel}>Created</Text>
+                  <Text style={styles.detailValue}>
+                    {fmtDateTime(detailTodo.createdAt)}
+                  </Text>
+                </View>
+                {!!detailTodo.completedAt && (
+                  <View style={styles.detailRow}>
+                    <Text style={styles.detailLabel}>Completed</Text>
+                    <Text style={styles.detailValue}>
+                      {fmtDateTime(detailTodo.completedAt)}
+                    </Text>
+                  </View>
+                )}
+
+                <View style={styles.actions}>
+                  <TouchableOpacity
+                    style={[styles.btn, styles.btnGhost]}
+                    onPress={() => {
+                      const t = detailTodo;
+                      setDetailTodo(null);
+                      onToggle(t);
+                    }}
+                  >
+                    <Text style={styles.btnGhostText}>
+                      {detailTodo.status === "DONE" ? "Reopen" : "Complete"}
+                    </Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={[styles.btn, styles.btnPrimary]}
+                    onPress={() => openEdit(detailTodo)}
+                  >
+                    <Text style={styles.btnPrimaryText}>Edit</Text>
+                  </TouchableOpacity>
+                </View>
+              </>
+            )}
+          </View>
+        </View>
       </Modal>
     </SafeAreaView>
   );
@@ -452,6 +612,34 @@ const makeStyles = (c: any) => StyleSheet.create({
     borderRadius: 10,
     borderWidth: 1,
     borderColor: c.surfaceBorder },
+  detailHeader: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center" },
+  detailTitle: {
+    color: c.text,
+    fontSize: 18,
+    fontWeight: "700",
+    marginTop: 6 },
+  detailDesc: {
+    color: c.textMuted,
+    fontSize: 14,
+    lineHeight: 20,
+    marginTop: 8 },
+  detailRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    marginTop: 14,
+    borderTopWidth: 1,
+    borderTopColor: c.surfaceBorder,
+    paddingTop: 10 },
+  detailLabel: {
+    color: c.textMuted,
+    fontSize: 11,
+    letterSpacing: 1.2,
+    fontWeight: "700" },
+  detailValue: { color: c.text, fontSize: 14, fontWeight: "600" },
   priorityRow: { flexDirection: "row", gap: 8 },
   priorityBtn: {
     flex: 1,

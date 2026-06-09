@@ -4,11 +4,11 @@ import {
   View,
   Text,
   StyleSheet,
-  ScrollView,
   TouchableOpacity,
   ActivityIndicator,
   TextInput,
   Alert } from "react-native";
+import { KeyboardAwareScrollView } from "react-native-keyboard-controller";
 import { SafeAreaView } from "react-native-safe-area-context";
 
 import AsyncStorage from "@react-native-async-storage/async-storage";
@@ -174,7 +174,11 @@ export default function HrUserLeaveBalance() {
         </View>
       </View>
 
-      <ScrollView contentContainerStyle={styles.content}>
+      <KeyboardAwareScrollView
+        contentContainerStyle={styles.content}
+        bottomOffset={24}
+        keyboardShouldPersistTaps="handled"
+      >
         {types.length === 0 ? (
           <View style={styles.emptyBox}>
             <Ionicons
@@ -279,7 +283,7 @@ export default function HrUserLeaveBalance() {
           taken. Pending = currently-awaiting-approval. Remaining is
           computed from the three.
         </Text>
-      </ScrollView>
+      </KeyboardAwareScrollView>
     </SafeAreaView>
   );
 }

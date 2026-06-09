@@ -10,8 +10,8 @@ import {
   ActivityIndicator,
   Image,
   Modal,
-  KeyboardAvoidingView,
   Platform } from "react-native";
+import { KeyboardAvoidingView } from "react-native-keyboard-controller";
 import { SafeAreaView } from "react-native-safe-area-context";
 
 import AsyncStorage from "@react-native-async-storage/async-storage";
@@ -29,6 +29,7 @@ import {
   updateMyProfile,
   updateMyProfilePicture,
   MyProfile } from "../src/services/users";
+import { logoutSession } from "../src/services/session";
 import { User, hasRole } from "../src/types";
 import { useTheme, ThemePreference } from "../src/theme/ThemeProvider";
 import {
@@ -332,7 +333,7 @@ export default function Profile() {
       setLoggingOut(true);
       const token = await AsyncStorage.getItem("token");
       if (token) await unregisterPushToken(token).catch(() => {});
-      await AsyncStorage.removeItem("token");
+      await logoutSession();
       router.replace("/login");
     } catch (err) {
       console.log("Logout error:", err);
@@ -889,7 +890,7 @@ export default function Profile() {
         onRequestClose={() => setEditingComposite(null)}
       >
         <KeyboardAvoidingView
-          behavior={Platform.OS === "ios" ? "padding" : undefined}
+          behavior="padding"
           style={styles.compModalWrap}
         >
           <View

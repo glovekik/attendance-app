@@ -13,6 +13,7 @@ import {
   Modal,
   Platform,
   Alert } from "react-native";
+import { KeyboardAwareScrollView } from "react-native-keyboard-controller";
 import { SafeAreaView } from "react-native-safe-area-context";
 
 import AsyncStorage from "@react-native-async-storage/async-storage";
@@ -40,7 +41,7 @@ import { downloadXlsxWithAuth } from "../src/utils/download";
 import { API_URL } from "../src/config";
 
 import { Expense, ExpenseSummary } from "../src/types";
-
+
 import { useTheme } from "../src/theme/ThemeProvider";
 const isWeb = Platform.OS === "web";
 
@@ -519,9 +520,10 @@ export default function Expenses() {
       >
         <View style={s.modalOverlay}>
           <View style={s.modalCard}>
-            <ScrollView
+            <KeyboardAwareScrollView
               showsVerticalScrollIndicator={false}
               keyboardShouldPersistTaps="handled"
+              bottomOffset={24}
             >
               <Text style={s.modalTitle}>
                 {editingId ? "Edit Expense" : "New Expense"}
@@ -668,7 +670,7 @@ export default function Expenses() {
                   )}
                 </TouchableOpacity>
               </View>
-            </ScrollView>
+            </KeyboardAwareScrollView>
           </View>
         </View>
       </Modal>

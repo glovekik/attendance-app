@@ -7,11 +7,11 @@ import {
   TouchableOpacity,
   TextInput,
   ScrollView,
-  KeyboardAvoidingView,
   Platform,
   ActivityIndicator,
   Alert,
   Image } from "react-native";
+import { KeyboardAvoidingView } from "react-native-keyboard-controller";
 import { SafeAreaView } from "react-native-safe-area-context";
 
 import AsyncStorage from "@react-native-async-storage/async-storage";
@@ -26,6 +26,7 @@ import {
   resendOtp } from "../src/services/api";
 
 import { registerPushToken } from "../src/services/notifications";
+import { setSession } from "../src/services/session";
 import { useTheme } from "../src/theme/ThemeProvider";
 
 /**
@@ -60,8 +61,8 @@ export default function Login() {
     })();
   }, [router]);
 
-  const completeLogin = async (token: string) => {
-    await AsyncStorage.setItem("token", token);
+  const completeLogin = async (token: string, refreshToken?: string) => {
+    await setSession(token, refreshToken);
     registerPushToken(token).catch(() => {});
     router.replace("/");
   };
@@ -104,7 +105,7 @@ export default function Login() {
         setServerError("Invalid credentials");
         return;
       }
-      await completeLogin(token);
+      await completeLogin(token, res.refresh_token);
     } catch (err: any) {
       setServerError(err?.message || "Login failed");
     } finally {
@@ -128,7 +129,7 @@ export default function Login() {
       }
       setOtpRequired(false);
       setOtpCode("");
-      await completeLogin(token);
+      await completeLogin(token, res.refresh_token);
     } catch (err: any) {
       Alert.alert("Invalid OTP", err?.message || "");
     } finally {
@@ -156,7 +157,7 @@ export default function Login() {
   return (
     <SafeAreaView style={[styles.safe, { backgroundColor: c.bg }]}>
       <KeyboardAvoidingView
-        behavior={Platform.OS === "ios" ? "padding" : undefined}
+        behavior="padding"
         style={{ flex: 1 }}
       >
         <ScrollView

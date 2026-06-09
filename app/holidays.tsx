@@ -13,6 +13,7 @@ import {
   Modal,
   Platform,
   Alert } from "react-native";
+import { KeyboardAwareScrollView } from "react-native-keyboard-controller";
 import { SafeAreaView } from "react-native-safe-area-context";
 
 import AsyncStorage from "@react-native-async-storage/async-storage";
@@ -37,7 +38,7 @@ import {
 import { getMe } from "../src/services/api";
 
 import { Holiday, hasRole, User } from "../src/types";
-
+
 import { useTheme } from "../src/theme/ThemeProvider";
 const isWeb = Platform.OS === "web";
 
@@ -347,7 +348,7 @@ export default function Holidays() {
       >
         <View style={s.modalOverlay}>
           <View style={s.modalCard}>
-            <ScrollView>
+            <KeyboardAwareScrollView bottomOffset={24} keyboardShouldPersistTaps="handled">
 
               <Text style={s.modalTitle}>
                 {editingId ? "Edit Holiday" : "New Holiday"}
@@ -443,7 +444,7 @@ export default function Holidays() {
                 </TouchableOpacity>
               </View>
 
-            </ScrollView>
+            </KeyboardAwareScrollView>
           </View>
         </View>
       </Modal>

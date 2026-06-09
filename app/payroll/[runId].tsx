@@ -14,6 +14,7 @@ import {
   Modal,
   TextInput,
 } from "react-native";
+import { KeyboardAvoidingView } from "react-native-keyboard-controller";
 
 import { SafeAreaView } from "react-native-safe-area-context";
 
@@ -572,6 +573,7 @@ export default function HRPayrollRun() {
         animationType="slide"
         onRequestClose={() => setEditPayslip(null)}
       >
+        <KeyboardAvoidingView behavior="padding" style={{ flex: 1 }}>
         <View style={s.modalOverlay}>
           <View style={s.modalCard}>
             <Text style={s.modalTitle}>
@@ -665,6 +667,7 @@ export default function HRPayrollRun() {
             </View>
           </View>
         </View>
+        </KeyboardAvoidingView>
       </Modal>
 
     </SafeAreaView>

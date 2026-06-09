@@ -6,11 +6,11 @@ import {
   View,
   Text,
   StyleSheet,
-  ScrollView,
   TouchableOpacity,
   TextInput,
   ActivityIndicator,
   Platform } from "react-native";
+import { KeyboardAwareScrollView } from "react-native-keyboard-controller";
 import { SafeAreaView } from "react-native-safe-area-context";
 
 import AsyncStorage from "@react-native-async-storage/async-storage";
@@ -205,9 +205,11 @@ export default function MyExit() {
         </View>
       )}
 
-      <ScrollView
+      <KeyboardAwareScrollView
         style={s.container}
         contentContainerStyle={s.content}
+        bottomOffset={24}
+        keyboardShouldPersistTaps="handled"
       >
 
         <View style={s.header}>
@@ -465,7 +467,7 @@ export default function MyExit() {
           </>
         )}
 
-      </ScrollView>
+      </KeyboardAwareScrollView>
 
     </SafeAreaView>
   );

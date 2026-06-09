@@ -13,6 +13,7 @@ import {
   Modal,
   Platform,
   Alert } from "react-native";
+import { KeyboardAvoidingView } from "react-native-keyboard-controller";
 import { SafeAreaView } from "react-native-safe-area-context";
 
 import AsyncStorage from "@react-native-async-storage/async-storage";
@@ -26,7 +27,7 @@ import {
   hrDecideLeaveRequest } from "../src/services/leaves";
 
 import { LeaveRequest } from "../src/types";
-
+
 import { useTheme } from "../src/theme/ThemeProvider";
 export default function LeaveRequests() {
 
@@ -320,6 +321,7 @@ export default function LeaveRequests() {
         animationType="slide"
         onRequestClose={() => setRejectVisible(false)}
       >
+        <KeyboardAvoidingView behavior="padding" style={{ flex: 1 }}>
         <View style={styles.modalOverlay}>
           <View style={styles.modalCard}>
 
@@ -364,6 +366,7 @@ export default function LeaveRequests() {
 
           </View>
         </View>
+        </KeyboardAvoidingView>
       </Modal>
 
     </SafeAreaView>

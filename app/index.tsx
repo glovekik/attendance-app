@@ -23,6 +23,7 @@ import { getUnreadCount } from "../src/services/inbox";
 import { getChatUnreadCount } from "../src/services/chat";
 import { openNotificationStream } from "../src/services/sse";
 import { registerPushToken } from "../src/services/notifications";
+import { refreshSession, clearSession } from "../src/services/session";
 
 import { dateToYMD } from "../src/components/WebDateField";
 
@@ -66,31 +67,52 @@ export default function Home() {
   const loadEverything = async (showSpinner = true) => {
     try {
       if (showSpinner) setLoading(true);
-      const token = await AsyncStorage.getItem("token");
+      let token = await AsyncStorage.getItem("token");
       if (!token) {
         setLoading(false);
         router.replace("/login");
         return;
       }
 
-      // Validate the session. Only a real 401 means the token is dead and
-      // we should log out — a network error or 5xx (very common in the
-      // first seconds after the app is relaunched from a recents swipe)
-      // must keep the session so the user isn't kicked out for a blip.
+      // Validate the session. A 401 means the access token is dead — but
+      // before logging out we try a silent refresh (long-lived refresh
+      // token) and retry once. Only if refresh ALSO fails do we log out.
+      // Network errors / 5xx (very common in the first seconds after the
+      // app is relaunched from a recents swipe) keep the session as-is.
       let meRes;
       try {
         meRes = await getMe(token);
       } catch (err: any) {
         if (err?.status === 401) {
-          await AsyncStorage.removeItem("token");
+          const fresh = await refreshSession();
+          if (!fresh) {
+            await clearSession();
+            setLoading(false);
+            router.replace("/login");
+            return;
+          }
+          // Refreshed — use the new token for this and all later calls.
+          token = fresh;
+          try {
+            meRes = await getMe(token);
+          } catch (retryErr: any) {
+            if (retryErr?.status === 401) {
+              await clearSession();
+              setLoading(false);
+              router.replace("/login");
+              return;
+            }
+            console.log("DASHBOARD LOAD ERROR (kept session):", retryErr);
+            setLoadError(true);
+            setLoading(false);
+            return;
+          }
+        } else {
+          console.log("DASHBOARD LOAD ERROR (kept session):", err);
+          setLoadError(true);
           setLoading(false);
-          router.replace("/login");
           return;
         }
-        console.log("DASHBOARD LOAD ERROR (kept session):", err);
-        setLoadError(true);
-        setLoading(false);
-        return;
       }
       setLoadError(false);
       setUser(meRes);

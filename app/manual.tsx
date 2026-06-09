@@ -4,11 +4,11 @@ import {
   View,
   Text,
   StyleSheet,
-  ScrollView,
   TouchableOpacity,
   TextInput,
   ActivityIndicator,
   Platform } from "react-native";
+import { KeyboardAwareScrollView } from "react-native-keyboard-controller";
 import { SafeAreaView } from "react-native-safe-area-context";
 
 import AsyncStorage from "@react-native-async-storage/async-storage";
@@ -29,7 +29,7 @@ import {
   hmToDate } from "../src/components/WebDateField";
 
 import { addManualEntry } from "../src/services/api";
-
+
 import { useTheme } from "../src/theme/ThemeProvider";
 const isWeb = Platform.OS === "web";
 
@@ -240,11 +240,12 @@ export default function Manual() {
         </View>
       )}
 
-      <ScrollView
+      <KeyboardAwareScrollView
         style={styles.container}
         contentContainerStyle={styles.content}
         showsVerticalScrollIndicator={false}
         keyboardShouldPersistTaps="handled"
+        bottomOffset={24}
       >
 
         {/* HEADER */}
@@ -627,7 +628,7 @@ export default function Manual() {
 
         </TouchableOpacity>
 
-      </ScrollView>
+      </KeyboardAwareScrollView>
 
     </SafeAreaView>
   );

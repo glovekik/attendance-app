@@ -4,11 +4,11 @@ import {
   View,
   Text,
   StyleSheet,
-  ScrollView,
   TouchableOpacity,
   TextInput,
   ActivityIndicator,
   RefreshControl } from "react-native";
+import { KeyboardAwareScrollView } from "react-native-keyboard-controller";
 import { SafeAreaView } from "react-native-safe-area-context";
 
 import AsyncStorage from "@react-native-async-storage/async-storage";
@@ -283,7 +283,9 @@ export default function Attendance() {
 
   return (
     <SafeAreaView style={[styles.safe, { backgroundColor: c.bg }]}>
-      <ScrollView
+      <KeyboardAwareScrollView
+        bottomOffset={24}
+        keyboardShouldPersistTaps="handled"
         contentContainerStyle={{
           padding: 20,
           paddingBottom: BOTTOM_BAR_RESERVED_HEIGHT + 24 }}
@@ -607,7 +609,7 @@ export default function Attendance() {
             color={c.textMuted}
           />
         </TouchableOpacity>
-      </ScrollView>
+      </KeyboardAwareScrollView>
 
       <BottomTabBar user={me} />
     </SafeAreaView>

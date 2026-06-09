@@ -13,6 +13,7 @@ import {
   TextInput,
   Platform,
   Alert } from "react-native";
+import { KeyboardAvoidingView } from "react-native-keyboard-controller";
 import { SafeAreaView } from "react-native-safe-area-context";
 
 import AsyncStorage from "@react-native-async-storage/async-storage";
@@ -309,6 +310,7 @@ export default function Corrections() {
         animationType="slide"
         onRequestClose={() => setRejectVisible(false)}
       >
+        <KeyboardAvoidingView behavior="padding" style={{ flex: 1 }}>
         <View style={styles.modalOverlay}>
           <View style={styles.modalCard}>
 
@@ -355,6 +357,7 @@ export default function Corrections() {
 
           </View>
         </View>
+        </KeyboardAvoidingView>
       </Modal>
 
     </SafeAreaView>

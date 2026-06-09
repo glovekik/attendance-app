@@ -78,7 +78,11 @@ export const loginUser =
 export const verifyOtp = async (
   email: string,
   otp: string
-): Promise<{ access_token: string; token_type: string }> => {
+): Promise<{
+  access_token: string;
+  token_type: string;
+  refresh_token?: string;
+}> => {
   const response = await fetch(`${API_URL}/auth/verify-otp`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -105,6 +109,44 @@ export const resendOtp = async (
   }
   return result;
   };
+
+
+// ================= REFRESH TOKEN =================
+// Exchange a long-lived refresh token for a new access token. Backend
+// contract: POST /auth/refresh { refresh_token } -> { access_token,
+// refresh_token? }. On 4xx the refresh token is dead → caller logs out.
+export const refreshAccessToken = async (
+  refreshToken: string
+): Promise<{ access_token: string; refresh_token?: string }> => {
+  const response = await fetch(`${API_URL}/auth/refresh`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ refresh_token: refreshToken }),
+  });
+  const result = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    const err: any = new Error(result?.detail || "Session refresh failed");
+    err.status = response.status;
+    throw err;
+  }
+  return result;
+};
+
+
+// ================= LOGOUT (revoke refresh token) =================
+// Best-effort server-side revocation so the session can't be refreshed
+// after the user logs out. Never throws — local logout proceeds regardless.
+export const logoutApi = async (refreshToken: string): Promise<void> => {
+  try {
+    await fetch(`${API_URL}/auth/logout`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ refresh_token: refreshToken }),
+    });
+  } catch {
+    // Offline / server down — the token will still expire via its TTL.
+  }
+};
 
 
 // ================= FORGOT PASSWORD =================

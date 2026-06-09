@@ -13,6 +13,7 @@ import {
   Modal,
   Platform,
   Alert } from "react-native";
+import { KeyboardAvoidingView } from "react-native-keyboard-controller";
 import { SafeAreaView } from "react-native-safe-area-context";
 
 import AsyncStorage from "@react-native-async-storage/async-storage";
@@ -295,6 +296,7 @@ export default function HRPayroll() {
         animationType="slide"
         onRequestClose={() => setModalVisible(false)}
       >
+        <KeyboardAvoidingView behavior="padding" style={{ flex: 1 }}>
         <View style={s.modalOverlay}>
           <View style={s.modalCard}>
 
@@ -369,6 +371,7 @@ export default function HRPayroll() {
 
           </View>
         </View>
+        </KeyboardAvoidingView>
       </Modal>
 
     </SafeAreaView>

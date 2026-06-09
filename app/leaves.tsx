@@ -12,6 +12,7 @@ import {
   Switch,
   Platform,
   RefreshControl } from "react-native";
+import { KeyboardAwareScrollView } from "react-native-keyboard-controller";
 import { SafeAreaView } from "react-native-safe-area-context";
 
 import AsyncStorage from "@react-native-async-storage/async-storage";
@@ -395,9 +396,10 @@ export default function MyLeaves() {
                 shadowColor: c.shadow },
             ]}
           >
-            <ScrollView
+            <KeyboardAwareScrollView
               showsVerticalScrollIndicator={false}
               keyboardShouldPersistTaps="handled"
+              bottomOffset={24}
             >
               <View style={styles.modalHeader}>
                 <Text style={[styles.modalTitle, { color: c.text }]}>
@@ -603,7 +605,7 @@ export default function MyLeaves() {
                   )}
                 </TouchableOpacity>
               </View>
-            </ScrollView>
+            </KeyboardAwareScrollView>
           </View>
         </View>
       </Modal>

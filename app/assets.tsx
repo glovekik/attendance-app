@@ -11,6 +11,7 @@ import {
   TextInput,
   ActivityIndicator,
   Modal } from "react-native";
+import { KeyboardAvoidingView } from "react-native-keyboard-controller";
 import { SafeAreaView } from "react-native-safe-area-context";
 
 import AsyncStorage from "@react-native-async-storage/async-storage";
@@ -231,6 +232,7 @@ export default function MyAssets() {
         animationType="slide"
         onRequestClose={() => setModalVisible(false)}
       >
+        <KeyboardAvoidingView behavior="padding" style={{ flex: 1 }}>
         <View style={styles.modalOverlay}>
           <View style={styles.modalCard}>
 
@@ -300,6 +302,7 @@ export default function MyAssets() {
 
           </View>
         </View>
+        </KeyboardAvoidingView>
       </Modal>
 
     </SafeAreaView>

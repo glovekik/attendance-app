@@ -14,6 +14,7 @@ import {
   Switch,
   Platform,
   Alert } from "react-native";
+import { KeyboardAwareScrollView } from "react-native-keyboard-controller";
 import { SafeAreaView } from "react-native-safe-area-context";
 
 import AsyncStorage from "@react-native-async-storage/async-storage";
@@ -448,9 +449,10 @@ export default function LeaveTypes() {
       >
         <View style={styles.modalOverlay}>
           <View style={styles.modalCard}>
-            <ScrollView
+            <KeyboardAwareScrollView
               showsVerticalScrollIndicator={false}
               keyboardShouldPersistTaps="handled"
+              bottomOffset={24}
             >
 
               <Text style={styles.modalTitle}>
@@ -579,7 +581,7 @@ export default function LeaveTypes() {
                 </TouchableOpacity>
               </View>
 
-            </ScrollView>
+            </KeyboardAwareScrollView>
           </View>
         </View>
       </Modal>

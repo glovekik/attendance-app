@@ -11,6 +11,7 @@ import {
   TextInput,
   ActivityIndicator,
   Modal } from "react-native";
+import { KeyboardAvoidingView } from "react-native-keyboard-controller";
 import { SafeAreaView } from "react-native-safe-area-context";
 
 import AsyncStorage from "@react-native-async-storage/async-storage";
@@ -302,6 +303,7 @@ export default function MyOnboarding() {
         animationType="slide"
         onRequestClose={() => setUploadVisible(false)}
       >
+        <KeyboardAvoidingView behavior="padding" style={{ flex: 1 }}>
         <View style={s.modalOverlay}>
           <View style={s.modalCard}>
             <Text style={s.modalTitle}>Upload</Text>
@@ -341,6 +343,7 @@ export default function MyOnboarding() {
             </View>
           </View>
         </View>
+        </KeyboardAvoidingView>
       </Modal>
 
     </SafeAreaView>

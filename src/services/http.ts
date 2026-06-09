@@ -1,4 +1,5 @@
 import { API_URL } from "../config";
+import { refreshSession } from "./session";
 
 type Method = "GET" | "POST" | "PUT" | "PATCH" | "DELETE";
 
@@ -26,21 +27,35 @@ export const apiCall = async <T = any>(
 
   const { method = "GET", body, token } = opts;
 
-  const headers: Record<string, string> = {};
+  const doFetch = (authToken?: string) => {
+    const headers: Record<string, string> = {};
+    if (body !== undefined) {
+      headers["Content-Type"] = "application/json";
+    }
+    if (authToken) {
+      headers["Authorization"] = `Bearer ${authToken}`;
+    }
+    return fetch(`${API_URL}${path}`, {
+      method,
+      headers,
+      body: body !== undefined ? JSON.stringify(body) : undefined,
+    });
+  };
 
-  if (body !== undefined) {
-    headers["Content-Type"] = "application/json";
+  let res = await doFetch(token);
+
+  // Reactive refresh: a 401 on an authenticated request means the access
+  // token expired mid-session. Silently swap it for a fresh one (single-
+  // flight, so concurrent 401s share one refresh) and retry ONCE. If the
+  // refresh token is also gone/dead, refreshSession() returns null and we
+  // fall through to the normal !res.ok error — the next dashboard load will
+  // then route the user to login.
+  if (res.status === 401 && token) {
+    const fresh = await refreshSession();
+    if (fresh) {
+      res = await doFetch(fresh);
+    }
   }
-
-  if (token) {
-    headers["Authorization"] = `Bearer ${token}`;
-  }
-
-  const res = await fetch(`${API_URL}${path}`, {
-    method,
-    headers,
-    body: body !== undefined ? JSON.stringify(body) : undefined,
-  });
 
   let data: any = null;
 

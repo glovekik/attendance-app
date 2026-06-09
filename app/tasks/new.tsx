@@ -6,12 +6,12 @@ import {
   View,
   Text,
   StyleSheet,
-  ScrollView,
   TouchableOpacity,
   TextInput,
   ActivityIndicator,
   Switch,
   Platform } from "react-native";
+import { KeyboardAwareScrollView } from "react-native-keyboard-controller";
 import { SafeAreaView } from "react-native-safe-area-context";
 
 import AsyncStorage from "@react-native-async-storage/async-storage";
@@ -242,10 +242,11 @@ export default function NewTask() {
         </View>
       )}
 
-      <ScrollView
+      <KeyboardAwareScrollView
         style={styles.container}
         contentContainerStyle={styles.content}
         keyboardShouldPersistTaps="handled"
+        bottomOffset={24}
       >
 
         <View style={styles.header}>
@@ -450,7 +451,7 @@ export default function NewTask() {
           )}
         </TouchableOpacity>
 
-      </ScrollView>
+      </KeyboardAwareScrollView>
 
     </SafeAreaView>
   );

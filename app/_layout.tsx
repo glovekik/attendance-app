@@ -4,12 +4,13 @@ import { Stack, useRouter } from "expo-router";
 
 import { StatusBar } from "expo-status-bar";
 
-import { Platform } from "react-native";
+import { AppState, Platform } from "react-native";
 
 import {
   SafeAreaProvider,
   initialWindowMetrics,
 } from "react-native-safe-area-context";
+import { KeyboardProvider } from "react-native-keyboard-controller";
 import Toast from "react-native-toast-message";
 
 import * as Notifications from "expo-notifications";
@@ -18,6 +19,7 @@ import { ErrorBoundary } from "../src/components/ErrorBoundary";
 import { ThemeProvider, useTheme } from "../src/theme/ThemeProvider";
 import { toastConfig } from "../src/components/toast";
 import { checkForOtaUpdate } from "../src/utils/otaUpdates";
+import { ensureFreshToken } from "../src/services/session";
 // Side-effect import — patches Alert.alert so all the existing
 // `Alert.alert("Failed", err.message)` calls in 56 screens render as
 // our themed toast instead of the dated Material dialog. Destructive
@@ -66,6 +68,22 @@ export default function RootLayout() {
     checkForOtaUpdate();
   }, []);
 
+  // Keep the access token fresh so the user never gets a silent logout
+  // mid-session: refresh on launch, whenever the app returns to the
+  // foreground, and on a slow timer while it stays open. No-op until the
+  // token is near expiry (and a no-op entirely if there's no session).
+  useEffect(() => {
+    ensureFreshToken();
+    const sub = AppState.addEventListener("change", (state) => {
+      if (state === "active") ensureFreshToken();
+    });
+    const timer = setInterval(() => ensureFreshToken(), 60_000);
+    return () => {
+      sub.remove();
+      clearInterval(timer);
+    };
+  }, []);
+
   useEffect(() => {
     if (Platform.OS === "web") return;
 
@@ -103,9 +121,15 @@ export default function RootLayout() {
           instead of waiting for a measurement round-trip (avoids a
           brief shift on cold start). */}
       <SafeAreaProvider initialMetrics={initialWindowMetrics}>
-        <ThemeProvider>
-          <ThemedStack />
-        </ThemeProvider>
+        {/* KeyboardProvider powers react-native-keyboard-controller's
+            keyboard-aware scroll/avoid views app-wide. It must sit above
+            navigation so every screen (and Modal) can observe keyboard
+            frames and animate content into view. */}
+        <KeyboardProvider>
+          <ThemeProvider>
+            <ThemedStack />
+          </ThemeProvider>
+        </KeyboardProvider>
       </SafeAreaProvider>
     </ErrorBoundary>
   );

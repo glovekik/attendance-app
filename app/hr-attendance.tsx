@@ -23,6 +23,7 @@ import {
 import { listUsers } from "../src/services/users";
 import { User } from "../src/types";
 import { dateToYMD, WebDateField } from "../src/components/WebDateField";
+import { DatePickerField } from "../src/components/DatePickerField";
 import { useTheme } from "../src/theme/ThemeProvider";
 import { attendanceStatusColor } from "../src/theme/statusColors";
 
@@ -185,17 +186,9 @@ export default function HrAttendance() {
               />
             </View>
           ) : (
-            <View style={styles.dateRow}>
-              <Ionicons name="calendar-outline" size={16} color={c.textMuted} />
-              <TextInput
-                style={styles.dateInput}
-                value={date}
-                onChangeText={setDate}
-                placeholder="YYYY-MM-DD"
-                placeholderTextColor={c.textFaint}
-                autoCapitalize="none"
-              />
-            </View>
+            // Native: tappable calendar (DateTimePicker) instead of a raw
+            // text box, so HR can actually pick a day.
+            <DatePickerField value={date} onChange={setDate} />
           )
         ) : (
           <View style={styles.dateRow}>
@@ -335,6 +328,11 @@ export default function HrAttendance() {
                   ? ` · ${item.hoursWorked.toFixed(2)}h`
                   : ""}
               </Text>
+              {!!item.workNotes && (
+                <Text style={styles.rowNotes}>
+                  Note: {item.workNotes}
+                </Text>
+              )}
             </View>
             {(() => {
               const tone = item.isLate
@@ -467,6 +465,12 @@ const makeStyles = (c: any) => StyleSheet.create({
   avatarText: { color: c.accentText, fontWeight: "700" },
   rowName: { color: c.text, fontSize: 14, fontWeight: "700" },
   rowMeta: { color: c.textMuted, fontSize: 11, marginTop: 2 },
+  rowNotes: {
+    color: c.text,
+    fontSize: 12,
+    marginTop: 5,
+    fontStyle: "italic",
+    lineHeight: 16 },
 
   statusPill: {
     paddingHorizontal: 9,

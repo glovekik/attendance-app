@@ -659,8 +659,8 @@ export default function HrReports() {
         <View style={styles.exportGrid}>
           <ExportTile
             icon="people-outline"
-            label="All users"
-            sub="Employee directory"
+            label="Employee details"
+            sub="Full profile export"
             tint={c.pastelSky}
             iconColor="#0369a1"
             loading={downloading === "users"}

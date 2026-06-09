@@ -13,8 +13,8 @@ import {
   Alert,
   ScrollView,
   Switch,
-  KeyboardAvoidingView,
   Platform } from "react-native";
+import { KeyboardAvoidingView } from "react-native-keyboard-controller";
 import { SafeAreaView } from "react-native-safe-area-context";
 
 import AsyncStorage from "@react-native-async-storage/async-storage";
@@ -257,7 +257,7 @@ export default function FeedbackScreen() {
         onRequestClose={() => setShowForm(false)}
       >
         <KeyboardAvoidingView
-          behavior={Platform.OS === "ios" ? "padding" : undefined}
+          behavior="padding"
           style={styles.modalWrap}
         >
           <View style={styles.modal}>

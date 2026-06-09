@@ -15,6 +15,7 @@ import {
   RefreshControl,
   Platform,
   Alert } from "react-native";
+import { KeyboardAwareScrollView } from "react-native-keyboard-controller";
 import { SafeAreaView } from "react-native-safe-area-context";
 
 import AsyncStorage from "@react-native-async-storage/async-storage";
@@ -376,7 +377,10 @@ export default function ManualRequest() {
       >
         <View style={s.modalOverlay}>
           <View style={s.modalCard}>
-            <ScrollView keyboardShouldPersistTaps="handled">
+            <KeyboardAwareScrollView
+              keyboardShouldPersistTaps="handled"
+              bottomOffset={24}
+            >
               <Text style={s.modalTitle}>Request manual attendance</Text>
 
               <Text style={s.label}>Date</Text>
@@ -593,7 +597,7 @@ export default function ManualRequest() {
                   )}
                 </TouchableOpacity>
               </View>
-            </ScrollView>
+            </KeyboardAwareScrollView>
           </View>
         </View>
       </Modal>
