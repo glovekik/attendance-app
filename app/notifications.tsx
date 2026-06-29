@@ -141,43 +141,20 @@ export default function NotificationsScreen() {
     load();
   };
 
-  const onTap = async (n: NotificationItem) => {
-    if (!n.read) {
-      try {
-        const token = await AsyncStorage.getItem("token");
-        if (token) {
-          await markRead(token, n.id);
-          setItems((prev) =>
-            prev.map((x) => (x.id === n.id ? { ...x, read: true } : x))
-          );
-        }
-      } catch {
-        // best effort
+  // Mark a single notification as read. No navigation — the row stays put.
+  const markOne = async (n: NotificationItem) => {
+    if (n.read) return;
+    try {
+      const token = await AsyncStorage.getItem("token");
+      if (token) {
+        await markRead(token, n.id);
+        setItems((prev) =>
+          prev.map((x) => (x.id === n.id ? { ...x, read: true } : x))
+        );
       }
+    } catch {
+      // best effort
     }
-    // Deep-link based on type/data
-    const d = n.data || {};
-    if (n.type.startsWith("leave")) router.push("/leaves");
-    else if (n.type.startsWith("correction"))
-      router.push("/corrections");
-    else if (n.type.startsWith("task")) {
-      if (d.taskId) router.push(`/tasks/${d.taskId}`);
-      else router.push("/tasks");
-    } else if (n.type.startsWith("reimbursement"))
-      router.push("/expenses");
-    else if (n.type.startsWith("timesheet")) router.push("/");
-    else if (n.type.startsWith("chat")) {
-      // chat_mention + chat_message both carry channelType / channelId
-      // in data. Office chat has no channelId; team chat does.
-      const channelType = (d as any).channelType;
-      const channelId = (d as any).channelId;
-      if (channelType === "team" && channelId) {
-        router.push(`/chat/team/${channelId}` as any);
-      } else {
-        router.push("/chat/office" as any);
-      }
-    }
-    // others: stay on screen
   };
 
   const onMarkAll = async () => {
@@ -254,13 +231,11 @@ export default function NotificationsScreen() {
           </View>
         }
         renderItem={({ item }) => (
-          <TouchableOpacity
+          <View
             style={[
               styles.row,
               !item.read && styles.rowUnread,
             ]}
-            onPress={() => onTap(item)}
-            activeOpacity={0.7}
           >
             <View
               style={[
@@ -285,8 +260,27 @@ export default function NotificationsScreen() {
                 {formatRelative(item.createdAt)}
               </Text>
             </View>
-            {!item.read && <View style={styles.dot} />}
-          </TouchableOpacity>
+            {!item.read ? (
+              <TouchableOpacity
+                onPress={() => markOne(item)}
+                style={styles.markBtn}
+                activeOpacity={0.7}
+              >
+                <Ionicons
+                  name="checkmark"
+                  size={14}
+                  color={c.accent}
+                />
+                <Text style={styles.markBtnText}>Mark as read</Text>
+              </TouchableOpacity>
+            ) : (
+              <Ionicons
+                name="checkmark-done"
+                size={18}
+                color={c.textFaint}
+              />
+            )}
+          </View>
         )}
       />
     </SafeAreaView>
@@ -333,11 +327,17 @@ const makeStyles = (c: any) => StyleSheet.create({
   rowTitle: { color: c.text, fontSize: 14, fontWeight: "700" },
   rowBody: { color: c.textMuted, fontSize: 12, marginTop: 2 },
   rowTime: { color: c.textMuted, fontSize: 10, marginTop: 4 },
-  dot: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-    backgroundColor: c.accent },
+  markBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+    paddingHorizontal: 10,
+    paddingVertical: 7,
+    borderRadius: 8,
+    backgroundColor: c.surface,
+    borderWidth: 1,
+    borderColor: c.accent },
+  markBtnText: { color: c.accent, fontSize: 11, fontWeight: "700" },
   emptyWrap: { flex: 1, justifyContent: "center" },
   empty: { alignItems: "center", gap: 10 },
   emptyText: { color: c.textMuted, fontSize: 14 } });

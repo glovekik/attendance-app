@@ -9,11 +9,11 @@ import {
   ActivityIndicator,
   RefreshControl,
   TextInput,
-  Modal,
   Alert,
   Platform } from "react-native";
-import { KeyboardAvoidingView } from "react-native-keyboard-controller";
 import { SafeAreaView } from "react-native-safe-area-context";
+
+import { WebModal, ModalActions } from "../src/components/WebModal";
 
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useRouter } from "expo-router";
@@ -29,7 +29,14 @@ import {
 import { TODO_PRIORITIES, Todo, TodoPriority } from "../src/types";
 import { confirmAction, notify } from "../src/utils/confirm";
 import { DatePickerField } from "../src/components/DatePickerField";
+import { DateTimePickerField } from "../src/components/DateTimePickerField";
 import { useTheme } from "../src/theme/ThemeProvider";
+import { requestNotificationPermission } from "../src/services/notifications";
+import {
+  scheduleTodoReminder,
+  cancelTodoReminder,
+  ensureTodoReminders,
+} from "../src/services/todoReminders";
 
 const priorityColor = (p?: TodoPriority): string => {
   if (p === "HIGH") return "#ef4444";
@@ -68,6 +75,7 @@ export default function TodosScreen() {
   const [newTitle, setNewTitle] = useState("");
   const [newDesc, setNewDesc] = useState("");
   const [newDueDate, setNewDueDate] = useState("");
+  const [newReminderAt, setNewReminderAt] = useState("");
   const [newPriority, setNewPriority] = useState<TodoPriority>("MEDIUM");
   const [saving, setSaving] = useState(false);
 
@@ -85,6 +93,11 @@ export default function TodosScreen() {
         status: showDone ? "DONE" : "OPEN",
         limit: 100 });
       setItems(data || []);
+      // Re-arm local reminders for open to-dos so they survive restarts and
+      // get scheduled on whichever device is viewing the list.
+      if (!showDone && data?.length) {
+        ensureTodoReminders(data);
+      }
     } catch (err: any) {
       Alert.alert(
         "Couldn't load to-dos",
@@ -111,8 +124,12 @@ export default function TodosScreen() {
       if (!token) return;
       if (t.status === "OPEN") {
         await completeTodo(token, t.id);
+        // Completed → drop any pending reminder.
+        cancelTodoReminder(t.id);
       } else {
         await reopenTodo(token, t.id);
+        // Reopened → re-arm the reminder if it's still in the future.
+        scheduleTodoReminder({ ...t, status: "OPEN" });
       }
       load();
     } catch (err: any) {
@@ -131,6 +148,7 @@ export default function TodosScreen() {
       const token = await AsyncStorage.getItem("token");
       if (!token) return;
       await deleteTodo(token, t.id);
+      cancelTodoReminder(t.id);
       setItems((prev) => prev.filter((x) => x.id !== t.id));
     } catch (err: any) {
       notify("Delete failed", err?.message || "");
@@ -142,6 +160,7 @@ export default function TodosScreen() {
     setNewTitle("");
     setNewDesc("");
     setNewDueDate("");
+    setNewReminderAt("");
     setNewPriority("MEDIUM");
     setShowCreate(true);
   };
@@ -151,6 +170,7 @@ export default function TodosScreen() {
     setNewTitle(t.title);
     setNewDesc(t.description || "");
     setNewDueDate(t.dueDate || "");
+    setNewReminderAt(t.reminderAt || "");
     setNewPriority(t.priority || "MEDIUM");
     setDetailTodo(null);
     setShowCreate(true);
@@ -165,21 +185,34 @@ export default function TodosScreen() {
     try {
       const token = await AsyncStorage.getItem("token");
       if (!token) return;
+      const reminderAt = newReminderAt.trim();
       const payload = {
         title: newTitle.trim(),
         description: newDesc.trim() || undefined,
         dueDate: newDueDate.trim() || undefined,
+        // Send null (not undefined) so clearing a reminder persists on edit.
+        reminderAt: reminderAt || null,
         priority: newPriority };
-      if (editingId) {
-        await updateTodo(token, editingId, payload);
-      } else {
-        await createTodo(token, payload);
+
+      // Make sure we can actually deliver the reminder before relying on it.
+      if (reminderAt) {
+        await requestNotificationPermission();
+      }
+
+      const saved = editingId
+        ? await updateTodo(token, editingId, payload)
+        : await createTodo(token, payload);
+
+      // Arm/refresh the local reminder from the server's saved record.
+      if (saved?.id) {
+        await scheduleTodoReminder(saved);
       }
       setShowCreate(false);
       setEditingId(null);
       setNewTitle("");
       setNewDesc("");
       setNewDueDate("");
+      setNewReminderAt("");
       setNewPriority("MEDIUM");
       load();
     } catch (err: any) {
@@ -310,6 +343,18 @@ export default function TodosScreen() {
                 {!!item.dueDate && (
                   <Text style={styles.due}>Due {item.dueDate}</Text>
                 )}
+                {!!item.reminderAt && (
+                  <View style={styles.reminderTag}>
+                    <Ionicons
+                      name="alarm-outline"
+                      size={12}
+                      color={c.accent}
+                    />
+                    <Text style={styles.reminderTagText}>
+                      {fmtDateTime(item.reminderAt)}
+                    </Text>
+                  </View>
+                )}
               </View>
             </TouchableOpacity>
             <TouchableOpacity
@@ -328,21 +373,36 @@ export default function TodosScreen() {
         )}
       />
 
-      <Modal
+      <WebModal
         visible={showCreate}
-        animationType="slide"
-        transparent
-        onRequestClose={() => setShowCreate(false)}
+        onClose={() => setShowCreate(false)}
+        title={editingId ? "Edit To-Do" : "New To-Do"}
+        size="md"
+        footer={
+          <ModalActions align="spread">
+            <TouchableOpacity
+              style={[styles.btn, styles.btnGhost]}
+              onPress={() => setShowCreate(false)}
+              disabled={saving}
+            >
+              <Text style={styles.btnGhostText}>Cancel</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[styles.btn, styles.btnPrimary]}
+              onPress={onSave}
+              disabled={saving}
+            >
+              <Text style={styles.btnPrimaryText}>
+                {saving
+                  ? "Saving..."
+                  : editingId
+                  ? "Update"
+                  : "Save"}
+              </Text>
+            </TouchableOpacity>
+          </ModalActions>
+        }
       >
-        <KeyboardAvoidingView
-          behavior="padding"
-          style={styles.modalWrap}
-        >
-          <View style={styles.modal}>
-            <Text style={styles.modalTitle}>
-              {editingId ? "Edit To-Do" : "New To-Do"}
-            </Text>
-
             <Text style={styles.label}>Title</Text>
             <TextInput
               style={styles.input}
@@ -369,6 +429,20 @@ export default function TodosScreen() {
               placeholder="Optional — tap to pick"
             />
 
+            <Text style={styles.label}>Reminder</Text>
+            <DateTimePickerField
+              value={newReminderAt}
+              onChange={setNewReminderAt}
+              placeholder="Optional — get a notification"
+              minimumDate={new Date()}
+            />
+            {Platform.OS === "web" && !!newReminderAt && (
+              <Text style={styles.reminderHint}>
+                Reminders are delivered on your phone (the mobile app), not in
+                the browser.
+              </Text>
+            )}
+
             <Text style={styles.label}>Priority</Text>
             <View style={styles.priorityRow}>
               {TODO_PRIORITIES.map((p) => (
@@ -393,51 +467,41 @@ export default function TodosScreen() {
                 </TouchableOpacity>
               ))}
             </View>
+      </WebModal>
 
-            <View style={styles.actions}>
+      {/* FULL TASK DETAIL */}
+      <WebModal
+        visible={!!detailTodo}
+        onClose={() => setDetailTodo(null)}
+        title="Task details"
+        size="md"
+        footer={
+          detailTodo ? (
+            <ModalActions align="spread">
               <TouchableOpacity
                 style={[styles.btn, styles.btnGhost]}
-                onPress={() => setShowCreate(false)}
-                disabled={saving}
+                onPress={() => {
+                  const t = detailTodo;
+                  setDetailTodo(null);
+                  onToggle(t);
+                }}
               >
-                <Text style={styles.btnGhostText}>Cancel</Text>
+                <Text style={styles.btnGhostText}>
+                  {detailTodo.status === "DONE" ? "Reopen" : "Complete"}
+                </Text>
               </TouchableOpacity>
               <TouchableOpacity
                 style={[styles.btn, styles.btnPrimary]}
-                onPress={onSave}
-                disabled={saving}
+                onPress={() => openEdit(detailTodo)}
               >
-                <Text style={styles.btnPrimaryText}>
-                  {saving
-                    ? "Saving..."
-                    : editingId
-                    ? "Update"
-                    : "Save"}
-                </Text>
+                <Text style={styles.btnPrimaryText}>Edit</Text>
               </TouchableOpacity>
-            </View>
-          </View>
-        </KeyboardAvoidingView>
-      </Modal>
-
-      {/* FULL TASK DETAIL */}
-      <Modal
-        visible={!!detailTodo}
-        animationType="slide"
-        transparent
-        onRequestClose={() => setDetailTodo(null)}
+            </ModalActions>
+          ) : null
+        }
       >
-        <View style={styles.modalWrap}>
-          <View style={styles.modal}>
             {detailTodo && (
               <>
-                <View style={styles.detailHeader}>
-                  <Text style={styles.modalTitle}>Task details</Text>
-                  <TouchableOpacity onPress={() => setDetailTodo(null)}>
-                    <Ionicons name="close" size={24} color={c.textMuted} />
-                  </TouchableOpacity>
-                </View>
-
                 <Text style={styles.detailTitle}>{detailTodo.title}</Text>
                 {!!detailTodo.description && (
                   <Text style={styles.detailDesc}>
@@ -492,32 +556,9 @@ export default function TodosScreen() {
                     </Text>
                   </View>
                 )}
-
-                <View style={styles.actions}>
-                  <TouchableOpacity
-                    style={[styles.btn, styles.btnGhost]}
-                    onPress={() => {
-                      const t = detailTodo;
-                      setDetailTodo(null);
-                      onToggle(t);
-                    }}
-                  >
-                    <Text style={styles.btnGhostText}>
-                      {detailTodo.status === "DONE" ? "Reopen" : "Complete"}
-                    </Text>
-                  </TouchableOpacity>
-                  <TouchableOpacity
-                    style={[styles.btn, styles.btnPrimary]}
-                    onPress={() => openEdit(detailTodo)}
-                  >
-                    <Text style={styles.btnPrimaryText}>Edit</Text>
-                  </TouchableOpacity>
-                </View>
               </>
             )}
-          </View>
-        </View>
-      </Modal>
+      </WebModal>
     </SafeAreaView>
   );
 }
@@ -569,6 +610,7 @@ const makeStyles = (c: any) => StyleSheet.create({
   rowMeta: {
     flexDirection: "row",
     alignItems: "center",
+    flexWrap: "wrap",
     gap: 8,
     marginTop: 6 },
   pill: {
@@ -577,6 +619,16 @@ const makeStyles = (c: any) => StyleSheet.create({
     borderRadius: 6 },
   pillText: { color: c.text, fontSize: 10, fontWeight: "800" },
   due: { color: c.textMuted, fontSize: 11 },
+  reminderHint: {
+    color: c.textMuted,
+    fontSize: 11,
+    fontStyle: "italic",
+    marginTop: 6 },
+  reminderTag: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 3 },
+  reminderTagText: { color: c.accent, fontSize: 11, fontWeight: "600" },
   deleteBtn: { padding: 6 },
   emptyWrap: { flex: 1, justifyContent: "center" },
   empty: { alignItems: "center", gap: 10 },

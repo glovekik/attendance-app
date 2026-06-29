@@ -32,6 +32,11 @@ yarn-error.*
 
 # local env files
 .env*.local
+# Local dev env (e.g. EXPO_PUBLIC_API_URL pointing at a local/emulator backend)
+.env
+
+# Local build / Metro / run logs
+*.log
 
 # typescript
 *.tsbuildinfo
@@ -43,3 +48,11 @@ app-example
 /android
 
 .vercel
+
+# Firebase service-account / admin keys — never commit (true secrets).
+# NOTE: google-services.json / GoogleService-Info.plist are CLIENT configs
+# that ship inside the app, so they are intentionally NOT ignored — EAS
+# Build needs them uploaded to bake FCM/APNs config into the binary.
+*service-account*.json
+*firebase-adminsdk*.json
+fcm-*.json

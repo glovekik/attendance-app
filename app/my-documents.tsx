@@ -7,13 +7,11 @@ import {
   TouchableOpacity,
   ActivityIndicator,
   RefreshControl,
-  Modal,
   TextInput,
   Alert,
   ScrollView,
   Platform,
   Linking } from "react-native";
-import { KeyboardAvoidingView } from "react-native-keyboard-controller";
 import { SafeAreaView } from "react-native-safe-area-context";
 
 import AsyncStorage from "@react-native-async-storage/async-storage";
@@ -30,6 +28,7 @@ import {
   RequiredDocument } from "../src/services/documents";
 import { EmployeeDocument, hasRole } from "../src/types";
 import { confirmAction, notify } from "../src/utils/confirm";
+import { WebModal, ModalActions } from "../src/components/WebModal";
 import { useTheme } from "../src/theme/ThemeProvider";
 
 // Categories the employee can self-manage. Salary Slip, Experience Letter,
@@ -454,18 +453,12 @@ export default function MyDocuments() {
       {/* Action sheet — opens when a document tile is tapped. Holds the
           full detail (file info, HR note) and the View/Replace/Upload/
           Note/Delete actions that used to live on each card. */}
-      <Modal
+      <WebModal
         visible={!!sheetCat}
-        animationType="slide"
-        transparent
-        onRequestClose={() => setSheetCat(null)}
+        onClose={() => setSheetCat(null)}
+        title={sheetCat ?? ""}
+        size="md"
       >
-        <TouchableOpacity
-          style={styles.sheetWrap}
-          activeOpacity={1}
-          onPress={() => setSheetCat(null)}
-        >
-          <TouchableOpacity activeOpacity={1} style={styles.sheetCard}>
             {(() => {
               if (!sheetCat) return null;
               const doc = latestByCategory.get(sheetCat);
@@ -475,9 +468,7 @@ export default function MyDocuments() {
               const { tone, label } = computeStatus(doc, req, c);
               return (
                 <>
-                  <View style={styles.sheetHandle} />
                   <View style={styles.sheetHeader}>
-                    <Text style={styles.sheetTitle}>{sheetCat}</Text>
                     <View
                       style={[styles.statusPill, { backgroundColor: tone.bg }]}
                     >
@@ -624,152 +615,135 @@ export default function MyDocuments() {
                 </>
               );
             })()}
-          </TouchableOpacity>
-        </TouchableOpacity>
-      </Modal>
+      </WebModal>
 
       {/* Educational sub-category picker */}
-      <Modal
+      <WebModal
         visible={showEducationalPicker}
-        animationType="fade"
-        transparent
-        onRequestClose={() => setShowEducationalPicker(false)}
+        onClose={() => setShowEducationalPicker(false)}
+        title="Add educational certificate"
+        size="sm"
+        footer={
+          <ModalActions align="right">
+            <TouchableOpacity
+              style={[styles.btn, styles.btnGhost]}
+              onPress={() => setShowEducationalPicker(false)}
+            >
+              <Text style={styles.btnGhostText}>Close</Text>
+            </TouchableOpacity>
+          </ModalActions>
+        }
       >
-        <View style={styles.modalWrap}>
-          <View style={styles.smallModal}>
-            <Text style={styles.modalTitle}>Add educational certificate</Text>
-            <Text style={styles.modalHint}>
-              Pick a level. A new slot appears in Educational Certificates
-              where you can upload the file.
-            </Text>
-            <View style={{ gap: 8, marginTop: 14 }}>
-              {EDUCATIONAL_CATEGORIES.map((level) => {
-                const already = educationalCategories.includes(level);
-                return (
-                  <TouchableOpacity
-                    key={level}
-                    disabled={already}
-                    style={[
-                      styles.eduPickRow,
-                      already && { opacity: 0.5 },
-                    ]}
-                    onPress={() => {
-                      setEducationalSlots((prev) =>
-                        prev.includes(level) ? prev : [...prev, level]
-                      );
-                      setShowEducationalPicker(false);
-                    }}
-                  >
-                    <Ionicons
-                      name="ribbon-outline"
-                      size={16}
-                      color={c.text}
-                    />
-                    <Text style={styles.eduPickRowText}>{level}</Text>
-                    {already && (
-                      <Text style={styles.eduPickRowMeta}>Already added</Text>
-                    )}
-                  </TouchableOpacity>
-                );
-              })}
-            </View>
-            <View style={styles.modalActions}>
+        <Text style={styles.modalHint}>
+          Pick a level. A new slot appears in Educational Certificates
+          where you can upload the file.
+        </Text>
+        <View style={{ gap: 8, marginTop: 14 }}>
+          {EDUCATIONAL_CATEGORIES.map((level) => {
+            const already = educationalCategories.includes(level);
+            return (
               <TouchableOpacity
-                style={[styles.btn, styles.btnGhost]}
-                onPress={() => setShowEducationalPicker(false)}
+                key={level}
+                disabled={already}
+                style={[
+                  styles.eduPickRow,
+                  already && { opacity: 0.5 },
+                ]}
+                onPress={() => {
+                  setEducationalSlots((prev) =>
+                    prev.includes(level) ? prev : [...prev, level]
+                  );
+                  setShowEducationalPicker(false);
+                }}
               >
-                <Text style={styles.btnGhostText}>Close</Text>
+                <Ionicons
+                  name="ribbon-outline"
+                  size={16}
+                  color={c.text}
+                />
+                <Text style={styles.eduPickRowText}>{level}</Text>
+                {already && (
+                  <Text style={styles.eduPickRowMeta}>Already added</Text>
+                )}
               </TouchableOpacity>
-            </View>
-          </View>
+            );
+          })}
         </View>
-      </Modal>
+      </WebModal>
 
       {/* Note editor — small modal so we don't depend on Alert.prompt
           (which is iOS-only). */}
-      <Modal
+      <WebModal
         visible={!!noteFor}
-        animationType="fade"
-        transparent
-        onRequestClose={() => setNoteFor(null)}
+        onClose={() => setNoteFor(null)}
+        title={`Note for ${noteFor ?? ""}`}
+        size="sm"
+        footer={
+          <ModalActions align="spread">
+            <TouchableOpacity
+              style={[styles.btn, styles.btnGhost]}
+              onPress={() => setNoteFor(null)}
+            >
+              <Text style={styles.btnGhostText}>Cancel</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[styles.btn, styles.btnPrimary]}
+              onPress={saveNote}
+            >
+              <Text style={styles.btnPrimaryText}>Save</Text>
+            </TouchableOpacity>
+          </ModalActions>
+        }
       >
-        <KeyboardAvoidingView
-          behavior="padding"
-          style={styles.modalWrap}
-        >
-          <View style={styles.smallModal}>
-            <Text style={styles.modalTitle}>Note for {noteFor}</Text>
-            <Text style={styles.modalHint}>
-              This note is saved with your next upload for this category.
-            </Text>
-            <TextInput
-              style={[styles.input, { minHeight: 80, marginTop: 12 }]}
-              value={noteDraft}
-              onChangeText={setNoteDraft}
-              multiline
-              textAlignVertical="top"
-              placeholder="e.g. will provide next week"
-              placeholderTextColor={c.textFaint}
-            />
-            <View style={styles.modalActions}>
-              <TouchableOpacity
-                style={[styles.btn, styles.btnGhost]}
-                onPress={() => setNoteFor(null)}
-              >
-                <Text style={styles.btnGhostText}>Cancel</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={[styles.btn, styles.btnPrimary]}
-                onPress={saveNote}
-              >
-                <Text style={styles.btnPrimaryText}>Save</Text>
-              </TouchableOpacity>
-            </View>
-          </View>
-        </KeyboardAvoidingView>
-      </Modal>
+        <Text style={styles.modalHint}>
+          This note is saved with your next upload for this category.
+        </Text>
+        <TextInput
+          style={[styles.input, { minHeight: 80, marginTop: 12 }]}
+          value={noteDraft}
+          onChangeText={setNoteDraft}
+          multiline
+          textAlignVertical="top"
+          placeholder="e.g. will provide next week"
+          placeholderTextColor={c.textFaint}
+        />
+      </WebModal>
 
       {/* Add custom category — lets the employee add a slot for something
           outside the standard list (e.g. visa, vaccination card). */}
-      <Modal
+      <WebModal
         visible={showAddCat}
-        animationType="fade"
-        transparent
-        onRequestClose={() => setShowAddCat(false)}
+        onClose={() => setShowAddCat(false)}
+        title="Add a document slot"
+        size="sm"
+        footer={
+          <ModalActions align="spread">
+            <TouchableOpacity
+              style={[styles.btn, styles.btnGhost]}
+              onPress={() => setShowAddCat(false)}
+            >
+              <Text style={styles.btnGhostText}>Cancel</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[styles.btn, styles.btnPrimary]}
+              onPress={addCustomCategory}
+            >
+              <Text style={styles.btnPrimaryText}>Add</Text>
+            </TouchableOpacity>
+          </ModalActions>
+        }
       >
-        <KeyboardAvoidingView
-          behavior="padding"
-          style={styles.modalWrap}
-        >
-          <View style={styles.smallModal}>
-            <Text style={styles.modalTitle}>Add a document slot</Text>
-            <Text style={styles.modalHint}>
-              For categories not in the standard list.
-            </Text>
-            <TextInput
-              style={[styles.input, { marginTop: 12 }]}
-              value={customCat}
-              onChangeText={setCustomCat}
-              placeholder="e.g. Visa, Vaccination"
-              placeholderTextColor={c.textFaint}
-            />
-            <View style={styles.modalActions}>
-              <TouchableOpacity
-                style={[styles.btn, styles.btnGhost]}
-                onPress={() => setShowAddCat(false)}
-              >
-                <Text style={styles.btnGhostText}>Cancel</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={[styles.btn, styles.btnPrimary]}
-                onPress={addCustomCategory}
-              >
-                <Text style={styles.btnPrimaryText}>Add</Text>
-              </TouchableOpacity>
-            </View>
-          </View>
-        </KeyboardAvoidingView>
-      </Modal>
+        <Text style={styles.modalHint}>
+          For categories not in the standard list.
+        </Text>
+        <TextInput
+          style={[styles.input, { marginTop: 12 }]}
+          value={customCat}
+          onChangeText={setCustomCat}
+          placeholder="e.g. Visa, Vaccination"
+          placeholderTextColor={c.textFaint}
+        />
+      </WebModal>
     </SafeAreaView>
   );
 }

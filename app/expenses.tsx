@@ -10,10 +10,8 @@ import {
   TouchableOpacity,
   TextInput,
   ActivityIndicator,
-  Modal,
   Platform,
   Alert } from "react-native";
-import { KeyboardAwareScrollView } from "react-native-keyboard-controller";
 import { SafeAreaView } from "react-native-safe-area-context";
 
 import AsyncStorage from "@react-native-async-storage/async-storage";
@@ -28,6 +26,8 @@ import {
   WebDateField,
   dateToYMD,
   ymdToDate } from "../src/components/WebDateField";
+
+import { WebModal, ModalActions } from "../src/components/WebModal";
 
 import {
   hrCreateExpense,
@@ -512,23 +512,35 @@ export default function Expenses() {
 
       </ScrollView>
 
-      <Modal
+      <WebModal
         visible={modalVisible}
-        transparent
-        animationType="slide"
-        onRequestClose={() => setModalVisible(false)}
-      >
-        <View style={s.modalOverlay}>
-          <View style={s.modalCard}>
-            <KeyboardAwareScrollView
-              showsVerticalScrollIndicator={false}
-              keyboardShouldPersistTaps="handled"
-              bottomOffset={24}
+        onClose={() => setModalVisible(false)}
+        title={editingId ? "Edit Expense" : "New Expense"}
+        size="md"
+        footer={
+          <ModalActions align="spread">
+            <TouchableOpacity
+              style={s.cancelBtn}
+              onPress={() => setModalVisible(false)}
             >
-              <Text style={s.modalTitle}>
-                {editingId ? "Edit Expense" : "New Expense"}
-              </Text>
-
+              <Text style={s.modalBtnText}>Cancel</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[s.saveBtn, saving && { opacity: 0.7 }]}
+              onPress={submit}
+              disabled={saving}
+            >
+              {saving ? (
+                <ActivityIndicator color="#fff" />
+              ) : (
+                <Text style={s.modalBtnText}>
+                  {editingId ? "Update" : "Save"}
+                </Text>
+              )}
+            </TouchableOpacity>
+          </ModalActions>
+        }
+      >
               <Text style={s.label}>Title</Text>
               <TextInput
                 style={s.input}
@@ -648,32 +660,7 @@ export default function Expenses() {
                 placeholderTextColor={c.textFaint}
                 multiline
               />
-
-              <View style={s.modalActions}>
-                <TouchableOpacity
-                  style={s.cancelBtn}
-                  onPress={() => setModalVisible(false)}
-                >
-                  <Text style={s.modalBtnText}>Cancel</Text>
-                </TouchableOpacity>
-                <TouchableOpacity
-                  style={[s.saveBtn, saving && { opacity: 0.7 }]}
-                  onPress={submit}
-                  disabled={saving}
-                >
-                  {saving ? (
-                    <ActivityIndicator color="#fff" />
-                  ) : (
-                    <Text style={s.modalBtnText}>
-                      {editingId ? "Update" : "Save"}
-                    </Text>
-                  )}
-                </TouchableOpacity>
-              </View>
-            </KeyboardAwareScrollView>
-          </View>
-        </View>
-      </Modal>
+      </WebModal>
 
     </SafeAreaView>
   );

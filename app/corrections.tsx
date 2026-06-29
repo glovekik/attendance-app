@@ -9,11 +9,9 @@ import {
   ScrollView,
   TouchableOpacity,
   ActivityIndicator,
-  Modal,
   TextInput,
   Platform,
   Alert } from "react-native";
-import { KeyboardAvoidingView } from "react-native-keyboard-controller";
 import { SafeAreaView } from "react-native-safe-area-context";
 
 import AsyncStorage from "@react-native-async-storage/async-storage";
@@ -24,11 +22,13 @@ import { Ionicons } from "@expo/vector-icons";
 
 import {
   listPendingCorrections,
-  decideCorrection } from "../src/services/corrections";
+  decideCorrection,
+  bulkDecideCorrections } from "../src/services/corrections";
 
 import { AttendanceCorrection } from "../src/types";
 
 import { useTheme } from "../src/theme/ThemeProvider";
+import { WebModal, ModalActions } from "../src/components/WebModal";
 export default function Corrections() {
 
   const router = useRouter();
@@ -42,6 +42,8 @@ export default function Corrections() {
   const [items, setItems] = useState<AttendanceCorrection[]>([]);
   const [loading, setLoading] = useState(true);
   const [busyId, setBusyId] = useState<string | null>(null);
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [bulkBusy, setBulkBusy] = useState(false);
 
   const [rejectVisible, setRejectVisible] = useState(false);
   const [rejectTarget, setRejectTarget] =
@@ -71,7 +73,10 @@ export default function Corrections() {
         return;
       }
       const res = await listPendingCorrections(token);
-      setItems(res || []);
+      const list = res || [];
+      setItems(list);
+      const validIds = new Set(list.map((i) => i.id));
+      setSelected((prev) => new Set([...prev].filter((id) => validIds.has(id))));
     } catch (err: any) {
       showPopup(err?.message || "Failed to load", "error");
     }
@@ -122,6 +127,71 @@ export default function Corrections() {
       setBusyId(null);
     }
   };
+
+  const toggleSelect = (id: string) => {
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+
+  const allSelected = items.length > 0 && selected.size === items.length;
+
+  const toggleSelectAll = () => {
+    setSelected(allSelected ? new Set() : new Set(items.map((i) => i.id)));
+  };
+
+  const confirmBulk = async (count: number): Promise<boolean> => {
+    const msg = `Approve ${count} correction${count === 1 ? "" : "s"}?`;
+    if (Platform.OS === "web") {
+      return Promise.resolve(
+        typeof window !== "undefined" && window.confirm(msg)
+      );
+    }
+    return new Promise((resolve) => {
+      Alert.alert("Approve corrections?", msg, [
+        { text: "Cancel", style: "cancel", onPress: () => resolve(false) },
+        { text: "Approve", onPress: () => resolve(true) },
+      ]);
+    });
+  };
+
+  const approveMany = async (targets: AttendanceCorrection[]) => {
+    if (bulkBusy || busyId || targets.length === 0) return;
+    const ok = await confirmBulk(targets.length);
+    if (!ok) return;
+    try {
+      setBulkBusy(true);
+      const token = await AsyncStorage.getItem("token");
+      if (!token) return;
+      // One request handles the whole batch server-side; each row is
+      // decided independently so a single bad row can't fail the rest.
+      const res = await bulkDecideCorrections(
+        token,
+        targets.map((t) => t.id),
+        "APPROVE"
+      );
+      const done = res.succeeded;
+      const failed = res.failed;
+      if (failed === 0) {
+        showPopup(`Approved ${done} correction${done === 1 ? "" : "s"}`);
+      } else {
+        showPopup(`Approved ${done}, ${failed} failed`, "error");
+      }
+      setSelected(new Set());
+      await load();
+    } catch (err: any) {
+      showPopup(err?.message || "Bulk approve failed", "error");
+    } finally {
+      setBulkBusy(false);
+    }
+  };
+
+  const approveAll = () => approveMany(items);
+  const approveSelected = () =>
+    approveMany(items.filter((i) => selected.has(i.id)));
 
   const openReject = (c: AttendanceCorrection) => {
     setRejectTarget(c);
@@ -201,6 +271,55 @@ export default function Corrections() {
           </View>
         </View>
 
+        {items.length > 0 && (
+          <View style={styles.bulkBar}>
+            <TouchableOpacity
+              style={styles.selectAllBtn}
+              onPress={toggleSelectAll}
+              disabled={bulkBusy}
+            >
+              <Ionicons
+                name={allSelected ? "checkbox" : "square-outline"}
+                size={20}
+                color={allSelected ? c.accent : c.textMuted}
+              />
+              <Text style={styles.selectAllText}>
+                {allSelected ? "Deselect all" : "Select all"}
+              </Text>
+            </TouchableOpacity>
+
+            <View style={{ flex: 1 }} />
+
+            {selected.size > 0 && (
+              <TouchableOpacity
+                style={[styles.bulkBtn, styles.bulkSelectedBtn, bulkBusy && { opacity: 0.6 }]}
+                onPress={approveSelected}
+                disabled={bulkBusy}
+              >
+                <Ionicons name="checkmark-outline" size={16} color="#fff" />
+                <Text style={styles.bulkBtnText}>
+                  Approve selected ({selected.size})
+                </Text>
+              </TouchableOpacity>
+            )}
+
+            <TouchableOpacity
+              style={[styles.bulkBtn, styles.bulkAllBtn, bulkBusy && { opacity: 0.6 }]}
+              onPress={approveAll}
+              disabled={bulkBusy}
+            >
+              {bulkBusy ? (
+                <ActivityIndicator color="#fff" size="small" />
+              ) : (
+                <>
+                  <Ionicons name="checkmark-done-outline" size={16} color="#fff" />
+                  <Text style={styles.bulkBtnText}>Approve all</Text>
+                </>
+              )}
+            </TouchableOpacity>
+          </View>
+        )}
+
         {items.length === 0 && (
           <View style={styles.emptyBox}>
             <Ionicons
@@ -216,9 +335,24 @@ export default function Corrections() {
         )}
 
         {items.map((corr) => (
-          <View key={corr.id} style={styles.card}>
+          <View
+            key={corr.id}
+            style={[styles.card, selected.has(corr.id) && styles.cardSelected]}
+          >
 
             <View style={styles.cardHead}>
+              <TouchableOpacity
+                style={styles.checkbox}
+                onPress={() => toggleSelect(corr.id)}
+                disabled={bulkBusy}
+                hitSlop={8}
+              >
+                <Ionicons
+                  name={selected.has(corr.id) ? "checkbox" : "square-outline"}
+                  size={22}
+                  color={selected.has(corr.id) ? c.accent : c.textMuted}
+                />
+              </TouchableOpacity>
               <View style={styles.avatar}>
                 <Text style={styles.avatarText}>
                   {(corr.user?.name || "U").charAt(0).toUpperCase()}
@@ -262,10 +396,10 @@ export default function Corrections() {
               <TouchableOpacity
                 style={[
                   styles.rejectBtn,
-                  busyId === corr.id && { opacity: 0.6 },
+                  (busyId === corr.id || bulkBusy) && { opacity: 0.6 },
                 ]}
                 onPress={() => openReject(corr)}
-                disabled={busyId === corr.id}
+                disabled={busyId === corr.id || bulkBusy}
               >
                 <Ionicons
                   name="close-outline"
@@ -278,10 +412,10 @@ export default function Corrections() {
               <TouchableOpacity
                 style={[
                   styles.approveBtn,
-                  busyId === corr.id && { opacity: 0.6 },
+                  (busyId === corr.id || bulkBusy) && { opacity: 0.6 },
                 ]}
                 onPress={() => doApprove(corr)}
-                disabled={busyId === corr.id}
+                disabled={busyId === corr.id || bulkBusy}
               >
                 {busyId === corr.id ? (
                   <ActivityIndicator color="#fff" />
@@ -304,61 +438,50 @@ export default function Corrections() {
       </ScrollView>
 
       {/* REJECT MODAL */}
-      <Modal
+      <WebModal
         visible={rejectVisible}
-        transparent
-        animationType="slide"
-        onRequestClose={() => setRejectVisible(false)}
+        onClose={() => setRejectVisible(false)}
+        title="Reject correction"
+        size="sm"
+        footer={
+          <ModalActions align="spread">
+            <TouchableOpacity
+              style={styles.cancelBtn}
+              onPress={() => setRejectVisible(false)}
+            >
+              <Text style={styles.modalBtnText}>Cancel</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={[
+                styles.rejectConfirm,
+                busyId && { opacity: 0.7 },
+              ]}
+              onPress={submitReject}
+              disabled={!!busyId}
+            >
+              {busyId ? (
+                <ActivityIndicator color="#fff" />
+              ) : (
+                <Text style={[styles.modalBtnText, { color: "#fff" }]}>Reject</Text>
+              )}
+            </TouchableOpacity>
+          </ModalActions>
+        }
       >
-        <KeyboardAvoidingView behavior="padding" style={{ flex: 1 }}>
-        <View style={styles.modalOverlay}>
-          <View style={styles.modalCard}>
+        <Text style={styles.modalLabel}>
+          Reason (shown to the user)
+        </Text>
 
-            <Text style={styles.modalTitle}>
-              Reject correction
-            </Text>
-
-            <Text style={styles.modalLabel}>
-              Reason (shown to the user)
-            </Text>
-
-            <TextInput
-              style={styles.input}
-              value={rejectReason}
-              onChangeText={setRejectReason}
-              placeholder="Optional"
-              placeholderTextColor={c.textFaint}
-              multiline
-            />
-
-            <View style={styles.modalActions}>
-              <TouchableOpacity
-                style={styles.cancelBtn}
-                onPress={() => setRejectVisible(false)}
-              >
-                <Text style={styles.modalBtnText}>Cancel</Text>
-              </TouchableOpacity>
-
-              <TouchableOpacity
-                style={[
-                  styles.rejectConfirm,
-                  busyId && { opacity: 0.7 },
-                ]}
-                onPress={submitReject}
-                disabled={!!busyId}
-              >
-                {busyId ? (
-                  <ActivityIndicator color="#fff" />
-                ) : (
-                  <Text style={[styles.modalBtnText, { color: "#fff" }]}>Reject</Text>
-                )}
-              </TouchableOpacity>
-            </View>
-
-          </View>
-        </View>
-        </KeyboardAvoidingView>
-      </Modal>
+        <TextInput
+          style={styles.input}
+          value={rejectReason}
+          onChangeText={setRejectReason}
+          placeholder="Optional"
+          placeholderTextColor={c.textFaint}
+          multiline
+        />
+      </WebModal>
 
     </SafeAreaView>
   );
@@ -425,6 +548,36 @@ const makeStyles = (c: any) => StyleSheet.create({
     marginTop: 6,
     textAlign: "center" },
 
+  bulkBar: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+    marginBottom: 14,
+    flexWrap: "wrap" },
+  selectAllBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    paddingVertical: 6 },
+  selectAllText: {
+    color: c.text,
+    fontSize: 14,
+    fontWeight: "600" },
+  bulkBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 6,
+    paddingVertical: 9,
+    paddingHorizontal: 14,
+    borderRadius: 10 },
+  bulkSelectedBtn: { backgroundColor: c.accent },
+  bulkAllBtn: { backgroundColor: "#16a34a" },
+  bulkBtnText: {
+    color: "#fff",
+    fontWeight: "700",
+    fontSize: 13 },
+
   card: {
     backgroundColor: c.surface,
     borderRadius: 16,
@@ -432,6 +585,12 @@ const makeStyles = (c: any) => StyleSheet.create({
     marginBottom: 12,
     borderWidth: 1,
     borderColor: c.surfaceBorder },
+  cardSelected: {
+    borderColor: c.accent,
+    backgroundColor: c.accentSoft || c.surface },
+  checkbox: {
+    justifyContent: "center",
+    alignItems: "center" },
   cardHead: {
     flexDirection: "row",
     alignItems: "center",

@@ -16,6 +16,7 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useTheme } from "../theme/ThemeProvider";
 import { getChatUnreadCount } from "../services/chat";
 import { User, hasRole, isManager, isCEO } from "../types";
+import { useResponsive } from "../utils/responsive";
 
 /**
  * Bottom tab bar shown on the main hub screens.
@@ -218,6 +219,14 @@ export const BottomTabBar = ({ user, chatUnread, badges }: Props) => {
   const pathname = usePathname() || "/";
   const { theme } = useTheme();
   const insets = useSafeAreaInsets();
+  const { showSidebar } = useResponsive();
+
+  // LEARNING POINT: Platform-specific rendering
+  // On desktop web, we use SidebarNav instead of BottomTabBar.
+  // Return null to hide this component when sidebar is visible.
+  if (showSidebar) {
+    return null;
+  }
 
   const tabs = pickTabs(user);
   const showsChatTab = tabs.some((t) => t.key === "chat");

@@ -11,12 +11,12 @@ import {
   TouchableOpacity,
   TextInput,
   ActivityIndicator,
-  Modal,
   RefreshControl,
   Platform,
   Alert } from "react-native";
-import { KeyboardAwareScrollView } from "react-native-keyboard-controller";
 import { SafeAreaView } from "react-native-safe-area-context";
+
+import { WebModal, ModalActions } from "../src/components/WebModal";
 
 import AsyncStorage from "@react-native-async-storage/async-storage";
 
@@ -369,20 +369,33 @@ export default function ManualRequest() {
         )}
       </ScrollView>
 
-      <Modal
+      <WebModal
         visible={modalVisible}
-        transparent
-        animationType="slide"
-        onRequestClose={() => setModalVisible(false)}
-      >
-        <View style={s.modalOverlay}>
-          <View style={s.modalCard}>
-            <KeyboardAwareScrollView
-              keyboardShouldPersistTaps="handled"
-              bottomOffset={24}
+        onClose={() => setModalVisible(false)}
+        title="Request manual attendance"
+        size="md"
+        footer={
+          <ModalActions align="spread">
+            <TouchableOpacity
+              style={s.cancelBtn}
+              onPress={() => setModalVisible(false)}
             >
-              <Text style={s.modalTitle}>Request manual attendance</Text>
-
+              <Text style={s.modalBtnText}>Cancel</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[s.saveBtn, saving && { opacity: 0.7 }]}
+              onPress={submit}
+              disabled={saving}
+            >
+              {saving ? (
+                <ActivityIndicator color="#fff" />
+              ) : (
+                <Text style={[s.modalBtnText, { color: "#fff" }]}>Submit</Text>
+              )}
+            </TouchableOpacity>
+          </ModalActions>
+        }
+      >
               <Text style={s.label}>Date</Text>
               {isWeb ? (
                 <View style={s.row}>
@@ -577,30 +590,7 @@ export default function ManualRequest() {
                   <Text style={s.inlineErrorText}>{submitError}</Text>
                 </View>
               )}
-
-              <View style={s.modalActions}>
-                <TouchableOpacity
-                  style={s.cancelBtn}
-                  onPress={() => setModalVisible(false)}
-                >
-                  <Text style={s.modalBtnText}>Cancel</Text>
-                </TouchableOpacity>
-                <TouchableOpacity
-                  style={[s.saveBtn, saving && { opacity: 0.7 }]}
-                  onPress={submit}
-                  disabled={saving}
-                >
-                  {saving ? (
-                    <ActivityIndicator color="#fff" />
-                  ) : (
-                    <Text style={[s.modalBtnText, { color: "#fff" }]}>Submit</Text>
-                  )}
-                </TouchableOpacity>
-              </View>
-            </KeyboardAwareScrollView>
-          </View>
-        </View>
-      </Modal>
+      </WebModal>
     </SafeAreaView>
   );
 }

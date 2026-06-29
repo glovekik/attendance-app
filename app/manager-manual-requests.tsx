@@ -8,12 +8,11 @@ import {
   TouchableOpacity,
   ActivityIndicator,
   RefreshControl,
-  Modal,
   TextInput,
   Alert,
   Platform } from "react-native";
-import { KeyboardAvoidingView } from "react-native-keyboard-controller";
 import { SafeAreaView } from "react-native-safe-area-context";
+import { WebModal, ModalActions } from "../src/components/WebModal";
 
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useRouter } from "expo-router";
@@ -217,24 +216,34 @@ export default function ManagerManualRequests() {
         />
       )}
 
-      <Modal
+      <WebModal
         visible={!!selected}
-        animationType="slide"
-        transparent
-        onRequestClose={() => setSelected(null)}
+        onClose={() => setSelected(null)}
+        title="Decide request"
+        size="md"
+        footer={
+          <ModalActions align="spread">
+            <TouchableOpacity
+              style={[styles.btn, styles.btnReject]}
+              onPress={() => onDecide("REJECT")}
+              disabled={acting !== null}
+            >
+              <Text style={styles.btnText}>
+                {acting === "REJECT" ? "..." : "Reject"}
+              </Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[styles.btn, styles.btnApprove]}
+              onPress={() => onDecide("APPROVE")}
+              disabled={acting !== null}
+            >
+              <Text style={styles.btnText}>
+                {acting === "APPROVE" ? "..." : "Approve"}
+              </Text>
+            </TouchableOpacity>
+          </ModalActions>
+        }
       >
-        <KeyboardAvoidingView
-          behavior="padding"
-          style={styles.modalWrap}
-        >
-          <View style={styles.modal}>
-            <View style={styles.modalHeader}>
-              <Text style={styles.modalTitle}>Decide request</Text>
-              <TouchableOpacity onPress={() => setSelected(null)}>
-                <Ionicons name="close" size={24} color={c.textMuted} />
-              </TouchableOpacity>
-            </View>
-
             {selected && (
               <View>
                 <View style={styles.detailRow}>
@@ -273,30 +282,7 @@ export default function ManagerManualRequests() {
               placeholderTextColor={c.textFaint}
               multiline
             />
-
-            <View style={styles.actions}>
-              <TouchableOpacity
-                style={[styles.btn, styles.btnReject]}
-                onPress={() => onDecide("REJECT")}
-                disabled={acting !== null}
-              >
-                <Text style={styles.btnText}>
-                  {acting === "REJECT" ? "..." : "Reject"}
-                </Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={[styles.btn, styles.btnApprove]}
-                onPress={() => onDecide("APPROVE")}
-                disabled={acting !== null}
-              >
-                <Text style={styles.btnText}>
-                  {acting === "APPROVE" ? "..." : "Approve"}
-                </Text>
-              </TouchableOpacity>
-            </View>
-          </View>
-        </KeyboardAvoidingView>
-      </Modal>
+      </WebModal>
     </SafeAreaView>
   );
 }

@@ -10,8 +10,7 @@
  *   • light  — primary look
  *   • dark   — true dark mode (deep slate, same indigo accent)
  *
- * No multi-pastel rainbow. Everything reads from this file so palette
- * changes are one-file commits.
+ * Note: Web desktop uses enhanced Keka-style overrides via webThemeOverrides.
  */
 
 export type ColorTokens = {
@@ -177,12 +176,41 @@ export const typography = {
   caption: { fontSize: 11, fontWeight: "700" as const, letterSpacing: 1.2 },
 };
 
+// Web-only: Professional shadows for desktop
+export const shadows = {
+  sm: "0 1px 2px rgba(15, 23, 42, 0.06)",
+  md: "0 4px 6px -1px rgba(15, 23, 42, 0.08), 0 2px 4px -1px rgba(15, 23, 42, 0.04)",
+  lg: "0 10px 15px -3px rgba(15, 23, 42, 0.08), 0 4px 6px -2px rgba(15, 23, 42, 0.04)",
+  xl: "0 20px 25px -5px rgba(15, 23, 42, 0.1), 0 10px 10px -5px rgba(15, 23, 42, 0.04)",
+};
+
+/**
+ * Web Desktop Theme Overrides - Keka-inspired professional look.
+ * These are applied only on web via Platform.OS checks in components.
+ */
+export const webThemeOverrides = {
+  colors: {
+    // Keka-inspired orange accent for web
+    accent: "#f97316",
+    accentSoft: "#fff7ed",
+    accentText: "#ea580c",
+    // Cleaner borders for web
+    surfaceBorder: "#e2e8f0",
+  },
+  // Web-specific typography adjustments
+  typography: {
+    body: { fontWeight: "400" as const },
+    bodySm: { fontWeight: "400" as const },
+  },
+};
+
 export type Theme = {
   mode: "light" | "dark";
   colors: ColorTokens;
   spacing: typeof spacing;
   radii: typeof radii;
   typography: typeof typography;
+  shadows: typeof shadows;
 };
 
 export const buildTheme = (mode: "light" | "dark"): Theme => ({
@@ -191,4 +219,5 @@ export const buildTheme = (mode: "light" | "dark"): Theme => ({
   spacing,
   radii,
   typography,
+  shadows,
 });

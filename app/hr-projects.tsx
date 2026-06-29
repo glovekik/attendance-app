@@ -8,14 +8,12 @@ import {
   TouchableOpacity,
   ActivityIndicator,
   RefreshControl,
-  Modal,
   TextInput,
   Alert,
   Switch,
-  ScrollView,
   Platform } from "react-native";
-import { KeyboardAvoidingView } from "react-native-keyboard-controller";
 import { SafeAreaView } from "react-native-safe-area-context";
+import { WebModal, ModalActions } from "../src/components/WebModal";
 
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useRouter } from "expo-router";
@@ -326,27 +324,32 @@ export default function HrProjects() {
       />
 
       {/* CREATE / EDIT */}
-      <Modal
+      <WebModal
         visible={showForm}
-        animationType="slide"
-        transparent
-        onRequestClose={closeForm}
-      >
-        <KeyboardAvoidingView
-          behavior="padding"
-          style={styles.modalWrap}
-        >
-          <View style={styles.modal}>
-            <View style={styles.modalHeader}>
-              <Text style={styles.modalTitle}>
-                {editingId ? "Edit project" : "New project"}
+        onClose={closeForm}
+        title={editingId ? "Edit project" : "New project"}
+        size="md"
+        footer={
+          <ModalActions align="spread">
+            <TouchableOpacity
+              style={[styles.btn, styles.btnGhost]}
+              onPress={closeForm}
+              disabled={saving}
+            >
+              <Text style={styles.btnGhostText}>Cancel</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[styles.btn, styles.btnPrimary]}
+              onPress={onSave}
+              disabled={saving}
+            >
+              <Text style={styles.btnPrimaryText}>
+                {saving ? "..." : editingId ? "Update" : "Create"}
               </Text>
-              <TouchableOpacity onPress={closeForm}>
-                <Ionicons name="close" size={24} color={c.textMuted} />
-              </TouchableOpacity>
-            </View>
-
-            <ScrollView style={{ maxHeight: 520 }}>
+            </TouchableOpacity>
+          </ModalActions>
+        }
+      >
               <Text style={styles.label}>Name *</Text>
               <TextInput
                 style={styles.input}
@@ -518,53 +521,20 @@ export default function HrProjects() {
               </View>
 
               <View style={{ height: 12 }} />
-            </ScrollView>
-
-            <View style={styles.actions}>
-              <TouchableOpacity
-                style={[styles.btn, styles.btnGhost]}
-                onPress={closeForm}
-                disabled={saving}
-              >
-                <Text style={styles.btnGhostText}>Cancel</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={[styles.btn, styles.btnPrimary]}
-                onPress={onSave}
-                disabled={saving}
-              >
-                <Text style={styles.btnPrimaryText}>
-                  {saving ? "..." : editingId ? "Update" : "Create"}
-                </Text>
-              </TouchableOpacity>
-            </View>
-          </View>
-        </KeyboardAvoidingView>
-      </Modal>
+      </WebModal>
 
       {/* USER PICKER (multi-select) */}
-      <Modal
+      <WebModal
         visible={pickerMode !== null}
-        animationType="slide"
-        transparent
-        onRequestClose={() => setPickerMode(null)}
+        onClose={() => setPickerMode(null)}
+        title={
+          pickerMode === "pm"
+            ? "Choose project managers"
+            : "Choose members"
+        }
+        size="md"
+        scrollable={false}
       >
-        <View style={styles.modalWrap}>
-          <View style={styles.pickerModal}>
-            <View style={styles.modalHeader}>
-              <Text style={styles.modalTitle}>
-                {pickerMode === "pm"
-                  ? "Choose project managers"
-                  : "Choose members"}
-              </Text>
-              <TouchableOpacity onPress={() => setPickerMode(null)}>
-                <Ionicons
-                  name="checkmark-done"
-                  size={24}
-                  color={c.accent}
-                />
-              </TouchableOpacity>
-            </View>
             <View style={styles.searchBox}>
               <Ionicons name="search" size={16} color={c.textMuted} />
               <TextInput
@@ -617,9 +587,7 @@ export default function HrProjects() {
                 );
               }}
             />
-          </View>
-        </View>
-      </Modal>
+      </WebModal>
     </SafeAreaView>
   );
 }

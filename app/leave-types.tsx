@@ -10,12 +10,12 @@ import {
   TouchableOpacity,
   TextInput,
   ActivityIndicator,
-  Modal,
   Switch,
   Platform,
   Alert } from "react-native";
-import { KeyboardAwareScrollView } from "react-native-keyboard-controller";
 import { SafeAreaView } from "react-native-safe-area-context";
+
+import { WebModal, ModalActions } from "../src/components/WebModal";
 
 import AsyncStorage from "@react-native-async-storage/async-storage";
 
@@ -441,24 +441,39 @@ export default function LeaveTypes() {
       </ScrollView>
 
       {/* MODAL */}
-      <Modal
+      <WebModal
         visible={modalVisible}
-        transparent
-        animationType="slide"
-        onRequestClose={() => setModalVisible(false)}
-      >
-        <View style={styles.modalOverlay}>
-          <View style={styles.modalCard}>
-            <KeyboardAwareScrollView
-              showsVerticalScrollIndicator={false}
-              keyboardShouldPersistTaps="handled"
-              bottomOffset={24}
+        onClose={() => setModalVisible(false)}
+        title={editingId ? "Edit Leave Type" : "New Leave Type"}
+        size="md"
+        footer={
+          <ModalActions align="spread">
+            <TouchableOpacity
+              style={styles.cancelBtn}
+              onPress={() => setModalVisible(false)}
             >
+              <Text style={styles.modalBtnText}>Cancel</Text>
+            </TouchableOpacity>
 
-              <Text style={styles.modalTitle}>
-                {editingId ? "Edit Leave Type" : "New Leave Type"}
-              </Text>
-
+            <TouchableOpacity
+              style={[
+                styles.saveBtn,
+                saving && { opacity: 0.7 },
+              ]}
+              onPress={save}
+              disabled={saving}
+            >
+              {saving ? (
+                <ActivityIndicator color="#fff" />
+              ) : (
+                <Text style={styles.modalBtnText}>
+                  {editingId ? "Update" : "Create"}
+                </Text>
+              )}
+            </TouchableOpacity>
+          </ModalActions>
+        }
+      >
               <Text style={styles.label}>Code</Text>
               <TextInput
                 style={[
@@ -554,37 +569,7 @@ export default function LeaveTypes() {
                 placeholderTextColor={c.textFaint}
                 multiline
               />
-
-              <View style={styles.modalActions}>
-                <TouchableOpacity
-                  style={styles.cancelBtn}
-                  onPress={() => setModalVisible(false)}
-                >
-                  <Text style={styles.modalBtnText}>Cancel</Text>
-                </TouchableOpacity>
-
-                <TouchableOpacity
-                  style={[
-                    styles.saveBtn,
-                    saving && { opacity: 0.7 },
-                  ]}
-                  onPress={save}
-                  disabled={saving}
-                >
-                  {saving ? (
-                    <ActivityIndicator color="#fff" />
-                  ) : (
-                    <Text style={styles.modalBtnText}>
-                      {editingId ? "Update" : "Create"}
-                    </Text>
-                  )}
-                </TouchableOpacity>
-              </View>
-
-            </KeyboardAwareScrollView>
-          </View>
-        </View>
-      </Modal>
+      </WebModal>
 
     </SafeAreaView>
   );

@@ -9,9 +9,7 @@ import {
   ScrollView,
   ActivityIndicator,
   Image,
-  Modal,
   Platform } from "react-native";
-import { KeyboardAvoidingView } from "react-native-keyboard-controller";
 import { SafeAreaView } from "react-native-safe-area-context";
 
 import AsyncStorage from "@react-native-async-storage/async-storage";
@@ -20,7 +18,7 @@ import { useRouter } from "expo-router";
 
 import { Ionicons } from "@expo/vector-icons";
 
-import { getMe } from "../src/services/api";
+import { getMe, changePassword } from "../src/services/api";
 
 import { unregisterPushToken } from "../src/services/notifications";
 
@@ -34,9 +32,13 @@ import { User, hasRole } from "../src/types";
 import { useTheme, ThemePreference } from "../src/theme/ThemeProvider";
 import {
   BottomTabBar,
-  BOTTOM_BAR_RESERVED_HEIGHT } from "../src/components/BottomTabBar";
+  BOTTOM_BAR_RESERVED_HEIGHT,
+} from "../src/components/BottomTabBar";
 import { FilePickButton } from "../src/components/FilePickButton";
+import { WebModal, ModalActions } from "../src/components/WebModal";
 import { confirmAction, notify } from "../src/utils/confirm";
+import { useResponsive, getResponsiveSpacing } from "../src/utils/responsive";
+import { PageHeader } from "../src/components/PageHeader";
 
 // ── Personal-info fields the employee can self-complete. Paths are
 // dotted so the same descriptor reads from the profile object and
@@ -168,12 +170,67 @@ const joinEmergency = (profile: any): string => {
 export default function Profile() {
   const router = useRouter();
   const { theme, preference, setPreference } = useTheme();
+  const responsive = useResponsive();
+  const spacing = getResponsiveSpacing(responsive.breakpoint);
+  const isDesktop = responsive.isDesktop;
 
   const [user, setUser] = useState<User | null>(null);
   const [profile, setProfile] = useState<MyProfile | null>(null);
   const [loading, setLoading] = useState(true);
   const [loggingOut, setLoggingOut] = useState(false);
   const [showLogoutModal, setShowLogoutModal] = useState(false);
+
+  // Change-password modal state. All three fields live here; cleared
+  // whenever the modal opens or closes so a stale entry never lingers.
+  const [showPwModal, setShowPwModal] = useState(false);
+  const [pwCurrent, setPwCurrent] = useState("");
+  const [pwNew, setPwNew] = useState("");
+  const [pwConfirm, setPwConfirm] = useState("");
+  const [pwSaving, setPwSaving] = useState(false);
+  const [pwShow, setPwShow] = useState(false);
+
+  const openPwModal = () => {
+    setPwCurrent("");
+    setPwNew("");
+    setPwConfirm("");
+    setPwShow(false);
+    setShowPwModal(true);
+  };
+
+  const handleChangePassword = async () => {
+    if (!pwCurrent || !pwNew || !pwConfirm) {
+      notify("Missing fields", "Please fill in all password fields.");
+      return;
+    }
+    if (pwNew.length < 8) {
+      notify("Weak password", "New password must be at least 8 characters.");
+      return;
+    }
+    if (pwNew !== pwConfirm) {
+      notify("Mismatch", "New password and confirmation do not match.");
+      return;
+    }
+    if (pwNew === pwCurrent) {
+      notify("No change", "New password must differ from the current one.");
+      return;
+    }
+    setPwSaving(true);
+    try {
+      const token = await AsyncStorage.getItem("token");
+      if (!token) {
+        notify("Session expired", "Please sign in again.");
+        return;
+      }
+      await changePassword(token, pwCurrent, pwNew);
+      setShowPwModal(false);
+      notify("Done", "Your password has been changed.");
+    } catch (err: any) {
+      notify("Couldn't change password", err?.message || "Please try again.");
+    } finally {
+      setPwSaving(false);
+    }
+  };
+
   // Per-field edit. editingPath is whichever single field the employee
   // is currently filling in; null when nothing is being edited.
   const [editingPath, setEditingPath] = useState<string | null>(null);
@@ -344,7 +401,7 @@ export default function Profile() {
 
   const c = theme.colors;
 
-  const styles = useMemo(() => makeStyles(c), [c]);
+  const styles = useMemo(() => makeStyles(c, isDesktop), [c, isDesktop]);
 
   if (loading) {
     return (
@@ -387,34 +444,55 @@ export default function Profile() {
     ? HR_MANAGED.filter((f) => readPath(profile, f.path) !== "")
     : [];
 
+  // Desktop shows sidebar, so we don't need bottom bar padding
+  const bottomPadding = responsive.showSidebar ? 40 : BOTTOM_BAR_RESERVED_HEIGHT + 24;
+
   return (
     <SafeAreaView style={[styles.safe, { backgroundColor: c.bg }]}>
       <ScrollView
         contentContainerStyle={{
-          padding: 20,
-          paddingBottom: BOTTOM_BAR_RESERVED_HEIGHT + 24 }}
+          padding: spacing.padding,
+          paddingBottom: bottomPadding,
+          ...(isDesktop && {
+            maxWidth: 800,
+            alignSelf: "center" as const,
+            width: "100%",
+          }),
+        }}
         showsVerticalScrollIndicator={false}
       >
         {/* ===== HEADER ===== */}
-        <View style={styles.headerRow}>
-          <TouchableOpacity
-            onPress={() =>
-              router.canGoBack() ? router.back() : router.replace("/")
-            }
-            style={[
-              styles.iconBtn,
-              {
-                backgroundColor: c.surface,
-                borderColor: c.surfaceBorder },
+        {isDesktop ? (
+          <PageHeader
+            title="My Profile"
+            subtitle="View and edit your information"
+            breadcrumbs={[
+              { label: "Home", href: "/" },
+              { label: "Profile" },
             ]}
-          >
-            <Ionicons name="chevron-back" size={22} color={c.text} />
-          </TouchableOpacity>
-          <Text style={[styles.headerTitle, { color: c.text }]}>
-            Profile
-          </Text>
-          <View style={{ width: 42 }} />
-        </View>
+          />
+        ) : (
+          <View style={styles.headerRow}>
+            <TouchableOpacity
+              onPress={() =>
+                router.canGoBack() ? router.back() : router.replace("/")
+              }
+              style={[
+                styles.iconBtn,
+                {
+                  backgroundColor: c.surface,
+                  borderColor: c.surfaceBorder,
+                },
+              ]}
+            >
+              <Ionicons name="chevron-back" size={22} color={c.text} />
+            </TouchableOpacity>
+            <Text style={[styles.headerTitle, { color: c.text }]}>
+              Profile
+            </Text>
+            <View style={{ width: 42 }} />
+          </View>
+        )}
 
         {/* ===== IDENTITY CARD ===== */}
         <View
@@ -786,6 +864,31 @@ export default function Profile() {
           )}
         </View>
 
+        {/* ===== SECURITY ===== */}
+        <Text style={[styles.section, { color: c.textMuted }]}>
+          SECURITY
+        </Text>
+        <View
+          style={[
+            styles.card,
+            {
+              backgroundColor: c.surface,
+              borderColor: c.surfaceBorder,
+              shadowColor: c.shadow,
+              padding: 0 },
+          ]}
+        >
+          <LinkRow
+            icon="lock-closed-outline"
+            tint={c.pastelPink}
+            iconColor="#be185d"
+            label="Change password"
+            onPress={openPwModal}
+            theme={theme}
+            showDivider={false}
+          />
+        </View>
+
         {/* ===== APPEARANCE ===== */}
         <Text style={[styles.section, { color: c.textMuted }]}>
           APPEARANCE
@@ -883,172 +986,259 @@ export default function Profile() {
       {/* Composite editor modal — used for Address and Emergency contact.
           The per-sub-field inputs only live here so the main profile
           shows just a single line for each section. */}
-      <Modal
+      <WebModal
         visible={editingComposite !== null}
-        animationType="fade"
-        transparent
-        onRequestClose={() => setEditingComposite(null)}
-      >
-        <KeyboardAvoidingView
-          behavior="padding"
-          style={styles.compModalWrap}
-        >
-          <View
-            style={[
-              styles.compModalCard,
-              {
-                backgroundColor: c.surface,
-                borderColor: c.surfaceBorder },
-            ]}
-          >
-            <Text style={[styles.compModalTitle, { color: c.text }]}>
-              {editingComposite === "address"
-                ? "Edit address"
-                : "Edit emergency contact"}
-            </Text>
-            <ScrollView style={{ maxHeight: 380 }}>
-              {(editingComposite === "address"
-                ? ADDRESS_FIELDS
-                : EMERGENCY_FIELDS
-              ).map((f) => (
-                <View key={f.path} style={{ marginTop: 12 }}>
-                  <Text
-                    style={{
-                      color: c.textMuted,
-                      fontSize: 11,
-                      fontWeight: "700",
-                      marginBottom: 5 }}
-                  >
-                    {f.label}
-                  </Text>
-                  <TextInput
-                    value={compositeDraft[f.path] ?? ""}
-                    onChangeText={(v) =>
-                      setCompositeDraft((prev) => ({
-                        ...prev,
-                        [f.path]: v }))
-                    }
-                    placeholder={f.placeholder || f.label}
-                    placeholderTextColor={c.textFaint}
-                    keyboardType={f.keyboard || "default"}
-                    editable={!compositeSaving}
-                    style={{
-                      backgroundColor: c.surfaceMuted,
-                      color: c.text,
-                      borderRadius: 10,
-                      borderWidth: 1,
-                      borderColor: c.surfaceBorder,
-                      paddingHorizontal: 12,
-                      paddingVertical: 9,
-                      fontSize: 14 }}
-                  />
-                </View>
-              ))}
-            </ScrollView>
-            <View style={styles.compModalActions}>
-              <TouchableOpacity
-                style={[
-                  styles.compModalBtn,
-                  { backgroundColor: c.surfaceMuted },
-                ]}
-                onPress={() => setEditingComposite(null)}
-                disabled={compositeSaving}
+        onClose={() => setEditingComposite(null)}
+        title={
+          editingComposite === "address"
+            ? "Edit address"
+            : "Edit emergency contact"
+        }
+        size="sm"
+        footer={
+          <ModalActions align="spread">
+            <TouchableOpacity
+              style={[
+                styles.compModalBtn,
+                { backgroundColor: c.surfaceMuted },
+              ]}
+              onPress={() => setEditingComposite(null)}
+              disabled={compositeSaving}
+            >
+              <Text
+                style={{ color: c.text, fontWeight: "700", fontSize: 13 }}
               >
+                Cancel
+              </Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[
+                styles.compModalBtn,
+                { backgroundColor: c.accent },
+              ]}
+              onPress={saveComposite}
+              disabled={compositeSaving}
+            >
+              {compositeSaving ? (
+                <ActivityIndicator color="#fff" size="small" />
+              ) : (
                 <Text
-                  style={{ color: c.text, fontWeight: "700", fontSize: 13 }}
+                  style={{
+                    color: "#fff",
+                    fontWeight: "800",
+                    fontSize: 13 }}
                 >
-                  Cancel
+                  Save
                 </Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={[
-                  styles.compModalBtn,
-                  { backgroundColor: c.accent },
-                ]}
-                onPress={saveComposite}
-                disabled={compositeSaving}
-              >
-                {compositeSaving ? (
-                  <ActivityIndicator color="#fff" size="small" />
-                ) : (
-                  <Text
-                    style={{
-                      color: "#fff",
-                      fontWeight: "800",
-                      fontSize: 13 }}
-                  >
-                    Save
-                  </Text>
-                )}
-              </TouchableOpacity>
-            </View>
+              )}
+            </TouchableOpacity>
+          </ModalActions>
+        }
+      >
+        {(editingComposite === "address"
+          ? ADDRESS_FIELDS
+          : EMERGENCY_FIELDS
+        ).map((f) => (
+          <View key={f.path} style={{ marginTop: 12 }}>
+            <Text
+              style={{
+                color: c.textMuted,
+                fontSize: 11,
+                fontWeight: "700",
+                marginBottom: 5 }}
+            >
+              {f.label}
+            </Text>
+            <TextInput
+              value={compositeDraft[f.path] ?? ""}
+              onChangeText={(v) =>
+                setCompositeDraft((prev) => ({
+                  ...prev,
+                  [f.path]: v }))
+              }
+              placeholder={f.placeholder || f.label}
+              placeholderTextColor={c.textFaint}
+              keyboardType={f.keyboard || "default"}
+              editable={!compositeSaving}
+              style={{
+                backgroundColor: c.surfaceMuted,
+                color: c.text,
+                borderRadius: 10,
+                borderWidth: 1,
+                borderColor: c.surfaceBorder,
+                paddingHorizontal: 12,
+                paddingVertical: 9,
+                fontSize: 14 }}
+            />
           </View>
-        </KeyboardAvoidingView>
-      </Modal>
+        ))}
+      </WebModal>
 
       {/* Sign-out confirmation — themed card replacing the browser's
           default confirm dialog (which looked dated on web). */}
-      <Modal
+      <WebModal
         visible={showLogoutModal}
-        animationType="fade"
-        transparent
-        onRequestClose={() => setShowLogoutModal(false)}
+        onClose={() => setShowLogoutModal(false)}
+        size="sm"
+        showCloseButton={false}
+        footer={
+          <ModalActions align="spread">
+            <TouchableOpacity
+              style={[
+                styles.logoutModalBtn,
+                { backgroundColor: c.surfaceMuted },
+              ]}
+              onPress={() => setShowLogoutModal(false)}
+            >
+              <Text style={{ color: c.text, fontWeight: "700", fontSize: 14 }}>
+                Cancel
+              </Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[
+                styles.logoutModalBtn,
+                { backgroundColor: c.dangerText },
+              ]}
+              onPress={handleLogout}
+            >
+              <Text style={{ color: "#fff", fontWeight: "800", fontSize: 14 }}>
+                Sign out
+              </Text>
+            </TouchableOpacity>
+          </ModalActions>
+        }
       >
-        <TouchableOpacity
-          style={styles.logoutModalWrap}
-          activeOpacity={1}
-          onPress={() => setShowLogoutModal(false)}
-        >
-          <TouchableOpacity
-            activeOpacity={1}
+        <View style={{ alignItems: "center" }}>
+          <View
             style={[
-              styles.logoutModalCard,
-              {
-                backgroundColor: c.surface,
-                borderColor: c.surfaceBorder },
+              styles.logoutModalIcon,
+              { backgroundColor: c.dangerBg },
             ]}
           >
-            <View
+            <Ionicons name="log-out-outline" size={26} color={c.dangerText} />
+          </View>
+          <Text style={[styles.logoutModalTitle, { color: c.text }]}>
+            Sign out?
+          </Text>
+          <Text style={[styles.logoutModalSub, { color: c.textMuted }]}>
+            You&apos;ll need to enter your credentials again to come back.
+          </Text>
+        </View>
+      </WebModal>
+
+      {/* Change-password modal — verifies the current password before
+          setting a new one. Available to every signed-in user. */}
+      <WebModal
+        visible={showPwModal}
+        onClose={() => (pwSaving ? null : setShowPwModal(false))}
+        size="sm"
+        title="Change password"
+        footer={
+          <ModalActions align="spread">
+            <TouchableOpacity
               style={[
-                styles.logoutModalIcon,
-                { backgroundColor: c.dangerBg },
+                styles.logoutModalBtn,
+                { backgroundColor: c.surfaceMuted },
               ]}
+              onPress={() => setShowPwModal(false)}
+              disabled={pwSaving}
             >
-              <Ionicons name="log-out-outline" size={26} color={c.dangerText} />
-            </View>
-            <Text style={[styles.logoutModalTitle, { color: c.text }]}>
-              Sign out?
-            </Text>
-            <Text style={[styles.logoutModalSub, { color: c.textMuted }]}>
-              You&apos;ll need to enter your credentials again to come back.
-            </Text>
-            <View style={styles.logoutModalActions}>
-              <TouchableOpacity
-                style={[
-                  styles.logoutModalBtn,
-                  { backgroundColor: c.surfaceMuted },
-                ]}
-                onPress={() => setShowLogoutModal(false)}
-              >
-                <Text style={{ color: c.text, fontWeight: "700", fontSize: 14 }}>
-                  Cancel
-                </Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={[
-                  styles.logoutModalBtn,
-                  { backgroundColor: c.dangerText },
-                ]}
-                onPress={handleLogout}
-              >
+              <Text style={{ color: c.text, fontWeight: "700", fontSize: 14 }}>
+                Cancel
+              </Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[
+                styles.logoutModalBtn,
+                { backgroundColor: c.accent, opacity: pwSaving ? 0.6 : 1 },
+              ]}
+              onPress={handleChangePassword}
+              disabled={pwSaving}
+            >
+              {pwSaving ? (
+                <ActivityIndicator color="#fff" size="small" />
+              ) : (
                 <Text style={{ color: "#fff", fontWeight: "800", fontSize: 14 }}>
-                  Sign out
+                  Update
                 </Text>
-              </TouchableOpacity>
+              )}
+            </TouchableOpacity>
+          </ModalActions>
+        }
+      >
+        <View>
+          {[
+            {
+              key: "current",
+              label: "Current password",
+              value: pwCurrent,
+              set: setPwCurrent,
+            },
+            {
+              key: "new",
+              label: "New password (min 8 characters)",
+              value: pwNew,
+              set: setPwNew,
+            },
+            {
+              key: "confirm",
+              label: "Confirm new password",
+              value: pwConfirm,
+              set: setPwConfirm,
+            },
+          ].map((f) => (
+            <View key={f.key} style={{ marginTop: 12 }}>
+              <Text
+                style={{
+                  color: c.textMuted,
+                  fontSize: 11,
+                  fontWeight: "700",
+                  marginBottom: 5,
+                }}
+              >
+                {f.label}
+              </Text>
+              <TextInput
+                value={f.value}
+                onChangeText={f.set}
+                placeholder={f.label}
+                placeholderTextColor={c.textFaint}
+                secureTextEntry={!pwShow}
+                autoCapitalize="none"
+                editable={!pwSaving}
+                style={{
+                  backgroundColor: c.surfaceMuted,
+                  color: c.text,
+                  borderRadius: 10,
+                  borderWidth: 1,
+                  borderColor: c.surfaceBorder,
+                  paddingHorizontal: 12,
+                  paddingVertical: 9,
+                  fontSize: 14,
+                }}
+              />
             </View>
+          ))}
+          <TouchableOpacity
+            onPress={() => setPwShow((s) => !s)}
+            style={{
+              flexDirection: "row",
+              alignItems: "center",
+              gap: 6,
+              marginTop: 12,
+            }}
+          >
+            <Ionicons
+              name={pwShow ? "eye-off-outline" : "eye-outline"}
+              size={16}
+              color={c.textMuted}
+            />
+            <Text style={{ color: c.textMuted, fontSize: 13, fontWeight: "600" }}>
+              {pwShow ? "Hide passwords" : "Show passwords"}
+            </Text>
           </TouchableOpacity>
-        </TouchableOpacity>
-      </Modal>
+        </View>
+      </WebModal>
 
       <BottomTabBar user={user} />
     </SafeAreaView>
@@ -1366,219 +1556,268 @@ const LinkRow = ({
   </TouchableOpacity>
 );
 
-const makeStyles = (c: any) => StyleSheet.create({
-  safe: { flex: 1 },
-  loader: {
-    flex: 1,
-    alignItems: "center",
-    justifyContent: "center",
-    gap: 10 },
-  headerRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    marginBottom: 16 },
-  iconBtn: {
-    width: 42,
-    height: 42,
-    borderRadius: 14,
-    borderWidth: 1,
-    alignItems: "center",
-    justifyContent: "center" },
-  headerTitle: {
-    flex: 1,
-    fontSize: 18,
-    fontWeight: "800",
-    textAlign: "center",
-    letterSpacing: 0.3 },
-  card: {
-    borderRadius: 20,
-    borderWidth: 1,
-    padding: 18,
-    marginTop: 10,
-    shadowOpacity: 1,
-    shadowRadius: 16,
-    shadowOffset: { width: 0, height: 6 },
-    elevation: 2 },
-  avatarWrap: {
-    position: "relative",
-    width: 84,
-    height: 84,
-    marginBottom: 14 },
-  avatar: {
-    width: 84,
-    height: 84,
-    borderRadius: 42,
-    alignItems: "center",
-    justifyContent: "center" },
-  avatarImg: {
-    width: 84,
-    height: 84,
-    borderRadius: 42 },
-  avatarText: { fontSize: 30, fontWeight: "800" },
-  // Tiny camera bubble sitting on the bottom-right of the avatar. The
-  // FilePickButton renders inside it so a tap goes straight to the file
-  // picker — no separate "Upload photo" pill needed.
-  avatarCamera: {
-    position: "absolute",
-    right: -4,
-    bottom: -4,
-    borderRadius: 16,
-    padding: 2,
-    borderWidth: 1 },
-  avatarCameraBtn: {
-    width: 28,
-    height: 28,
-    borderRadius: 14 },
-  removePhotoBtn: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 4,
-    paddingHorizontal: 10,
-    paddingVertical: 5,
-    borderRadius: 999,
-    marginBottom: 12,
-    marginTop: -4 },
-  removePhotoText: { fontSize: 11, fontWeight: "700" },
-  name: { fontSize: 22, fontWeight: "800", marginBottom: 4 },
-  email: { fontSize: 14, marginBottom: 12 },
-  chipsRow: {
-    flexDirection: "row",
-    gap: 6,
-    flexWrap: "wrap",
-    justifyContent: "center" },
-  chip: {
-    paddingHorizontal: 10,
-    paddingVertical: 5,
-    borderRadius: 999 },
-  chipText: { fontSize: 10, fontWeight: "800", letterSpacing: 0.5 },
-  section: {
-    fontSize: 11,
-    fontWeight: "800",
-    letterSpacing: 1.4,
-    marginTop: 22,
-    marginBottom: 8,
-    marginLeft: 4 },
-  themeBtn: {
-    flex: 1,
-    paddingVertical: 14,
-    borderRadius: 14,
-    borderWidth: 1,
-    alignItems: "center" },
-  logoutBtn: {
-    marginTop: 22,
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: 8,
-    paddingVertical: 14,
-    borderRadius: 14,
-    borderWidth: 1 },
-  logoutText: { fontSize: 14, fontWeight: "800" },
-  personalHeader: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    marginTop: 22,
-    marginBottom: 8 },
-  editBtn: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 4,
-    borderWidth: 1,
-    borderRadius: 999,
-    paddingHorizontal: 12,
-    paddingVertical: 5 },
-  editBtnText: { fontSize: 12, fontWeight: "800" },
-  pendingBanner: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 8,
-    backgroundColor: "rgba(245,158,11,0.12)",
-    borderColor: "rgba(245,158,11,0.4)",
-    borderWidth: 1,
-    borderRadius: 12,
-    paddingHorizontal: 12,
-    paddingVertical: 10 },
-  pendingBannerText: {
-    color: "#b45309",
-    fontSize: 12.5,
-    fontWeight: "700",
-    flex: 1 },
-  groupHeader: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 7,
-    paddingHorizontal: 16,
-    paddingTop: 14,
-    paddingBottom: 6 },
-  groupTitle: { fontSize: 12, fontWeight: "800", letterSpacing: 0.4 },
-  editActions: { flexDirection: "row", gap: 10, marginTop: 12 },
-  editAction: {
-    flex: 1,
-    paddingVertical: 13,
-    borderRadius: 12,
-    alignItems: "center" },
-  hrHint: {
-    color: c.textFaint,
-    fontSize: 11,
-    fontStyle: "italic",
-    paddingHorizontal: 16,
-    paddingVertical: 10 },
-  compModalWrap: {
-    flex: 1,
-    justifyContent: "center",
-    alignItems: "center",
-    backgroundColor: c.overlay,
-    paddingHorizontal: 18 },
-  compModalCard: {
-    width: "100%",
-    maxWidth: 440,
-    borderRadius: 16,
-    padding: 18,
-    borderWidth: 1 },
-  compModalTitle: { fontSize: 16, fontWeight: "800" },
-  compModalActions: {
-    flexDirection: "row",
-    gap: 10,
-    marginTop: 16 },
-  compModalBtn: {
-    flex: 1,
-    paddingVertical: 12,
-    borderRadius: 12,
-    alignItems: "center" },
+const makeStyles = (c: any, isDesktop: boolean) =>
+  StyleSheet.create({
+    safe: { flex: 1 },
+    loader: {
+      flex: 1,
+      alignItems: "center",
+      justifyContent: "center",
+      gap: 10,
+    },
+    headerRow: {
+      flexDirection: "row",
+      alignItems: "center",
+      marginBottom: isDesktop ? 24 : 16,
+    },
+    iconBtn: {
+      width: 42,
+      height: 42,
+      borderRadius: 14,
+      borderWidth: 1,
+      alignItems: "center",
+      justifyContent: "center",
+    },
+    headerTitle: {
+      flex: 1,
+      fontSize: isDesktop ? 20 : 18,
+      fontWeight: "800",
+      textAlign: "center",
+      letterSpacing: 0.3,
+    },
+    card: {
+      borderRadius: 20,
+      borderWidth: 1,
+      padding: isDesktop ? 22 : 18,
+      marginTop: isDesktop ? 14 : 10,
+      shadowOpacity: 1,
+      shadowRadius: 16,
+      shadowOffset: { width: 0, height: 6 },
+      elevation: 2,
+      ...(Platform.OS === "web" && {
+        transition: "all 0.15s ease" as any,
+      }),
+    },
+    avatarWrap: {
+      position: "relative",
+      width: isDesktop ? 100 : 84,
+      height: isDesktop ? 100 : 84,
+      marginBottom: isDesktop ? 18 : 14,
+    },
+    avatar: {
+      width: isDesktop ? 100 : 84,
+      height: isDesktop ? 100 : 84,
+      borderRadius: isDesktop ? 50 : 42,
+      alignItems: "center",
+      justifyContent: "center",
+    },
+    avatarImg: {
+      width: isDesktop ? 100 : 84,
+      height: isDesktop ? 100 : 84,
+      borderRadius: isDesktop ? 50 : 42,
+    },
+    avatarText: { fontSize: isDesktop ? 36 : 30, fontWeight: "800" },
+    avatarCamera: {
+      position: "absolute",
+      right: -4,
+      bottom: -4,
+      borderRadius: 16,
+      padding: 2,
+      borderWidth: 1,
+    },
+    avatarCameraBtn: {
+      width: 28,
+      height: 28,
+      borderRadius: 14,
+    },
+    removePhotoBtn: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 4,
+      paddingHorizontal: 10,
+      paddingVertical: 5,
+      borderRadius: 999,
+      marginBottom: 12,
+      marginTop: -4,
+    },
+    removePhotoText: { fontSize: 11, fontWeight: "700" },
+    name: { fontSize: isDesktop ? 26 : 22, fontWeight: "800", marginBottom: 4 },
+    email: { fontSize: isDesktop ? 15 : 14, marginBottom: isDesktop ? 16 : 12 },
+    chipsRow: {
+      flexDirection: "row",
+      gap: 6,
+      flexWrap: "wrap",
+      justifyContent: "center",
+    },
+    chip: {
+      paddingHorizontal: isDesktop ? 12 : 10,
+      paddingVertical: isDesktop ? 6 : 5,
+      borderRadius: 999,
+    },
+    chipText: { fontSize: isDesktop ? 11 : 10, fontWeight: "800", letterSpacing: 0.5 },
+    section: {
+      fontSize: isDesktop ? 12 : 11,
+      fontWeight: "800",
+      letterSpacing: 1.4,
+      marginTop: isDesktop ? 28 : 22,
+      marginBottom: isDesktop ? 10 : 8,
+      marginLeft: 4,
+    },
+    themeBtn: {
+      flex: 1,
+      paddingVertical: isDesktop ? 16 : 14,
+      borderRadius: 14,
+      borderWidth: 1,
+      alignItems: "center",
+      ...(Platform.OS === "web" && {
+        cursor: "pointer" as any,
+        transition: "all 0.15s ease" as any,
+      }),
+    },
+    logoutBtn: {
+      marginTop: isDesktop ? 28 : 22,
+      flexDirection: "row",
+      alignItems: "center",
+      justifyContent: "center",
+      gap: 8,
+      paddingVertical: isDesktop ? 16 : 14,
+      borderRadius: 14,
+      borderWidth: 1,
+      ...(Platform.OS === "web" && {
+        cursor: "pointer" as any,
+        transition: "all 0.15s ease" as any,
+      }),
+    },
+    logoutText: { fontSize: isDesktop ? 15 : 14, fontWeight: "800" },
+    personalHeader: {
+      flexDirection: "row",
+      alignItems: "center",
+      justifyContent: "space-between",
+      marginTop: isDesktop ? 28 : 22,
+      marginBottom: isDesktop ? 10 : 8,
+    },
+    editBtn: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 4,
+      borderWidth: 1,
+      borderRadius: 999,
+      paddingHorizontal: 12,
+      paddingVertical: 5,
+    },
+    editBtnText: { fontSize: 12, fontWeight: "800" },
+    pendingBanner: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 8,
+      backgroundColor: "rgba(245,158,11,0.12)",
+      borderColor: "rgba(245,158,11,0.4)",
+      borderWidth: 1,
+      borderRadius: 12,
+      paddingHorizontal: isDesktop ? 16 : 12,
+      paddingVertical: isDesktop ? 12 : 10,
+    },
+    pendingBannerText: {
+      color: "#b45309",
+      fontSize: isDesktop ? 13 : 12.5,
+      fontWeight: "700",
+      flex: 1,
+    },
+    groupHeader: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 7,
+      paddingHorizontal: isDesktop ? 18 : 16,
+      paddingTop: isDesktop ? 16 : 14,
+      paddingBottom: 6,
+    },
+    groupTitle: { fontSize: isDesktop ? 13 : 12, fontWeight: "800", letterSpacing: 0.4 },
+    editActions: { flexDirection: "row", gap: 10, marginTop: 12 },
+    editAction: {
+      flex: 1,
+      paddingVertical: 13,
+      borderRadius: 12,
+      alignItems: "center",
+    },
+    hrHint: {
+      color: c.textFaint,
+      fontSize: 11,
+      fontStyle: "italic",
+      paddingHorizontal: 16,
+      paddingVertical: 10,
+    },
+    compModalWrap: {
+      flex: 1,
+      justifyContent: "center",
+      alignItems: "center",
+      backgroundColor: c.overlay,
+      paddingHorizontal: 18,
+    },
+    compModalCard: {
+      width: "100%",
+      maxWidth: isDesktop ? 500 : 440,
+      borderRadius: 16,
+      padding: isDesktop ? 24 : 18,
+      borderWidth: 1,
+    },
+    compModalTitle: { fontSize: isDesktop ? 18 : 16, fontWeight: "800" },
+    compModalActions: {
+      flexDirection: "row",
+      gap: 10,
+      marginTop: isDesktop ? 20 : 16,
+    },
+    compModalBtn: {
+      flex: 1,
+      paddingVertical: isDesktop ? 14 : 12,
+      borderRadius: 12,
+      alignItems: "center",
+      ...(Platform.OS === "web" && {
+        cursor: "pointer" as any,
+      }),
+    },
 
-  logoutModalWrap: {
-    flex: 1,
-    justifyContent: "center",
-    alignItems: "center",
-    backgroundColor: c.overlay,
-    paddingHorizontal: 28 },
-  logoutModalCard: {
-    width: "100%",
-    maxWidth: 360,
-    borderRadius: 20,
-    borderWidth: 1,
-    padding: 22,
-    alignItems: "center" },
-  logoutModalIcon: {
-    width: 56,
-    height: 56,
-    borderRadius: 28,
-    alignItems: "center",
-    justifyContent: "center",
-    marginBottom: 14 },
-  logoutModalTitle: { fontSize: 18, fontWeight: "800", marginBottom: 6 },
-  logoutModalSub: {
-    fontSize: 13,
-    lineHeight: 19,
-    textAlign: "center",
-    marginBottom: 20 },
-  logoutModalActions: {
-    flexDirection: "row",
-    gap: 10,
-    width: "100%" },
-  logoutModalBtn: {
-    flex: 1,
-    paddingVertical: 13,
-    borderRadius: 12,
-    alignItems: "center" } });
+    logoutModalWrap: {
+      flex: 1,
+      justifyContent: "center",
+      alignItems: "center",
+      backgroundColor: c.overlay,
+      paddingHorizontal: 28,
+    },
+    logoutModalCard: {
+      width: "100%",
+      maxWidth: isDesktop ? 400 : 360,
+      borderRadius: 20,
+      borderWidth: 1,
+      padding: isDesktop ? 28 : 22,
+      alignItems: "center",
+    },
+    logoutModalIcon: {
+      width: isDesktop ? 64 : 56,
+      height: isDesktop ? 64 : 56,
+      borderRadius: isDesktop ? 32 : 28,
+      alignItems: "center",
+      justifyContent: "center",
+      marginBottom: isDesktop ? 18 : 14,
+    },
+    logoutModalTitle: { fontSize: isDesktop ? 20 : 18, fontWeight: "800", marginBottom: 6 },
+    logoutModalSub: {
+      fontSize: isDesktop ? 14 : 13,
+      lineHeight: 20,
+      textAlign: "center",
+      marginBottom: isDesktop ? 24 : 20,
+    },
+    logoutModalActions: {
+      flexDirection: "row",
+      gap: 10,
+      width: "100%",
+    },
+    logoutModalBtn: {
+      flex: 1,
+      paddingVertical: isDesktop ? 14 : 13,
+      borderRadius: 12,
+      alignItems: "center",
+      ...(Platform.OS === "web" && {
+        cursor: "pointer" as any,
+      }),
+    },
+  });

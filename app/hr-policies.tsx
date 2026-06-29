@@ -8,13 +8,11 @@ import {
   TouchableOpacity,
   ActivityIndicator,
   RefreshControl,
-  Modal,
   TextInput,
   Alert,
-  Platform,
-  ScrollView } from "react-native";
-import { KeyboardAvoidingView } from "react-native-keyboard-controller";
+  Platform } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
+import { WebModal, ModalActions } from "../src/components/WebModal";
 
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useRouter } from "expo-router";
@@ -30,7 +28,7 @@ import {
   CompanyDocument,
   COMPANY_DOC_CATEGORIES } from "../src/services/companyDocs";
 import { confirmAction, notify } from "../src/utils/confirm";
-
+
 import { useTheme } from "../src/theme/ThemeProvider";
 export default function HrPolicies() {
   const router = useRouter();
@@ -242,27 +240,32 @@ export default function HrPolicies() {
         )}
       />
 
-      <Modal
+      <WebModal
         visible={showForm}
-        animationType="slide"
-        transparent
-        onRequestClose={closeForm}
+        onClose={closeForm}
+        title={editingId ? "Edit document" : "Upload document"}
+        size="md"
+        footer={
+          <ModalActions align="spread">
+            <TouchableOpacity
+              style={[styles.btn, styles.btnGhost]}
+              onPress={closeForm}
+              disabled={saving}
+            >
+              <Text style={styles.btnGhostText}>Cancel</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[styles.btn, styles.btnPrimary]}
+              onPress={onSave}
+              disabled={saving}
+            >
+              <Text style={styles.btnPrimaryText}>
+                {saving ? "…" : editingId ? "Update" : "Upload"}
+              </Text>
+            </TouchableOpacity>
+          </ModalActions>
+        }
       >
-        <KeyboardAvoidingView
-          behavior="padding"
-          style={styles.modalWrap}
-        >
-          <View style={styles.modal}>
-            <ScrollView keyboardShouldPersistTaps="handled">
-              <View style={styles.modalHeader}>
-                <Text style={styles.modalTitle}>
-                  {editingId ? "Edit document" : "Upload document"}
-                </Text>
-                <TouchableOpacity onPress={closeForm}>
-                  <Ionicons name="close" size={24} color={c.textMuted} />
-                </TouchableOpacity>
-              </View>
-
               <Text style={styles.label}>Title *</Text>
               <TextInput
                 style={styles.input}
@@ -336,28 +339,7 @@ export default function HrPolicies() {
                 </View>
               </View>
 
-              <View style={styles.actions}>
-                <TouchableOpacity
-                  style={[styles.btn, styles.btnGhost]}
-                  onPress={closeForm}
-                  disabled={saving}
-                >
-                  <Text style={styles.btnGhostText}>Cancel</Text>
-                </TouchableOpacity>
-                <TouchableOpacity
-                  style={[styles.btn, styles.btnPrimary]}
-                  onPress={onSave}
-                  disabled={saving}
-                >
-                  <Text style={styles.btnPrimaryText}>
-                    {saving ? "…" : editingId ? "Update" : "Upload"}
-                  </Text>
-                </TouchableOpacity>
-              </View>
-            </ScrollView>
-          </View>
-        </KeyboardAvoidingView>
-      </Modal>
+      </WebModal>
     </SafeAreaView>
   );
 }

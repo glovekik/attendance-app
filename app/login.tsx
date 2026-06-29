@@ -1,4 +1,4 @@
-﻿import React, { useEffect, useState, useMemo} from "react";
+import React, { useEffect, useRef, useState, useMemo } from "react";
 
 import {
   View,
@@ -7,12 +7,21 @@ import {
   TouchableOpacity,
   TextInput,
   ScrollView,
-  Platform,
   ActivityIndicator,
   Alert,
-  Image } from "react-native";
+  Animated,
+  Easing,
+  Image,
+  Platform,
+  Pressable,
+  DimensionValue,
+} from "react-native";
 import { KeyboardAvoidingView } from "react-native-keyboard-controller";
 import { SafeAreaView } from "react-native-safe-area-context";
+import { BlurView } from "expo-blur";
+import { LinearGradient } from "expo-linear-gradient";
+
+import { useResponsive } from "../src/utils/responsive";
 
 import AsyncStorage from "@react-native-async-storage/async-storage";
 
@@ -27,16 +36,19 @@ import {
 
 import { registerPushToken } from "../src/services/notifications";
 import { setSession } from "../src/services/session";
-import { useTheme } from "../src/theme/ThemeProvider";
 
 /**
- * Login screen — branded hero with the 4SightAI logo on a soft accent
- * banner, a floating sign-in card overlapping the banner, and the OTP
- * step inlined (no modal) so users keep visual context.
+ * Login screen — dark "liquid glass" treatment (scoped to this page): a
+ * branded gradient backdrop with soft colour orbs, a frosted dark-glass
+ * card with a slow glass-shine sweep, subtle translucent input fields, and
+ * a gradient CTA. The OTP step is inlined (no modal) so users keep context.
  */
 export default function Login() {
   const router = useRouter();
-  const { theme } = useTheme();
+  const responsive = useResponsive();
+  const isDesktop = responsive.isDesktop;
+
+  const styles = useMemo(() => makeStyles(isDesktop), [isDesktop]);
 
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -52,6 +64,41 @@ export default function Login() {
   const [otpCode, setOtpCode] = useState("");
   const [otpVerifying, setOtpVerifying] = useState(false);
   const [otpResending, setOtpResending] = useState(false);
+
+  // ── Animations: card entrance + repeating glass-shine sweep ──
+  const cardOpacity = useRef(new Animated.Value(0)).current;
+  const cardY = useRef(new Animated.Value(26)).current;
+  const shine = useRef(new Animated.Value(0)).current;
+
+  useEffect(() => {
+    Animated.parallel([
+      Animated.timing(cardOpacity, {
+        toValue: 1,
+        duration: 600,
+        easing: Easing.out(Easing.cubic),
+        useNativeDriver: true,
+      }),
+      Animated.timing(cardY, {
+        toValue: 0,
+        duration: 600,
+        easing: Easing.out(Easing.cubic),
+        useNativeDriver: true,
+      }),
+    ]).start();
+
+    Animated.loop(
+      Animated.sequence([
+        Animated.delay(1400),
+        Animated.timing(shine, {
+          toValue: 1,
+          duration: 1500,
+          easing: Easing.inOut(Easing.quad),
+          useNativeDriver: true,
+        }),
+        Animated.timing(shine, { toValue: 0, duration: 0, useNativeDriver: true }),
+      ])
+    ).start();
+  }, [cardOpacity, cardY, shine]);
 
   // Redirect if a token already exists.
   useEffect(() => {
@@ -150,354 +197,519 @@ export default function Login() {
     }
   };
 
-  const c = theme.colors;
-
-  const styles = useMemo(() => makeStyles(c), [c]);
+  const shineX = shine.interpolate({ inputRange: [0, 1], outputRange: [-160, 380] });
 
   return (
-    <SafeAreaView style={[styles.safe, { backgroundColor: c.bg }]}>
-      <KeyboardAvoidingView
-        behavior="padding"
-        style={{ flex: 1 }}
-      >
-        <ScrollView
-          contentContainerStyle={styles.scroll}
-          keyboardShouldPersistTaps="handled"
-          keyboardDismissMode="interactive"
-          showsVerticalScrollIndicator={false}
-        >
-          {/* Logo — modest, top-aligned, no decoration. Same convention
-              as Microsoft 365 / Google Workspace / Stripe Dashboard. */}
-          <Image
-            source={require("../assets/images/logo.jpg")}
-            style={styles.logo}
-            resizeMode="contain"
-          />
+    <View style={styles.root}>
+      {/* Branded gradient backdrop. */}
+      <LinearGradient
+        colors={["#070B1F", "#1B1466", "#3B1E78"]}
+        start={{ x: 0, y: 0 }}
+        end={{ x: 1, y: 1 }}
+        style={StyleSheet.absoluteFill}
+      />
+      {/* Soft colour orbs for vibrancy behind the glass. */}
+      <View style={[styles.orb, styles.orbA]} />
+      <View style={[styles.orb, styles.orbB]} />
+      <View style={[styles.orb, styles.orbC]} />
 
-          {/* Header — left-aligned with clear hierarchy. */}
-          <Text style={[styles.title, { color: c.text }]}>
-            {otpRequired ? "Verify your email" : "Sign in"}
-          </Text>
-          <Text style={[styles.subtitle, { color: c.textMuted }]}>
-            {otpRequired
-              ? `Enter the 6-digit code sent to ${email}.`
-              : "Use your work account to continue."}
-          </Text>
-
-          {/* Form */}
-          <View style={styles.form}>
-            {!otpRequired ? (
-              <>
-                <FieldLabel label="Email address" theme={theme} />
-                <View
+      <SafeAreaView style={styles.safe}>
+        <KeyboardAvoidingView behavior="padding" style={{ flex: 1 }}>
+          <ScrollView
+            contentContainerStyle={styles.scroll}
+            keyboardShouldPersistTaps="handled"
+            keyboardDismissMode="interactive"
+            showsVerticalScrollIndicator={false}
+          >
+            <Animated.View
+              style={{ opacity: cardOpacity, transform: [{ translateY: cardY }] }}
+            >
+              <BlurView
+                intensity={45}
+                tint="dark"
+                experimentalBlurMethod="dimezisBlurView"
+                style={styles.card}
+              >
+                {/* Top edge highlight — sells the glass rim. */}
+                <LinearGradient
+                  colors={["rgba(255,255,255,0.35)", "rgba(255,255,255,0)"]}
+                  style={styles.topHighlight}
+                  pointerEvents="none"
+                />
+                {/* Glass shine sweep. */}
+                <Animated.View
+                  pointerEvents="none"
                   style={[
-                    styles.inputWrap,
-                    {
-                      backgroundColor: c.surface,
-                      borderColor: emailError
-                        ? c.dangerText
-                        : c.surfaceBorder },
+                    styles.shine,
+                    { transform: [{ translateX: shineX }, { rotate: "20deg" }] },
                   ]}
                 >
-                  <TextInput
-                    style={[styles.input, { color: c.text }]}
-                    value={email}
-                    onChangeText={setEmail}
-                    placeholder="name@company.com"
-                    placeholderTextColor={c.textFaint}
-                    autoCapitalize="none"
-                    keyboardType="email-address"
-                    autoComplete="email"
-                  />
-                </View>
-                {!!emailError && (
-                  <Text style={[styles.fieldErr, { color: c.dangerText }]}>
-                    {emailError}
-                  </Text>
-                )}
-
-                <View style={styles.labelRow}>
-                  <FieldLabel label="Password" theme={theme} compact />
-                  <TouchableOpacity
-                    onPress={() => router.push("/forgot-password")}
-                    hitSlop={8}
-                  >
-                    <Text style={[styles.linkText, { color: c.accent }]}>
-                      Forgot password?
-                    </Text>
-                  </TouchableOpacity>
-                </View>
-                <View
-                  style={[
-                    styles.inputWrap,
-                    {
-                      backgroundColor: c.surface,
-                      borderColor: passwordError
-                        ? c.dangerText
-                        : c.surfaceBorder },
-                  ]}
-                >
-                  <TextInput
-                    style={[styles.input, { color: c.text }]}
-                    value={password}
-                    onChangeText={setPassword}
-                    placeholder="Enter your password"
-                    placeholderTextColor={c.textFaint}
-                    secureTextEntry={!showPassword}
-                    autoCapitalize="none"
-                    autoComplete="password"
-                  />
-                  <TouchableOpacity
-                    onPress={() => setShowPassword((v) => !v)}
-                    hitSlop={8}
-                  >
-                    <Ionicons
-                      name={showPassword ? "eye-off-outline" : "eye-outline"}
-                      size={20}
-                      color={c.textMuted}
-                    />
-                  </TouchableOpacity>
-                </View>
-                {!!passwordError && (
-                  <Text style={[styles.fieldErr, { color: c.dangerText }]}>
-                    {passwordError}
-                  </Text>
-                )}
-
-                {!!serverError && (
-                  <View
-                    style={[
-                      styles.errorBanner,
-                      {
-                        backgroundColor: c.dangerBg,
-                        borderColor: c.dangerText },
+                  <LinearGradient
+                    colors={[
+                      "rgba(255,255,255,0)",
+                      "rgba(255,255,255,0.16)",
+                      "rgba(255,255,255,0)",
                     ]}
-                  >
-                    <Ionicons
-                      name="alert-circle-outline"
-                      size={16}
-                      color={c.dangerText}
-                    />
-                    <Text
-                      style={[
-                        styles.errorBannerText,
-                        { color: c.dangerText },
-                      ]}
-                    >
-                      {serverError}
-                    </Text>
-                  </View>
-                )}
+                    start={{ x: 0, y: 0 }}
+                    end={{ x: 1, y: 0 }}
+                    style={StyleSheet.absoluteFill}
+                  />
+                </Animated.View>
 
-                <TouchableOpacity
-                  style={[
-                    styles.cta,
-                    {
-                      backgroundColor: c.accent,
-                      opacity: loading ? 0.7 : 1 },
-                  ]}
-                  onPress={onSignIn}
-                  disabled={loading}
-                  activeOpacity={0.85}
-                >
-                  {loading ? (
-                    <ActivityIndicator color={c.textInverse} />
-                  ) : (
-                    <Text
-                      style={[styles.ctaText, { color: c.textInverse }]}
-                    >
-                      Sign in
-                    </Text>
-                  )}
-                </TouchableOpacity>
-              </>
-            ) : (
-              // ===== OTP STEP =====
-              <>
-                <FieldLabel label="Verification code" theme={theme} />
-                <View
-                  style={[
-                    styles.inputWrap,
-                    {
-                      backgroundColor: c.surface,
-                      borderColor: c.surfaceBorder },
-                  ]}
-                >
-                  <TextInput
-                    style={[
-                      styles.input,
-                      {
-                        color: c.text,
-                        letterSpacing: 6,
-                        fontSize: 20,
-                        fontWeight: "700",
-                        textAlign: "center" },
-                    ]}
-                    value={otpCode}
-                    onChangeText={setOtpCode}
-                    placeholder="000000"
-                    placeholderTextColor={c.textFaint}
-                    keyboardType="number-pad"
-                    maxLength={8}
+                {/* Logo badge. */}
+                <View style={styles.logoBadge}>
+                  <Image
+                    source={require("../assets/images/logo.jpg")}
+                    style={styles.logo}
+                    resizeMode="contain"
                   />
                 </View>
 
-                <TouchableOpacity
-                  style={[
-                    styles.cta,
-                    {
-                      backgroundColor: c.accent,
-                      opacity: otpVerifying ? 0.7 : 1 },
-                  ]}
-                  onPress={onVerifyOtp}
-                  disabled={otpVerifying}
-                  activeOpacity={0.85}
-                >
-                  {otpVerifying ? (
-                    <ActivityIndicator color={c.textInverse} />
+                <Text style={styles.title}>
+                  {otpRequired ? "Verify your email" : "Welcome back"}
+                </Text>
+                <Text style={styles.subtitle}>
+                  {otpRequired
+                    ? `Enter the 6-digit code sent to ${email}.`
+                    : "Sign in to your 4SightHub account"}
+                </Text>
+
+                <View style={styles.form}>
+                  {!otpRequired ? (
+                    <>
+                      <FieldLabel label="Email address" isDesktop={isDesktop} />
+                      <View
+                        style={[
+                          styles.inputWrap,
+                          !!emailError && styles.inputErr,
+                        ]}
+                      >
+                        <Ionicons name="mail-outline" size={18} color="#A9B2D0" />
+                        <TextInput
+                          style={styles.input}
+                          value={email}
+                          onChangeText={setEmail}
+                          placeholder="name@company.com"
+                          placeholderTextColor="rgba(255,255,255,0.4)"
+                          autoCapitalize="none"
+                          keyboardType="email-address"
+                          autoComplete="email"
+                        />
+                      </View>
+                      {!!emailError && (
+                        <Text style={styles.fieldErr}>{emailError}</Text>
+                      )}
+
+                      <View style={styles.labelRow}>
+                        <FieldLabel label="Password" compact isDesktop={isDesktop} />
+                        <TouchableOpacity
+                          onPress={() => router.push("/forgot-password")}
+                          hitSlop={8}
+                        >
+                          <Text style={styles.linkText}>Forgot password?</Text>
+                        </TouchableOpacity>
+                      </View>
+                      <View
+                        style={[
+                          styles.inputWrap,
+                          !!passwordError && styles.inputErr,
+                        ]}
+                      >
+                        <Ionicons
+                          name="lock-closed-outline"
+                          size={18}
+                          color="#A9B2D0"
+                        />
+                        <TextInput
+                          style={styles.input}
+                          value={password}
+                          onChangeText={setPassword}
+                          placeholder="Enter your password"
+                          placeholderTextColor="rgba(255,255,255,0.4)"
+                          secureTextEntry={!showPassword}
+                          autoCapitalize="none"
+                          autoComplete="password"
+                        />
+                        <TouchableOpacity
+                          onPress={() => setShowPassword((v) => !v)}
+                          hitSlop={8}
+                        >
+                          <Ionicons
+                            name={
+                              showPassword ? "eye-off-outline" : "eye-outline"
+                            }
+                            size={20}
+                            color="#A9B2D0"
+                          />
+                        </TouchableOpacity>
+                      </View>
+                      {!!passwordError && (
+                        <Text style={styles.fieldErr}>{passwordError}</Text>
+                      )}
+
+                      {!!serverError && (
+                        <View style={styles.errorBanner}>
+                          <Ionicons
+                            name="alert-circle-outline"
+                            size={16}
+                            color="#FECACA"
+                          />
+                          <Text style={styles.errorBannerText}>
+                            {serverError}
+                          </Text>
+                        </View>
+                      )}
+
+                      <TouchableOpacity
+                        onPress={onSignIn}
+                        disabled={loading}
+                        activeOpacity={0.9}
+                        style={[styles.ctaWrap, { opacity: loading ? 0.7 : 1 }]}
+                      >
+                        <LinearGradient
+                          colors={["#3B82F6", "#7C3AED"]}
+                          start={{ x: 0, y: 0 }}
+                          end={{ x: 1, y: 0 }}
+                          style={styles.cta}
+                        >
+                          {loading ? (
+                            <ActivityIndicator color="#fff" />
+                          ) : (
+                            <Text style={styles.ctaText}>Sign in</Text>
+                          )}
+                        </LinearGradient>
+                      </TouchableOpacity>
+                    </>
                   ) : (
-                    <Text
-                      style={[styles.ctaText, { color: c.textInverse }]}
-                    >
-                      Verify & sign in
-                    </Text>
+                    // ===== OTP STEP =====
+                    <>
+                      <FieldLabel label="Verification code" isDesktop={isDesktop} />
+                      <View style={styles.inputWrap}>
+                        <TextInput
+                          style={[styles.input, styles.otpInput]}
+                          value={otpCode}
+                          onChangeText={setOtpCode}
+                          placeholder="000000"
+                          placeholderTextColor="rgba(255,255,255,0.35)"
+                          keyboardType="number-pad"
+                          maxLength={8}
+                        />
+                      </View>
+
+                      <TouchableOpacity
+                        onPress={onVerifyOtp}
+                        disabled={otpVerifying}
+                        activeOpacity={0.9}
+                        style={[
+                          styles.ctaWrap,
+                          { opacity: otpVerifying ? 0.7 : 1 },
+                        ]}
+                      >
+                        <LinearGradient
+                          colors={["#3B82F6", "#7C3AED"]}
+                          start={{ x: 0, y: 0 }}
+                          end={{ x: 1, y: 0 }}
+                          style={styles.cta}
+                        >
+                          {otpVerifying ? (
+                            <ActivityIndicator color="#fff" />
+                          ) : (
+                            <Text style={styles.ctaText}>Verify & sign in</Text>
+                          )}
+                        </LinearGradient>
+                      </TouchableOpacity>
+
+                      <View style={styles.otpFooter}>
+                        <TouchableOpacity
+                          onPress={onResendOtp}
+                          disabled={otpResending}
+                        >
+                          <Text style={styles.linkText}>
+                            {otpResending ? "Resending…" : "Resend code"}
+                          </Text>
+                        </TouchableOpacity>
+                        <Text style={styles.dot}>·</Text>
+                        <TouchableOpacity
+                          onPress={() => {
+                            setOtpRequired(false);
+                            setOtpCode("");
+                          }}
+                        >
+                          <Text
+                            style={[
+                              styles.linkText,
+                              { color: "rgba(255,255,255,0.6)" },
+                            ]}
+                          >
+                            Use different email
+                          </Text>
+                        </TouchableOpacity>
+                      </View>
+                    </>
                   )}
-                </TouchableOpacity>
-
-                <View style={styles.otpFooter}>
-                  <TouchableOpacity
-                    onPress={onResendOtp}
-                    disabled={otpResending}
-                  >
-                    <Text style={[styles.linkText, { color: c.accent }]}>
-                      {otpResending ? "Resending…" : "Resend code"}
-                    </Text>
-                  </TouchableOpacity>
-                  <Text style={[styles.dot, { color: c.textFaint }]}>·</Text>
-                  <TouchableOpacity
-                    onPress={() => {
-                      setOtpRequired(false);
-                      setOtpCode("");
-                    }}
-                  >
-                    <Text style={[styles.linkText, { color: c.textMuted }]}>
-                      Use different email
-                    </Text>
-                  </TouchableOpacity>
                 </View>
-              </>
-            )}
-          </View>
+              </BlurView>
+            </Animated.View>
 
-          <Text style={[styles.footnote, { color: c.textFaint }]}>
-            By continuing you agree to our Terms and Privacy Policy.
-          </Text>
-        </ScrollView>
-      </KeyboardAvoidingView>
-    </SafeAreaView>
+            <Text style={styles.footnote}>
+              By continuing you agree to our Terms and Privacy Policy.
+            </Text>
+          </ScrollView>
+        </KeyboardAvoidingView>
+      </SafeAreaView>
+    </View>
   );
 }
 
-const FieldLabel = ({
+function FieldLabel({
   label,
-  theme,
-  compact }: {
+  compact,
+  isDesktop,
+}: {
   label: string;
-  theme: any;
   compact?: boolean;
-}) => (
-  <Text
-    style={{
-      color: theme.colors.text,
-      fontSize: 13,
-      fontWeight: "600",
-      marginTop: compact ? 0 : 18,
-      marginBottom: 6 }}
-  >
-    {label}
-  </Text>
-);
+  isDesktop?: boolean;
+}) {
+  return (
+    <Text
+      style={[
+        baseStyles.fieldLabel,
+        compact && { marginTop: 0 },
+        isDesktop && { fontSize: 14 },
+      ]}
+    >
+      {label}
+    </Text>
+  );
+}
 
-
-const makeStyles = (c: any) => StyleSheet.create({
-  safe: { flex: 1 },
-  scroll: {
-    flexGrow: 1,
-    paddingHorizontal: 28,
-    paddingTop: 48,
-    paddingBottom: 28 },
-
-  logo: {
-    width: 140,
-    height: 44,
-    alignSelf: "flex-start",
-    marginBottom: 40 },
-
-  title: {
-    fontSize: 28,
-    fontWeight: "700",
-    letterSpacing: -0.4,
-    marginBottom: 6 },
-  subtitle: {
-    fontSize: 14,
-    lineHeight: 20,
-    marginBottom: 28 },
-
-  form: { width: "100%" },
-  labelRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    marginTop: 18,
-    marginBottom: 6 },
-  inputWrap: {
-    flexDirection: "row",
-    alignItems: "center",
-    borderRadius: 8,
-    borderWidth: 1,
-    paddingHorizontal: 12,
-    minHeight: 46 },
-  input: {
-    flex: 1,
-    fontSize: 15,
-    paddingVertical: 10 },
-  fieldErr: {
-    fontSize: 12,
-    marginTop: 6,
-    marginLeft: 2 },
-  linkText: {
+// Base styles that don't change with responsive
+const baseStyles = StyleSheet.create({
+  fieldLabel: {
+    color: "rgba(255,255,255,0.82)",
     fontSize: 13,
-    fontWeight: "600" },
-  errorBanner: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 8,
-    padding: 12,
-    borderRadius: 8,
-    borderWidth: 1,
-    marginTop: 18 },
-  errorBannerText: {
-    fontSize: 13,
-    fontWeight: "500",
-    flex: 1 },
-  cta: {
-    alignItems: "center",
-    justifyContent: "center",
-    paddingVertical: 14,
-    borderRadius: 8,
-    marginTop: 24 },
-  ctaText: {
-    fontSize: 15,
     fontWeight: "600",
-    letterSpacing: 0.2 },
-  otpFooter: {
-    flexDirection: "row",
-    justifyContent: "center",
-    alignItems: "center",
-    gap: 10,
-    marginTop: 22 },
-  dot: { fontSize: 16 },
-  footnote: {
-    fontSize: 12,
-    marginTop: 28,
-    lineHeight: 16 } });
+    marginTop: 16,
+    marginBottom: 8,
+  },
+});
+
+const makeStyles = (isDesktop: boolean) =>
+  StyleSheet.create({
+    root: { flex: 1, backgroundColor: "#070B1F" },
+    safe: { flex: 1 },
+    scroll: {
+      flexGrow: 1,
+      justifyContent: "center",
+      alignItems: isDesktop ? "center" : undefined,
+      paddingHorizontal: isDesktop ? 40 : 22,
+      paddingVertical: isDesktop ? 60 : 40,
+    },
+
+    // Soft colour orbs behind the glass.
+    orb: { position: "absolute", borderRadius: 999 },
+    orbA: {
+      width: isDesktop ? 400 : 280,
+      height: isDesktop ? 400 : 280,
+      backgroundColor: "#7C3AED",
+      opacity: 0.32,
+      top: isDesktop ? -100 : -70,
+      left: isDesktop ? "10%" as DimensionValue : -60,
+    },
+    orbB: {
+      width: isDesktop ? 350 : 240,
+      height: isDesktop ? 350 : 240,
+      backgroundColor: "#2563EB",
+      opacity: 0.3,
+      bottom: isDesktop ? 40 : 20,
+      right: isDesktop ? "15%" as DimensionValue : -70,
+    },
+    orbC: {
+      width: isDesktop ? 250 : 180,
+      height: isDesktop ? 250 : 180,
+      backgroundColor: "#DB2777",
+      opacity: 0.24,
+      top: "42%" as DimensionValue,
+      right: "34%" as DimensionValue,
+    },
+
+    // Frosted dark-glass card.
+    card: {
+      borderRadius: isDesktop ? 24 : 28,
+      overflow: "hidden",
+      borderWidth: 1,
+      borderColor: "rgba(255,255,255,0.16)",
+      backgroundColor: "rgba(15,14,40,0.55)",
+      paddingHorizontal: isDesktop ? 40 : 24,
+      paddingTop: isDesktop ? 40 : 30,
+      paddingBottom: isDesktop ? 36 : 28,
+      width: isDesktop ? 440 : ("100%" as DimensionValue),
+      maxWidth: isDesktop ? 440 : undefined,
+      ...(Platform.OS === "web" && isDesktop
+        ? {
+            boxShadow: "0 25px 50px -12px rgba(0, 0, 0, 0.5)",
+          }
+        : {}),
+    },
+    topHighlight: {
+      position: "absolute",
+      top: 0,
+      left: 0,
+      right: 0,
+      height: 1.5,
+    },
+    shine: {
+      position: "absolute",
+      top: -40,
+      bottom: -40,
+      width: 90,
+    },
+
+    logoBadge: {
+      alignSelf: "center",
+      backgroundColor: "#fff",
+      borderRadius: isDesktop ? 16 : 14,
+      paddingHorizontal: isDesktop ? 24 : 18,
+      paddingVertical: isDesktop ? 14 : 11,
+      marginBottom: isDesktop ? 28 : 20,
+      shadowColor: "#000",
+      shadowOpacity: 0.25,
+      shadowRadius: 12,
+      shadowOffset: { width: 0, height: 6 },
+    },
+    logo: {
+      width: isDesktop ? 180 : 150,
+      height: isDesktop ? 50 : 42,
+    },
+
+    title: {
+      color: "#FFFFFF",
+      fontSize: isDesktop ? 28 : 24,
+      fontWeight: "800",
+      letterSpacing: -0.3,
+      textAlign: "center",
+      marginBottom: isDesktop ? 8 : 6,
+    },
+    subtitle: {
+      color: "rgba(255,255,255,0.62)",
+      fontSize: isDesktop ? 15 : 13.5,
+      lineHeight: isDesktop ? 22 : 19,
+      textAlign: "center",
+      marginBottom: isDesktop ? 28 : 22,
+    },
+
+    form: { width: "100%" as DimensionValue },
+    labelRow: {
+      flexDirection: "row",
+      alignItems: "center",
+      justifyContent: "space-between",
+      marginTop: 16,
+      marginBottom: 8,
+    },
+    inputWrap: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 10,
+      borderRadius: isDesktop ? 12 : 14,
+      borderWidth: 1,
+      borderColor: "rgba(255,255,255,0.28)",
+      backgroundColor: "rgba(255,255,255,0.04)",
+      paddingHorizontal: isDesktop ? 16 : 14,
+      minHeight: isDesktop ? 52 : 50,
+      ...(Platform.OS === "web"
+        ? {
+            transition: "border-color 0.15s ease, background-color 0.15s ease",
+          }
+        : {}),
+    },
+    inputErr: { borderColor: "#F87171" },
+    input: {
+      flex: 1,
+      fontSize: isDesktop ? 16 : 15,
+      color: "#F8FAFF",
+      paddingVertical: isDesktop ? 14 : 12,
+      ...(Platform.OS === "web"
+        ? ({
+            outlineStyle: "none",
+          } as any)
+        : {}),
+    },
+    otpInput: {
+      letterSpacing: isDesktop ? 8 : 6,
+      fontSize: isDesktop ? 24 : 20,
+      fontWeight: "700",
+      textAlign: "center",
+    },
+    fieldErr: {
+      color: "#FCA5A5",
+      fontSize: 12,
+      marginTop: 6,
+      marginLeft: 2,
+    },
+    linkText: {
+      color: "#C4B5FD",
+      fontSize: isDesktop ? 14 : 13,
+      fontWeight: "600",
+      ...(Platform.OS === "web"
+        ? {
+            cursor: "pointer",
+            transition: "opacity 0.15s ease",
+          }
+        : {}),
+    },
+    errorBanner: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 8,
+      padding: isDesktop ? 14 : 12,
+      borderRadius: 12,
+      borderWidth: 1,
+      borderColor: "rgba(248,113,113,0.4)",
+      backgroundColor: "rgba(248,113,113,0.14)",
+      marginTop: 16,
+    },
+    errorBannerText: {
+      color: "#FECACA",
+      fontSize: isDesktop ? 14 : 13,
+      fontWeight: "500",
+      flex: 1,
+    },
+    ctaWrap: {
+      borderRadius: isDesktop ? 12 : 14,
+      overflow: "hidden",
+      marginTop: isDesktop ? 28 : 24,
+      ...(Platform.OS === "web"
+        ? {
+            cursor: "pointer",
+            transition: "transform 0.15s ease, opacity 0.15s ease",
+          }
+        : {}),
+    },
+    cta: {
+      alignItems: "center",
+      justifyContent: "center",
+      paddingVertical: isDesktop ? 16 : 15,
+    },
+    ctaText: {
+      color: "#fff",
+      fontSize: isDesktop ? 16 : 15,
+      fontWeight: "700",
+      letterSpacing: 0.2,
+    },
+    otpFooter: {
+      flexDirection: "row",
+      justifyContent: "center",
+      alignItems: "center",
+      gap: 10,
+      marginTop: isDesktop ? 28 : 22,
+    },
+    dot: { color: "rgba(255,255,255,0.4)", fontSize: 16 },
+    footnote: {
+      color: "rgba(255,255,255,0.55)",
+      fontSize: isDesktop ? 13 : 12,
+      textAlign: "center",
+      marginTop: isDesktop ? 28 : 22,
+      lineHeight: isDesktop ? 18 : 16,
+      maxWidth: isDesktop ? 440 : undefined,
+    },
+  });

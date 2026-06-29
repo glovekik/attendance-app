@@ -1,4 +1,4 @@
-﻿import React, { useCallback, useEffect, useState, useMemo} from "react";
+import React, { useCallback, useEffect, useState, useMemo } from "react";
 
 import {
   View,
@@ -8,10 +8,11 @@ import {
   TouchableOpacity,
   TextInput,
   ActivityIndicator,
-  Modal,
   Switch,
   Platform,
-  RefreshControl } from "react-native";
+  RefreshControl,
+  Pressable,
+} from "react-native";
 import { KeyboardAwareScrollView } from "react-native-keyboard-controller";
 import { SafeAreaView } from "react-native-safe-area-context";
 
@@ -22,27 +23,35 @@ import { useRouter, useFocusEffect } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 
 import { DatePickerField } from "../src/components/DatePickerField";
+import { WebModal, ModalActions } from "../src/components/WebModal";
+import { PageHeader } from "../src/components/PageHeader";
+import { ProButton } from "../src/components/ProUI";
+import { FormField, ChipPicker } from "../src/components/WebFormFields";
 
 import {
   listLeaveTypes,
   getLeaveBalance,
   submitLeaveRequest,
   listMyLeaves,
-  cancelLeaveRequest } from "../src/services/leaves";
+  cancelLeaveRequest,
+} from "../src/services/leaves";
 
 import {
   LeaveType,
   LeaveBalance,
   LeaveRequest,
   HalfDayPart,
-  User } from "../src/types";
+  User,
+} from "../src/types";
 
 import { useTheme } from "../src/theme/ThemeProvider";
 import { getMe } from "../src/services/api";
 import {
   BottomTabBar,
-  BOTTOM_BAR_RESERVED_HEIGHT } from "../src/components/BottomTabBar";
+  BOTTOM_BAR_RESERVED_HEIGHT,
+} from "../src/components/BottomTabBar";
 import { confirmAction, notify } from "../src/utils/confirm";
+import { useResponsive, getResponsiveSpacing } from "../src/utils/responsive";
 
 /**
  * Leaves — balance cards (pastel-tinted), apply CTA, and a list of
@@ -51,8 +60,11 @@ import { confirmAction, notify } from "../src/utils/confirm";
 export default function MyLeaves() {
   const router = useRouter();
   const { theme } = useTheme();
+  const responsive = useResponsive();
+  const spacing = getResponsiveSpacing(responsive.breakpoint);
+  const isDesktop = responsive.isDesktop;
   const c = theme.colors;
-  const styles = useMemo(() => makeStyles(c), [c]);
+  const styles = useMemo(() => makeStyles(c, isDesktop), [c, isDesktop]);
 
   const [types, setTypes] = useState<LeaveType[]>([]);
   const [balances, setBalances] = useState<LeaveBalance[]>([]);
@@ -198,12 +210,21 @@ export default function MyLeaves() {
     { bg: c.pastelYellow, fg: "#a16207" },
   ];
 
+  // Desktop shows sidebar, so we don't need bottom bar padding
+  const bottomPadding = responsive.showSidebar ? 40 : BOTTOM_BAR_RESERVED_HEIGHT + 24;
+
   return (
     <SafeAreaView style={[styles.safe, { backgroundColor: c.bg }]}>
       <ScrollView
         contentContainerStyle={{
-          padding: 20,
-          paddingBottom: BOTTOM_BAR_RESERVED_HEIGHT + 24 }}
+          padding: spacing.padding,
+          paddingBottom: bottomPadding,
+          ...(isDesktop && {
+            maxWidth: 1200,
+            alignSelf: "center" as const,
+            width: "100%",
+          }),
+        }}
         refreshControl={
           <RefreshControl
             refreshing={refreshing}
@@ -217,36 +238,55 @@ export default function MyLeaves() {
         }
         showsVerticalScrollIndicator={false}
       >
-        {/* HEADER */}
-        <View style={styles.headerRow}>
-          <TouchableOpacity
-            onPress={() =>
-              router.canGoBack() ? router.back() : router.replace("/")
+        {/* HEADER - Desktop uses PageHeader with breadcrumbs */}
+        {isDesktop ? (
+          <PageHeader
+            title="My Leaves"
+            subtitle="View balances & request history"
+            breadcrumbs={[
+              { label: "Home", href: "/" },
+              { label: "Leaves" },
+            ]}
+            actions={
+              <ProButton
+                label="Apply for Leave"
+                icon="add"
+                onPress={openApply}
+                variant="primary"
+              />
             }
-            style={[
-              styles.iconBtn,
-              { backgroundColor: c.surface, borderColor: c.surfaceBorder },
-            ]}
-          >
-            <Ionicons name="chevron-back" size={22} color={c.text} />
-          </TouchableOpacity>
-          <View style={{ flex: 1, marginLeft: 12 }}>
-            <Text style={[styles.title, { color: c.text }]}>My Leaves</Text>
-            <Text style={[styles.subtitle, { color: c.textMuted }]}>
-              Balances & history
-            </Text>
+          />
+        ) : (
+          <View style={styles.headerRow}>
+            <TouchableOpacity
+              onPress={() =>
+                router.canGoBack() ? router.back() : router.replace("/")
+              }
+              style={[
+                styles.iconBtn,
+                { backgroundColor: c.surface, borderColor: c.surfaceBorder },
+              ]}
+            >
+              <Ionicons name="chevron-back" size={22} color={c.text} />
+            </TouchableOpacity>
+            <View style={{ flex: 1, marginLeft: 12 }}>
+              <Text style={[styles.title, { color: c.text }]}>My Leaves</Text>
+              <Text style={[styles.subtitle, { color: c.textMuted }]}>
+                Balances & history
+              </Text>
+            </View>
+            <TouchableOpacity
+              style={[
+                styles.applyBtn,
+                { backgroundColor: c.accent, shadowColor: c.shadow },
+              ]}
+              onPress={openApply}
+              activeOpacity={0.85}
+            >
+              <Ionicons name="add" size={22} color="#fff" />
+            </TouchableOpacity>
           </View>
-          <TouchableOpacity
-            style={[
-              styles.applyBtn,
-              { backgroundColor: c.accent, shadowColor: c.shadow },
-            ]}
-            onPress={openApply}
-            activeOpacity={0.85}
-          >
-            <Ionicons name="add" size={22} color="#fff" />
-          </TouchableOpacity>
-        </View>
+        )}
 
         {/* BALANCES */}
         <Text style={[styles.section, { color: c.textMuted }]}>BALANCE</Text>
@@ -375,240 +415,158 @@ export default function MyLeaves() {
               req={r}
               onCancel={() => askCancel(r)}
               theme={theme}
+              isDesktop={isDesktop}
             />
           ))
         )}
       </ScrollView>
 
       {/* APPLY MODAL */}
-      <Modal
+      <WebModal
         visible={modalVisible}
-        transparent
-        animationType="slide"
-        onRequestClose={() => setModalVisible(false)}
+        onClose={() => setModalVisible(false)}
+        title="Apply for Leave"
+        subtitle="Submit a new leave request"
+        size="md"
+        footer={
+          <ModalActions align="spread">
+            <ProButton
+              label="Cancel"
+              variant="secondary"
+              onPress={() => setModalVisible(false)}
+              disabled={saving}
+            />
+            <ProButton
+              label={saving ? "Submitting..." : "Submit Request"}
+              variant="primary"
+              onPress={submit}
+              loading={saving}
+              icon="checkmark"
+            />
+          </ModalActions>
+        }
       >
-        <View style={[styles.modalScrim, { backgroundColor: c.overlay }]}>
-          <View
-            style={[
-              styles.modalCard,
-              {
-                backgroundColor: c.surface,
-                shadowColor: c.shadow },
-            ]}
-          >
-            <KeyboardAwareScrollView
-              showsVerticalScrollIndicator={false}
-              keyboardShouldPersistTaps="handled"
-              bottomOffset={24}
-            >
-              <View style={styles.modalHeader}>
-                <Text style={[styles.modalTitle, { color: c.text }]}>
-                  Apply for leave
-                </Text>
-                <TouchableOpacity
-                  onPress={() => setModalVisible(false)}
-                  hitSlop={8}
-                >
-                  <Ionicons name="close" size={22} color={c.textMuted} />
-                </TouchableOpacity>
-              </View>
+        <KeyboardAwareScrollView
+          showsVerticalScrollIndicator={false}
+          keyboardShouldPersistTaps="handled"
+          bottomOffset={24}
+        >
+          {/* Leave type chips */}
+          <FormField label="Leave Type" required>
+            <ChipPicker
+              value={typeCode}
+              onChange={(v) => setTypeCode(v as string)}
+              options={types.map((t) => ({
+                value: t.code,
+                label: t.name,
+              }))}
+            />
+          </FormField>
 
-              {/* Leave type chips */}
-              <Text style={[styles.label, { color: c.textMuted }]}>
-                TYPE
-              </Text>
-              <View style={styles.chipsRow}>
-                {types.map((t) => {
-                  const active = typeCode === t.code;
-                  return (
-                    <TouchableOpacity
-                      key={t.code}
-                      onPress={() => setTypeCode(t.code)}
-                      style={[
-                        styles.chip,
-                        {
-                          backgroundColor: active
-                            ? c.accentSoft
-                            : c.surfaceMuted,
-                          borderColor: active
-                            ? c.accent
-                            : c.surfaceBorder },
-                      ]}
-                    >
-                      <Text
-                        style={{
-                          color: active ? c.accent : c.textMuted,
-                          fontWeight: "700",
-                          fontSize: 12 }}
-                      >
-                        {t.name}
-                      </Text>
-                    </TouchableOpacity>
-                  );
-                })}
-              </View>
-
-              {/* From / To dates */}
-              <View style={{ flexDirection: "row", gap: 8, marginTop: 6 }}>
-                <View style={{ flex: 1 }}>
-                  <Text style={[styles.label, { color: c.textMuted }]}>
-                    FROM
-                  </Text>
-                  <DatePickerField
-                    value={fromDate}
-                    onChange={(v) => {
-                      setFromDate(v);
-                      if (toDate < v) setToDate(v);
-                    }}
-                  />
-                </View>
-                <View style={{ flex: 1 }}>
-                  <Text style={[styles.label, { color: c.textMuted }]}>
-                    TO
-                  </Text>
-                  <DatePickerField
-                    value={toDate}
-                    onChange={setToDate}
-                    min={fromDate}
-                  />
-                </View>
-              </View>
-
-              {/* Half day */}
-              {selectedType?.allowHalfDay && (
-                <>
-                  <View style={styles.switchRow}>
-                    <Text style={[styles.label, { color: c.textMuted }]}>
-                      HALF DAY
-                    </Text>
-                    <Switch
-                      value={halfDay}
-                      onValueChange={setHalfDay}
-                      trackColor={{
-                        false: c.surfaceBorder,
-                        true: c.accent }}
-                    />
-                  </View>
-                  {halfDay && (
-                    <View style={[styles.chipsRow, { marginTop: 4 }]}>
-                      {(["FIRST", "SECOND"] as HalfDayPart[]).map((p) => {
-                        const active = halfDayPart === p;
-                        return (
-                          <TouchableOpacity
-                            key={p}
-                            onPress={() => setHalfDayPart(p)}
-                            style={[
-                              styles.chip,
-                              {
-                                backgroundColor: active
-                                  ? c.accentSoft
-                                  : c.surfaceMuted,
-                                borderColor: active
-                                  ? c.accent
-                                  : c.surfaceBorder },
-                            ]}
-                          >
-                            <Text
-                              style={{
-                                color: active ? c.accent : c.textMuted,
-                                fontWeight: "700",
-                                fontSize: 12 }}
-                            >
-                              {p === "FIRST" ? "Morning" : "Afternoon"}
-                            </Text>
-                          </TouchableOpacity>
-                        );
-                      })}
-                    </View>
-                  )}
-                </>
-              )}
-
-              {/* Reason */}
-              <Text style={[styles.label, { color: c.textMuted }]}>
-                REASON
-              </Text>
-              <TextInput
-                style={[
-                  styles.textArea,
-                  {
-                    backgroundColor: c.surfaceMuted,
-                    color: c.text,
-                    borderColor: c.surfaceBorder },
-                ]}
-                value={reason}
-                onChangeText={setReason}
-                placeholder="Brief reason for your leave"
-                placeholderTextColor={c.textFaint}
-                multiline
-                textAlignVertical="top"
-              />
-
-              {!!submitError && (
-                <View
-                  style={[
-                    styles.errorBanner,
-                    {
-                      backgroundColor: c.dangerBg,
-                      borderColor: c.dangerText },
-                  ]}
-                >
-                  <Ionicons
-                    name="alert-circle-outline"
-                    size={16}
-                    color={c.dangerText}
-                  />
-                  <Text
-                    style={{
-                      color: c.dangerText,
-                      fontSize: 12,
-                      fontWeight: "600",
-                      flex: 1 }}
-                  >
-                    {submitError}
-                  </Text>
-                </View>
-              )}
-
-              <View style={styles.modalActions}>
-                <TouchableOpacity
-                  style={[
-                    styles.cancelBtn,
-                    { backgroundColor: c.surfaceMuted },
-                  ]}
-                  onPress={() => setModalVisible(false)}
-                  disabled={saving}
-                >
-                  <Text
-                    style={{ color: c.text, fontWeight: "700" }}
-                  >
-                    Cancel
-                  </Text>
-                </TouchableOpacity>
-                <TouchableOpacity
-                  style={[
-                    styles.submitBtn,
-                    {
-                      backgroundColor: c.accent,
-                      shadowColor: c.shadow,
-                      opacity: saving ? 0.7 : 1 },
-                  ]}
-                  onPress={submit}
-                  disabled={saving}
-                >
-                  {saving ? (
-                    <ActivityIndicator color="#fff" />
-                  ) : (
-                    <Text style={{ color: "#fff", fontWeight: "800" }}>
-                      Submit
-                    </Text>
-                  )}
-                </TouchableOpacity>
-              </View>
-            </KeyboardAwareScrollView>
+          {/* From / To dates */}
+          <View style={{ flexDirection: "row", gap: isDesktop ? 16 : 8 }}>
+            <View style={{ flex: 1 }}>
+              <FormField label="From Date" required>
+                <DatePickerField
+                  value={fromDate}
+                  onChange={(v) => {
+                    setFromDate(v);
+                    if (toDate < v) setToDate(v);
+                  }}
+                />
+              </FormField>
+            </View>
+            <View style={{ flex: 1 }}>
+              <FormField label="To Date" required>
+                <DatePickerField
+                  value={toDate}
+                  onChange={setToDate}
+                  min={fromDate}
+                />
+              </FormField>
+            </View>
           </View>
-        </View>
-      </Modal>
+
+          {/* Half day */}
+          {selectedType?.allowHalfDay && (
+            <>
+              <View style={styles.switchRow}>
+                <Text style={[styles.label, { color: c.textMuted }]}>
+                  HALF DAY
+                </Text>
+                <Switch
+                  value={halfDay}
+                  onValueChange={setHalfDay}
+                  trackColor={{
+                    false: c.surfaceBorder,
+                    true: c.accent,
+                  }}
+                />
+              </View>
+              {halfDay && (
+                <FormField label="Half Day Part">
+                  <ChipPicker
+                    value={halfDayPart}
+                    onChange={(v) => setHalfDayPart(v as HalfDayPart)}
+                    options={[
+                      { value: "FIRST", label: "Morning" },
+                      { value: "SECOND", label: "Afternoon" },
+                    ]}
+                  />
+                </FormField>
+              )}
+            </>
+          )}
+
+          {/* Reason */}
+          <FormField label="Reason" required>
+            <TextInput
+              style={[
+                styles.textArea,
+                {
+                  backgroundColor: c.surfaceMuted,
+                  color: c.text,
+                  borderColor: c.surfaceBorder,
+                },
+              ]}
+              value={reason}
+              onChangeText={setReason}
+              placeholder="Brief reason for your leave"
+              placeholderTextColor={c.textFaint}
+              multiline
+              textAlignVertical="top"
+            />
+          </FormField>
+
+          {!!submitError && (
+            <View
+              style={[
+                styles.errorBanner,
+                {
+                  backgroundColor: c.dangerBg,
+                  borderColor: c.dangerText,
+                },
+              ]}
+            >
+              <Ionicons
+                name="alert-circle-outline"
+                size={16}
+                color={c.dangerText}
+              />
+              <Text
+                style={{
+                  color: c.dangerText,
+                  fontSize: 12,
+                  fontWeight: "600",
+                  flex: 1,
+                }}
+              >
+                {submitError}
+              </Text>
+            </View>
+          )}
+        </KeyboardAwareScrollView>
+      </WebModal>
 
       <BottomTabBar user={me} />
     </SafeAreaView>
@@ -624,35 +582,67 @@ function dateYMD(d: Date): string {
 const RequestCard = ({
   req,
   onCancel,
-  theme }: {
+  theme,
+  isDesktop = false,
+}: {
   req: LeaveRequest;
   onCancel: () => void;
   theme: any;
+  isDesktop?: boolean;
 }) => {
   const c = theme.colors;
-  const styles = useMemo(() => makeStyles(c), [c]);
   const statusMap: Record<string, { bg: string; fg: string }> = {
     APPROVED: { bg: c.successBg, fg: c.successText },
     REJECTED: { bg: c.dangerBg, fg: c.dangerText },
     CANCELLED: { bg: c.surfaceMuted, fg: c.textMuted },
-    PENDING: { bg: c.warningBg, fg: c.warningText } };
+    PENDING: { bg: c.warningBg, fg: c.warningText },
+  };
   const tone = statusMap[req.status] || statusMap.PENDING;
+
   return (
-    <View
-      style={[
-        styles.reqCard,
+    <Pressable
+      style={({ hovered }: any) => [
         {
+          padding: isDesktop ? 18 : 14,
+          borderRadius: 16,
+          borderWidth: 1,
+          marginBottom: 10,
           backgroundColor: c.surface,
           borderColor: c.surfaceBorder,
-          shadowColor: c.shadow },
+          shadowColor: c.shadow,
+          shadowOpacity: 1,
+          shadowRadius: 10,
+          shadowOffset: { width: 0, height: 3 },
+          elevation: 1,
+        },
+        Platform.OS === "web" && hovered && {
+          borderColor: c.accent,
+          transform: [{ scale: 1.01 }],
+        },
+        Platform.OS === "web" && {
+          transition: "all 0.15s ease" as any,
+          cursor: "default" as any,
+        },
       ]}
     >
-      <View style={styles.reqHeader}>
+      <View style={{ flexDirection: "row", alignItems: "center", gap: 10 }}>
         <View style={{ flex: 1 }}>
-          <Text style={[styles.reqType, { color: c.text }]}>
+          <Text
+            style={{
+              fontSize: isDesktop ? 16 : 15,
+              fontWeight: "800",
+              color: c.text,
+            }}
+          >
             {req.leaveType?.name || req.leaveTypeCode}
           </Text>
-          <Text style={[styles.reqDates, { color: c.textMuted }]}>
+          <Text
+            style={{
+              fontSize: isDesktop ? 13 : 12,
+              marginTop: 3,
+              color: c.textMuted,
+            }}
+          >
             {req.fromDate}
             {req.fromDate !== req.toDate && ` → ${req.toDate}`}
             {req.halfDay && " · half day"}
@@ -660,10 +650,12 @@ const RequestCard = ({
           </Text>
         </View>
         <View
-          style={[
-            styles.statusPill,
-            { backgroundColor: tone.bg },
-          ]}
+          style={{
+            backgroundColor: tone.bg,
+            paddingHorizontal: 10,
+            paddingVertical: 4,
+            borderRadius: 999,
+          }}
         >
           <Text style={{ color: tone.fg, fontSize: 10, fontWeight: "800" }}>
             {req.status}
@@ -671,18 +663,37 @@ const RequestCard = ({
         </View>
       </View>
       {!!req.reason && (
-        <Text style={[styles.reqReason, { color: c.textMuted }]}>
+        <Text
+          style={{
+            fontSize: isDesktop ? 13 : 12,
+            marginTop: 8,
+            lineHeight: 17,
+            color: c.textMuted,
+          }}
+        >
           {req.reason}
         </Text>
       )}
       {req.note ? (
-        <Text style={[styles.reqNote, { color: c.text }]}>
+        <Text
+          style={{
+            fontSize: isDesktop ? 13 : 12,
+            marginTop: 6,
+            fontStyle: "italic",
+            color: c.text,
+          }}
+        >
           HR note: {req.note}
         </Text>
       ) : null}
       {req.status === "PENDING" && (
         <TouchableOpacity
-          style={styles.reqCancel}
+          style={{
+            flexDirection: "row",
+            alignItems: "center",
+            gap: 6,
+            marginTop: 10,
+          }}
           onPress={onCancel}
         >
           <Ionicons
@@ -694,180 +705,142 @@ const RequestCard = ({
             style={{
               color: c.dangerText,
               fontSize: 12,
-              fontWeight: "700" }}
+              fontWeight: "700",
+            }}
           >
             Cancel request
           </Text>
         </TouchableOpacity>
       )}
-    </View>
+    </Pressable>
   );
 };
 
-const makeStyles = (c: any) => StyleSheet.create({
-  safe: { flex: 1 },
-  loader: { flex: 1, alignItems: "center", justifyContent: "center" },
-  headerRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    marginBottom: 18,
-    gap: 8 },
-  iconBtn: {
-    width: 42,
-    height: 42,
-    borderRadius: 14,
-    borderWidth: 1,
-    alignItems: "center",
-    justifyContent: "center" },
-  title: { fontSize: 26, fontWeight: "800" },
-  subtitle: { fontSize: 13, marginTop: 2 },
-  applyBtn: {
-    width: 46,
-    height: 46,
-    borderRadius: 16,
-    alignItems: "center",
-    justifyContent: "center",
-    shadowOpacity: 0.2,
-    shadowRadius: 12,
-    shadowOffset: { width: 0, height: 4 },
-    elevation: 3 },
+const makeStyles = (c: any, isDesktop: boolean) =>
+  StyleSheet.create({
+    safe: { flex: 1 },
+    loader: { flex: 1, alignItems: "center", justifyContent: "center" },
+    headerRow: {
+      flexDirection: "row",
+      alignItems: "center",
+      marginBottom: isDesktop ? 24 : 18,
+      gap: 8,
+    },
+    iconBtn: {
+      width: 42,
+      height: 42,
+      borderRadius: 14,
+      borderWidth: 1,
+      alignItems: "center",
+      justifyContent: "center",
+    },
+    title: { fontSize: isDesktop ? 28 : 26, fontWeight: "800" },
+    subtitle: { fontSize: isDesktop ? 14 : 13, marginTop: 2 },
+    applyBtn: {
+      width: 46,
+      height: 46,
+      borderRadius: 16,
+      alignItems: "center",
+      justifyContent: "center",
+      shadowOpacity: 0.2,
+      shadowRadius: 12,
+      shadowOffset: { width: 0, height: 4 },
+      elevation: 3,
+    },
 
-  section: {
-    fontSize: 11,
-    fontWeight: "800",
-    letterSpacing: 1.4,
-    marginTop: 18,
-    marginBottom: 10,
-    marginLeft: 4 },
+    section: {
+      fontSize: isDesktop ? 12 : 11,
+      fontWeight: "800",
+      letterSpacing: 1.4,
+      marginTop: isDesktop ? 24 : 18,
+      marginBottom: isDesktop ? 14 : 10,
+      marginLeft: 4,
+    },
 
-  balanceGrid: { flexDirection: "row", flexWrap: "wrap", gap: 10 },
-  balanceCard: {
-    width: "47%",
-    flexGrow: 1,
-    padding: 14,
-    borderRadius: 18,
-    borderWidth: 1,
-    shadowOpacity: 1,
-    shadowRadius: 12,
-    shadowOffset: { width: 0, height: 4 },
-    elevation: 2 },
-  balanceIcon: {
-    width: 32,
-    height: 32,
-    borderRadius: 10,
-    alignItems: "center",
-    justifyContent: "center",
-    marginBottom: 10 },
-  balanceName: { fontSize: 13, fontWeight: "700", marginBottom: 6 },
-  balanceValue: { fontSize: 30, fontWeight: "800" },
-  balanceSub: { fontSize: 12, marginTop: 2 },
-  balanceFooter: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    marginTop: 12 },
-  balanceFoot: { fontSize: 11, fontWeight: "700" },
+    // Desktop: 4 cards per row, Mobile: 2 cards per row
+    balanceGrid: {
+      flexDirection: "row",
+      flexWrap: "wrap",
+      gap: isDesktop ? 16 : 10,
+    },
+    balanceCard: {
+      width: isDesktop ? "23%" : "47%",
+      flexGrow: 1,
+      minWidth: isDesktop ? 200 : undefined,
+      padding: isDesktop ? 18 : 14,
+      borderRadius: 18,
+      borderWidth: 1,
+      shadowOpacity: 1,
+      shadowRadius: 12,
+      shadowOffset: { width: 0, height: 4 },
+      elevation: 2,
+      ...(Platform.OS === "web" && {
+        transition: "all 0.15s ease" as any,
+      }),
+    },
+    balanceIcon: {
+      width: isDesktop ? 36 : 32,
+      height: isDesktop ? 36 : 32,
+      borderRadius: 10,
+      alignItems: "center",
+      justifyContent: "center",
+      marginBottom: isDesktop ? 12 : 10,
+    },
+    balanceName: { fontSize: isDesktop ? 14 : 13, fontWeight: "700", marginBottom: 6 },
+    balanceValue: { fontSize: isDesktop ? 36 : 30, fontWeight: "800" },
+    balanceSub: { fontSize: isDesktop ? 13 : 12, marginTop: 2 },
+    balanceFooter: {
+      flexDirection: "row",
+      justifyContent: "space-between",
+      marginTop: isDesktop ? 14 : 12,
+    },
+    balanceFoot: { fontSize: isDesktop ? 12 : 11, fontWeight: "700" },
 
-  emptyCard: {
-    padding: 24,
-    borderRadius: 18,
-    borderWidth: 1,
-    alignItems: "center",
-    gap: 8,
-    shadowOpacity: 1,
-    shadowRadius: 12,
-    shadowOffset: { width: 0, height: 4 },
-    elevation: 2 },
-  emptyText: { fontSize: 14, fontWeight: "700", textAlign: "center" },
-  emptySub: { fontSize: 12, textAlign: "center" },
+    emptyCard: {
+      padding: isDesktop ? 32 : 24,
+      borderRadius: 18,
+      borderWidth: 1,
+      alignItems: "center",
+      gap: 8,
+      shadowOpacity: 1,
+      shadowRadius: 12,
+      shadowOffset: { width: 0, height: 4 },
+      elevation: 2,
+    },
+    emptyText: { fontSize: isDesktop ? 15 : 14, fontWeight: "700", textAlign: "center" },
+    emptySub: { fontSize: isDesktop ? 13 : 12, textAlign: "center" },
 
-  reqCard: {
-    padding: 14,
-    borderRadius: 16,
-    borderWidth: 1,
-    marginBottom: 10,
-    shadowOpacity: 1,
-    shadowRadius: 10,
-    shadowOffset: { width: 0, height: 3 },
-    elevation: 1 },
-  reqHeader: { flexDirection: "row", alignItems: "center", gap: 10 },
-  reqType: { fontSize: 15, fontWeight: "800" },
-  reqDates: { fontSize: 12, marginTop: 3 },
-  statusPill: {
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-    borderRadius: 999 },
-  reqReason: { fontSize: 12, marginTop: 8, lineHeight: 17 },
-  reqNote: { fontSize: 12, marginTop: 6, fontStyle: "italic" },
-  reqCancel: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 6,
-    marginTop: 10 },
-
-  // Modal
-  modalScrim: { flex: 1, justifyContent: "flex-end" },
-  modalCard: {
-    padding: 20,
-    borderTopLeftRadius: 24,
-    borderTopRightRadius: 24,
-    maxHeight: "90%",
-    shadowOpacity: 1,
-    shadowRadius: 24,
-    shadowOffset: { width: 0, height: -8 },
-    elevation: 12 },
-  modalHeader: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    marginBottom: 4 },
-  modalTitle: { fontSize: 20, fontWeight: "800" },
-  label: {
-    fontSize: 11,
-    fontWeight: "800",
-    letterSpacing: 1.2,
-    marginTop: 14,
-    marginBottom: 6 },
-  chipsRow: { flexDirection: "row", flexWrap: "wrap", gap: 6 },
-  chip: {
-    paddingHorizontal: 12,
-    paddingVertical: 7,
-    borderRadius: 999,
-    borderWidth: 1 },
-  switchRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    marginTop: 14 },
-  textArea: {
-    minHeight: 80,
-    padding: 12,
-    borderRadius: 12,
-    borderWidth: 1,
-    fontSize: 14 },
-  errorBanner: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 8,
-    padding: 10,
-    borderRadius: 12,
-    borderWidth: 1,
-    marginTop: 12 },
-  modalActions: {
-    flexDirection: "row",
-    gap: 10,
-    marginTop: 18,
-    marginBottom: Platform.OS === "ios" ? 10 : 0 },
-  cancelBtn: {
-    flex: 1,
-    paddingVertical: 14,
-    borderRadius: 14,
-    alignItems: "center" },
-  submitBtn: {
-    flex: 1.5,
-    paddingVertical: 14,
-    borderRadius: 14,
-    alignItems: "center",
-    shadowOpacity: 0.2,
-    shadowRadius: 10,
-    shadowOffset: { width: 0, height: 4 },
-    elevation: 3 } });
+    // Form styles
+    label: {
+      fontSize: isDesktop ? 12 : 11,
+      fontWeight: "800",
+      letterSpacing: 1.2,
+      marginTop: isDesktop ? 16 : 14,
+      marginBottom: 6,
+    },
+    switchRow: {
+      flexDirection: "row",
+      alignItems: "center",
+      justifyContent: "space-between",
+      marginTop: isDesktop ? 16 : 14,
+    },
+    textArea: {
+      minHeight: isDesktop ? 100 : 80,
+      padding: isDesktop ? 14 : 12,
+      borderRadius: 12,
+      borderWidth: 1,
+      fontSize: 14,
+      ...(Platform.OS === "web" && {
+        outlineStyle: "none" as any,
+      }),
+    },
+    errorBanner: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 8,
+      padding: isDesktop ? 12 : 10,
+      borderRadius: 12,
+      borderWidth: 1,
+      marginTop: 12,
+    },
+  });

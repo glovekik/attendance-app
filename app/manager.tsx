@@ -117,12 +117,6 @@ export default function ManagerHub() {
       color: "#0369a1",
       route: "/manager-reimbursements" },
     {
-      label: "Manual",
-      count: dash?.pendingManualAttendanceApprovals || 0,
-      icon: "document-text" as const,
-      color: "#6d28d9",
-      route: "/manager-manual-requests" },
-    {
       label: "Timesheets",
       count: dash?.pendingTimesheetApprovals || 0,
       icon: "time" as const,
@@ -308,6 +302,7 @@ export default function ManagerHub() {
                 icon="calendar-outline"
                 tint={c.pastelLavender}
                 iconColor="#6d28d9"
+                onPress={() => router.push("/manager-attendance" as any)}
                 theme={theme}
                 styles={styles}
               />
@@ -318,6 +313,7 @@ export default function ManagerHub() {
                 icon="home-outline"
                 tint={c.pastelMint}
                 iconColor="#15803d"
+                onPress={() => router.push("/manager-attendance" as any)}
                 theme={theme}
                 styles={styles}
               />
@@ -328,6 +324,7 @@ export default function ManagerHub() {
                 icon="checkmark-done-outline"
                 tint={c.pastelPink}
                 iconColor="#be185d"
+                onPress={() => router.push("/manager-tasks" as any)}
                 theme={theme}
                 styles={styles}
               />
@@ -342,6 +339,7 @@ export default function ManagerHub() {
                 icon="stopwatch-outline"
                 tint={c.pastelPeach}
                 iconColor="#c2410c"
+                onPress={() => router.push("/manager-productivity" as any)}
                 theme={theme}
                 styles={styles}
               />
@@ -440,17 +438,6 @@ export default function ManagerHub() {
               iconColor="#0369a1"
               count={dash?.pendingReimbursementApprovals}
               onPress={() => router.push("/manager-reimbursements" as any)}
-              theme={theme}
-              styles={styles}
-            />
-            <Tile
-              icon="document-text-outline"
-              label="Manual attendance"
-              sub="Missed-day requests"
-              tint={c.pastelLavender}
-              iconColor="#6d28d9"
-              count={dash?.pendingManualAttendanceApprovals}
-              onPress={() => router.push("/manager-manual-requests" as any)}
               theme={theme}
               styles={styles}
             />
@@ -612,6 +599,7 @@ const SimpleKpi = ({
   icon,
   tint,
   iconColor,
+  onPress,
   theme,
   styles }: {
   label: string;
@@ -620,32 +608,42 @@ const SimpleKpi = ({
   icon: keyof typeof Ionicons.glyphMap;
   tint: string;
   iconColor: string;
+  onPress?: () => void;
   theme: any;
   styles: any;
-}) => (
-  <View
-    style={[
-      styles.kpiCell,
-      {
-        backgroundColor: theme.colors.surface,
-        borderColor: theme.colors.surfaceBorder,
-        shadowColor: theme.colors.shadow },
-    ]}
-  >
-    <View style={[styles.kpiIcon, { backgroundColor: tint }]}>
-      <Ionicons name={icon} size={16} color={iconColor} />
-    </View>
-    <Text style={[styles.kpiValue, { color: theme.colors.text }]}>
-      {value}
-    </Text>
-    <Text style={[styles.kpiLabel, { color: theme.colors.text }]}>
-      {label}
-    </Text>
-    <Text style={[styles.kpiSub, { color: theme.colors.textMuted }]}>
-      {sub}
-    </Text>
-  </View>
-);
+}) => {
+  const cellStyle = [
+    styles.kpiCell,
+    {
+      backgroundColor: theme.colors.surface,
+      borderColor: theme.colors.surfaceBorder,
+      shadowColor: theme.colors.shadow },
+  ];
+  const body = (
+    <>
+      <View style={[styles.kpiIcon, { backgroundColor: tint }]}>
+        <Ionicons name={icon} size={16} color={iconColor} />
+      </View>
+      <Text style={[styles.kpiValue, { color: theme.colors.text }]}>
+        {value}
+      </Text>
+      <Text style={[styles.kpiLabel, { color: theme.colors.text }]}>
+        {label}
+      </Text>
+      <Text style={[styles.kpiSub, { color: theme.colors.textMuted }]}>
+        {sub}
+      </Text>
+    </>
+  );
+  if (onPress) {
+    return (
+      <TouchableOpacity style={cellStyle} onPress={onPress} activeOpacity={0.7}>
+        {body}
+      </TouchableOpacity>
+    );
+  }
+  return <View style={cellStyle}>{body}</View>;
+};
 
 const makeStyles = (c: any) => StyleSheet.create({
   safe: { flex: 1 },

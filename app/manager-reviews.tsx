@@ -8,13 +8,10 @@ import {
   TouchableOpacity,
   ActivityIndicator,
   RefreshControl,
-  Modal,
   TextInput,
   Alert,
-  ScrollView,
   Switch,
   Platform } from "react-native";
-import { KeyboardAvoidingView } from "react-native-keyboard-controller";
 import { SafeAreaView } from "react-native-safe-area-context";
 
 import AsyncStorage from "@react-native-async-storage/async-storage";
@@ -35,6 +32,7 @@ import {
   Review,
   ReviewType,
   User } from "../src/types";
+import { WebModal, ModalActions } from "../src/components/WebModal";
 
 const DEFAULT_DIMS = ["Quality", "Ownership", "Collaboration"];
 
@@ -271,25 +269,32 @@ export default function ManagerReviews() {
       )}
 
       {/* CREATE */}
-      <Modal
+      <WebModal
         visible={showForm}
-        animationType="slide"
-        transparent
-        onRequestClose={() => setShowForm(false)}
+        onClose={() => setShowForm(false)}
+        title="New review"
+        size="md"
+        footer={
+          <ModalActions align="spread">
+            <TouchableOpacity
+              style={[styles.btn, styles.btnGhost]}
+              onPress={() => setShowForm(false)}
+              disabled={saving}
+            >
+              <Text style={styles.btnGhostText}>Cancel</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[styles.btn, styles.btnPrimary]}
+              onPress={onCreate}
+              disabled={saving}
+            >
+              <Text style={styles.btnPrimaryText}>
+                {saving ? "..." : "Create"}
+              </Text>
+            </TouchableOpacity>
+          </ModalActions>
+        }
       >
-        <KeyboardAvoidingView
-          behavior="padding"
-          style={styles.modalWrap}
-        >
-          <View style={styles.modal}>
-            <View style={styles.modalHeader}>
-              <Text style={styles.modalTitle}>New review</Text>
-              <TouchableOpacity onPress={() => setShowForm(false)}>
-                <Ionicons name="close" size={24} color={c.textMuted} />
-              </TouchableOpacity>
-            </View>
-
-            <ScrollView style={{ maxHeight: 540 }}>
               <Text style={styles.label}>Employee *</Text>
               <View style={styles.chipRow}>
                 {users.map((u) => (
@@ -370,51 +375,37 @@ export default function ManagerReviews() {
                 placeholderTextColor={c.textFaint}
               />
               <View style={{ height: 14 }} />
-            </ScrollView>
-
-            <View style={styles.actions}>
-              <TouchableOpacity
-                style={[styles.btn, styles.btnGhost]}
-                onPress={() => setShowForm(false)}
-                disabled={saving}
-              >
-                <Text style={styles.btnGhostText}>Cancel</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={[styles.btn, styles.btnPrimary]}
-                onPress={onCreate}
-                disabled={saving}
-              >
-                <Text style={styles.btnPrimaryText}>
-                  {saving ? "..." : "Create"}
-                </Text>
-              </TouchableOpacity>
-            </View>
-          </View>
-        </KeyboardAvoidingView>
-      </Modal>
+      </WebModal>
 
       {/* EVAL */}
-      <Modal
+      <WebModal
         visible={!!selected}
-        animationType="slide"
-        transparent
-        onRequestClose={() => setSelected(null)}
+        onClose={() => setSelected(null)}
+        title="Manager evaluation"
+        size="lg"
+        footer={
+          <ModalActions align="spread">
+            <TouchableOpacity
+              style={[styles.btn, styles.btnGhost]}
+              onPress={onSaveEval}
+              disabled={submitting}
+            >
+              <Text style={styles.btnGhostText}>Save draft</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[styles.btn, styles.btnPrimary]}
+              onPress={onSubmitFinal}
+              disabled={submitting}
+            >
+              <Text style={styles.btnPrimaryText}>
+                {submitting ? "..." : "Save & Submit"}
+              </Text>
+            </TouchableOpacity>
+          </ModalActions>
+        }
       >
-        <KeyboardAvoidingView
-          behavior="padding"
-          style={styles.modalWrap}
-        >
-          <View style={styles.modal}>
-            <View style={styles.modalHeader}>
-              <Text style={styles.modalTitle}>Manager evaluation</Text>
-              <TouchableOpacity onPress={() => setSelected(null)}>
-                <Ionicons name="close" size={24} color={c.textMuted} />
-              </TouchableOpacity>
-            </View>
-
             {selected && (
-              <ScrollView style={{ maxHeight: 540 }}>
+              <>
                 <Text style={styles.hint}>
                   {users.find((u) => u.id === selected.employeeId)
                     ?.name || selected.employeeId}{" "}
@@ -555,31 +546,10 @@ export default function ManagerReviews() {
                   textAlignVertical="top"
                   placeholderTextColor={c.textFaint}
                 />
-
-                <View style={styles.actions}>
-                  <TouchableOpacity
-                    style={[styles.btn, styles.btnGhost]}
-                    onPress={onSaveEval}
-                    disabled={submitting}
-                  >
-                    <Text style={styles.btnGhostText}>Save draft</Text>
-                  </TouchableOpacity>
-                  <TouchableOpacity
-                    style={[styles.btn, styles.btnPrimary]}
-                    onPress={onSubmitFinal}
-                    disabled={submitting}
-                  >
-                    <Text style={styles.btnPrimaryText}>
-                      {submitting ? "..." : "Save & Submit"}
-                    </Text>
-                  </TouchableOpacity>
-                </View>
                 <View style={{ height: 12 }} />
-              </ScrollView>
+              </>
             )}
-          </View>
-        </KeyboardAvoidingView>
-      </Modal>
+      </WebModal>
     </SafeAreaView>
   );
 }

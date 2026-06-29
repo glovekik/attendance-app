@@ -8,13 +8,11 @@ import {
   TouchableOpacity,
   ActivityIndicator,
   RefreshControl,
-  Modal,
   TextInput,
   Alert,
-  ScrollView,
   Platform } from "react-native";
-import { KeyboardAvoidingView } from "react-native-keyboard-controller";
 import { SafeAreaView } from "react-native-safe-area-context";
+import { WebModal, ModalActions } from "../src/components/WebModal";
 
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useRouter } from "expo-router";
@@ -226,27 +224,32 @@ export default function ManagerGoals() {
         />
       )}
 
-      <Modal
+      <WebModal
         visible={showForm}
-        animationType="slide"
-        transparent
-        onRequestClose={() => setShowForm(false)}
-      >
-        <KeyboardAvoidingView
-          behavior="padding"
-          style={styles.modalWrap}
-        >
-          <View style={styles.modal}>
-            <View style={styles.modalHeader}>
-              <Text style={styles.modalTitle}>
-                {editingId ? "Edit goal" : "New goal"}
+        onClose={() => setShowForm(false)}
+        title={editingId ? "Edit goal" : "New goal"}
+        size="md"
+        footer={
+          <ModalActions align="spread">
+            <TouchableOpacity
+              style={[styles.btn, styles.btnGhost]}
+              onPress={() => setShowForm(false)}
+              disabled={saving}
+            >
+              <Text style={styles.btnGhostText}>Cancel</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[styles.btn, styles.btnPrimary]}
+              onPress={onSave}
+              disabled={saving}
+            >
+              <Text style={styles.btnPrimaryText}>
+                {saving ? "..." : editingId ? "Update" : "Create"}
               </Text>
-              <TouchableOpacity onPress={() => setShowForm(false)}>
-                <Ionicons name="close" size={24} color={c.textMuted} />
-              </TouchableOpacity>
-            </View>
-
-            <ScrollView style={{ maxHeight: 520 }}>
+            </TouchableOpacity>
+          </ModalActions>
+        }
+      >
               <Text style={styles.label}>Employee *</Text>
               <View style={styles.chipRow}>
                 {users.map((u) => (
@@ -366,29 +369,7 @@ export default function ManagerGoals() {
                 </>
               )}
               <View style={{ height: 14 }} />
-            </ScrollView>
-
-            <View style={styles.actions}>
-              <TouchableOpacity
-                style={[styles.btn, styles.btnGhost]}
-                onPress={() => setShowForm(false)}
-                disabled={saving}
-              >
-                <Text style={styles.btnGhostText}>Cancel</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={[styles.btn, styles.btnPrimary]}
-                onPress={onSave}
-                disabled={saving}
-              >
-                <Text style={styles.btnPrimaryText}>
-                  {saving ? "..." : editingId ? "Update" : "Create"}
-                </Text>
-              </TouchableOpacity>
-            </View>
-          </View>
-        </KeyboardAvoidingView>
-      </Modal>
+      </WebModal>
     </SafeAreaView>
   );
 }

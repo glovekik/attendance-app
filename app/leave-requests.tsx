@@ -1,6 +1,4 @@
-﻿import React, {
-  useEffect,
-  useState, useMemo} from "react";
+import React, { useEffect, useState, useMemo } from "react";
 
 import {
   View,
@@ -10,9 +8,11 @@ import {
   TouchableOpacity,
   TextInput,
   ActivityIndicator,
-  Modal,
   Platform,
-  Alert } from "react-native";
+  Alert,
+  Pressable,
+  DimensionValue,
+} from "react-native";
 import { KeyboardAvoidingView } from "react-native-keyboard-controller";
 import { SafeAreaView } from "react-native-safe-area-context";
 
@@ -24,11 +24,19 @@ import { Ionicons } from "@expo/vector-icons";
 
 import {
   hrListLeaveRequests,
-  hrDecideLeaveRequest } from "../src/services/leaves";
+  hrDecideLeaveRequest,
+} from "../src/services/leaves";
 
 import { LeaveRequest } from "../src/types";
 
 import { useTheme } from "../src/theme/ThemeProvider";
+import { useResponsive, getResponsiveSpacing } from "../src/utils/responsive";
+import { PageHeader } from "../src/components/PageHeader";
+import { WebModal, ModalActions } from "../src/components/WebModal";
+import { ProButton, Avatar } from "../src/components/ProUI";
+import { FormField, WebTextArea } from "../src/components/WebFormFields";
+const BOTTOM_BAR_RESERVED_HEIGHT = 70;
+
 export default function LeaveRequests() {
 
   const router = useRouter();
@@ -37,7 +45,12 @@ export default function LeaveRequests() {
 
   const c = theme.colors;
 
-  const styles = useMemo(() => makeStyles(c), [c]);
+  const responsive = useResponsive();
+  const spacing = getResponsiveSpacing(responsive.breakpoint);
+  const isDesktop = responsive.isDesktop;
+  const bottomPadding = responsive.showSidebar ? 40 : BOTTOM_BAR_RESERVED_HEIGHT + 24;
+
+  const styles = useMemo(() => makeStyles(c, isDesktop), [c, isDesktop]);
 
   const [items, setItems] = useState<LeaveRequest[]>([]);
   const [loading, setLoading] = useState(true);
@@ -177,24 +190,35 @@ export default function LeaveRequests() {
 
       <ScrollView
         style={styles.container}
-        contentContainerStyle={styles.content}
+        contentContainerStyle={[styles.content, { paddingBottom: bottomPadding, padding: spacing.padding }]}
       >
 
-        <View style={styles.header}>
-          <TouchableOpacity
-            style={styles.backBtn}
-            onPress={() => (router.canGoBack() ? router.back() : router.replace("/"))}
-          >
-            <Ionicons name="chevron-back" size={22} color={c.text} />
-          </TouchableOpacity>
+        {isDesktop ? (
+          <PageHeader
+            title="Leave Requests"
+            subtitle={`${items.length} pending requests`}
+            breadcrumbs={[
+              { label: "Home", href: "/" },
+              { label: "Leave Requests" },
+            ]}
+          />
+        ) : (
+          <View style={styles.header}>
+            <TouchableOpacity
+              style={styles.backBtn}
+              onPress={() => (router.canGoBack() ? router.back() : router.replace("/"))}
+            >
+              <Ionicons name="chevron-back" size={22} color={c.text} />
+            </TouchableOpacity>
 
-          <View style={{ flex: 1 }}>
-            <Text style={styles.title}>Leave Requests</Text>
-            <Text style={styles.subtitle}>
-              {items.length} pending
-            </Text>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.title}>Leave Requests</Text>
+              <Text style={styles.subtitle}>
+                {items.length} pending
+              </Text>
+            </View>
           </View>
-        </View>
+        )}
 
         {items.length === 0 && (
           <View style={styles.emptyBox}>
@@ -210,170 +234,132 @@ export default function LeaveRequests() {
           </View>
         )}
 
-        {items.map((r) => (
-          <View key={r.id} style={styles.card}>
-
-            <View style={styles.cardHead}>
-              <View style={styles.avatar}>
-                <Text style={styles.avatarText}>
-                  {(r.user?.name || "U").charAt(0).toUpperCase()}
-                </Text>
-              </View>
-              <View style={{ flex: 1 }}>
-                <Text style={styles.cardName}>
-                  {r.user?.name || "User"}
-                </Text>
-                <Text style={styles.cardEmail}>
-                  {r.user?.email || ""}
-                </Text>
-              </View>
-              <View style={styles.daysChip}>
-                <Text style={styles.daysChipText}>
-                  {r.totalDays}d
-                </Text>
-              </View>
-            </View>
-
-            <View style={styles.timeBox}>
-              <View style={styles.timeRow}>
-                <Text style={styles.timeLabel}>Type</Text>
-                <Text style={styles.timeValue}>
-                  {r.leaveType?.name || r.leaveTypeCode}
-                </Text>
-              </View>
-              <View style={styles.timeRow}>
-                <Text style={styles.timeLabel}>Dates</Text>
-                <Text style={styles.timeValue}>
-                  {r.fromDate}
-                  {r.fromDate !== r.toDate && ` → ${r.toDate}`}
-                </Text>
-              </View>
-              {r.halfDay && (
-                <View style={styles.timeRow}>
-                  <Text style={styles.timeLabel}>Half-day</Text>
-                  <Text style={styles.timeValue}>
-                    {r.halfDayPart === "FIRST"
-                      ? "First half"
-                      : "Second half"}
+        <View style={styles.cardsGrid}>
+          {items.map((r) => (
+            <Pressable
+              key={r.id}
+              style={({ hovered, pressed }) => [
+                styles.card,
+                Platform.OS === "web" && hovered && styles.cardHover,
+                Platform.OS === "web" && pressed && styles.cardPressed,
+              ]}
+            >
+              <View style={styles.cardHead}>
+                <Avatar name={r.user?.name || "U"} size={isDesktop ? 44 : 40} />
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.cardName}>
+                    {r.user?.name || "User"}
+                  </Text>
+                  <Text style={styles.cardEmail}>
+                    {r.user?.email || ""}
                   </Text>
                 </View>
-              )}
-            </View>
+                <View style={styles.daysChip}>
+                  <Text style={styles.daysChipText}>
+                    {r.totalDays}d
+                  </Text>
+                </View>
+              </View>
 
-            <Text style={styles.reasonLabel}>Reason</Text>
-            <Text style={styles.reasonText}>{r.reason}</Text>
-
-            {r.attachmentUrl ? (
-              <Text style={styles.attachmentLink}>
-                Attachment: {r.attachmentUrl}
-              </Text>
-            ) : null}
-
-            <View style={styles.actions}>
-              <TouchableOpacity
-                style={[
-                  styles.rejectBtn,
-                  busyId === r.id && { opacity: 0.6 },
-                ]}
-                onPress={() => openReject(r)}
-                disabled={busyId === r.id}
-              >
-                <Ionicons
-                  name="close-outline"
-                  size={18}
-                  color={c.text}
-                />
-                <Text style={styles.actionText}>Reject</Text>
-              </TouchableOpacity>
-
-              <TouchableOpacity
-                style={[
-                  styles.approveBtn,
-                  busyId === r.id && { opacity: 0.6 },
-                ]}
-                onPress={() => doApprove(r)}
-                disabled={busyId === r.id}
-              >
-                {busyId === r.id ? (
-                  <ActivityIndicator color="#fff" />
-                ) : (
-                  <>
-                    <Ionicons
-                      name="checkmark-outline"
-                      size={18}
-                      color="#fff"
-                    />
-                    <Text style={styles.actionText}>Approve</Text>
-                  </>
+              <View style={styles.timeBox}>
+                <View style={styles.timeRow}>
+                  <Text style={styles.timeLabel}>Type</Text>
+                  <Text style={styles.timeValue}>
+                    {r.leaveType?.name || r.leaveTypeCode}
+                  </Text>
+                </View>
+                <View style={styles.timeRow}>
+                  <Text style={styles.timeLabel}>Dates</Text>
+                  <Text style={styles.timeValue}>
+                    {r.fromDate}
+                    {r.fromDate !== r.toDate && ` → ${r.toDate}`}
+                  </Text>
+                </View>
+                {r.halfDay && (
+                  <View style={styles.timeRow}>
+                    <Text style={styles.timeLabel}>Half-day</Text>
+                    <Text style={styles.timeValue}>
+                      {r.halfDayPart === "FIRST"
+                        ? "First half"
+                        : "Second half"}
+                    </Text>
+                  </View>
                 )}
-              </TouchableOpacity>
-            </View>
+              </View>
 
-          </View>
-        ))}
+              <Text style={styles.reasonLabel}>Reason</Text>
+              <Text style={styles.reasonText}>{r.reason}</Text>
+
+              {r.attachmentUrl ? (
+                <Text style={styles.attachmentLink}>
+                  Attachment: {r.attachmentUrl}
+                </Text>
+              ) : null}
+
+              <View style={styles.actions}>
+                <ProButton
+                  label="Reject"
+                  variant="danger"
+                  icon="close-outline"
+                  onPress={() => openReject(r)}
+                  disabled={busyId === r.id}
+                  style={{ flex: 1 }}
+                />
+                <ProButton
+                  label="Approve"
+                  variant="success"
+                  icon="checkmark-outline"
+                  onPress={() => doApprove(r)}
+                  loading={busyId === r.id}
+                  disabled={busyId === r.id}
+                  style={{ flex: 1 }}
+                />
+              </View>
+
+            </Pressable>
+          ))}
+        </View>
 
       </ScrollView>
 
       {/* REJECT MODAL */}
-      <Modal
+      <WebModal
         visible={rejectVisible}
-        transparent
-        animationType="slide"
-        onRequestClose={() => setRejectVisible(false)}
+        onClose={() => setRejectVisible(false)}
+        title="Reject Leave Request"
+        subtitle={rejectTarget ? `${rejectTarget.user?.name || "User"} · ${rejectTarget.leaveType?.name || rejectTarget.leaveTypeCode} · ${rejectTarget.totalDays}d` : undefined}
       >
-        <KeyboardAvoidingView behavior="padding" style={{ flex: 1 }}>
-        <View style={styles.modalOverlay}>
-          <View style={styles.modalCard}>
+        <FormField label="Reason (shown to user)">
+          <WebTextArea
+            value={rejectNote}
+            onChangeText={setRejectNote}
+            placeholder="Optional rejection reason..."
+            rows={3}
+          />
+        </FormField>
 
-            <Text style={styles.modalTitle}>Reject leave</Text>
-
-            <Text style={styles.label}>
-              Reason (shown to user)
-            </Text>
-
-            <TextInput
-              style={styles.input}
-              value={rejectNote}
-              onChangeText={setRejectNote}
-              placeholder="Optional"
-              placeholderTextColor={c.textFaint}
-              multiline
-            />
-
-            <View style={styles.modalActions}>
-              <TouchableOpacity
-                style={styles.cancelBtn}
-                onPress={() => setRejectVisible(false)}
-              >
-                <Text style={styles.modalBtnText}>Cancel</Text>
-              </TouchableOpacity>
-
-              <TouchableOpacity
-                style={[
-                  styles.rejectConfirm,
-                  busyId && { opacity: 0.7 },
-                ]}
-                onPress={submitReject}
-                disabled={!!busyId}
-              >
-                {busyId ? (
-                  <ActivityIndicator color="#fff" />
-                ) : (
-                  <Text style={[styles.modalBtnText, { color: "#fff" }]}>Reject</Text>
-                )}
-              </TouchableOpacity>
-            </View>
-
-          </View>
-        </View>
-        </KeyboardAvoidingView>
-      </Modal>
+        <ModalActions>
+          <ProButton
+            label="Cancel"
+            variant="secondary"
+            onPress={() => setRejectVisible(false)}
+          />
+          <ProButton
+            label="Reject"
+            variant="danger"
+            icon="close-outline"
+            onPress={submitReject}
+            loading={!!busyId}
+            disabled={!!busyId}
+          />
+        </ModalActions>
+      </WebModal>
 
     </SafeAreaView>
   );
 }
 
-const makeStyles = (c: any) => StyleSheet.create({
+const makeStyles = (c: any, isDesktop: boolean) => StyleSheet.create({
   safe: { flex: 1, backgroundColor: c.bg },
   container: { flex: 1 },
   content: { padding: 20, paddingBottom: 60 },
@@ -381,7 +367,8 @@ const makeStyles = (c: any) => StyleSheet.create({
     flex: 1,
     backgroundColor: c.bg,
     justifyContent: "center",
-    alignItems: "center" },
+    alignItems: "center",
+  },
 
   popup: {
     position: "absolute",
@@ -390,17 +377,19 @@ const makeStyles = (c: any) => StyleSheet.create({
     right: 20,
     padding: 14,
     borderRadius: 14,
-    zIndex: 999 },
+    zIndex: 999,
+  },
   successPopup: { backgroundColor: "#16a34a" },
   errorPopup: { backgroundColor: "#dc2626" },
-  popupText: { color: c.text, fontWeight: "700", textAlign: "center" },
+  popupText: { color: "#fff", fontWeight: "700", textAlign: "center" },
 
   header: {
     flexDirection: "row",
     alignItems: "center",
     marginBottom: 18,
     marginTop: 10,
-    gap: 12 },
+    gap: 12,
+  },
   backBtn: {
     width: 42,
     height: 42,
@@ -409,169 +398,140 @@ const makeStyles = (c: any) => StyleSheet.create({
     justifyContent: "center",
     alignItems: "center",
     borderWidth: 1,
-    borderColor: c.surfaceBorder },
+    borderColor: c.surfaceBorder,
+  },
   title: { color: c.text, fontSize: 24, fontWeight: "800" },
   subtitle: { color: c.textMuted, fontSize: 13, marginTop: 3 },
 
   emptyBox: {
     alignItems: "center",
-    padding: 40,
+    padding: isDesktop ? 60 : 40,
     backgroundColor: c.surface,
-    borderRadius: 18,
+    borderRadius: isDesktop ? 16 : 18,
     borderWidth: 1,
     borderColor: c.surfaceBorder,
-    marginTop: 20 },
+    marginTop: 20,
+    maxWidth: isDesktop ? 600 : undefined,
+    alignSelf: isDesktop ? "center" : undefined,
+    width: isDesktop ? "100%" as DimensionValue : undefined,
+  },
   emptyTitle: {
     color: c.text,
-    fontSize: 17,
+    fontSize: isDesktop ? 20 : 17,
     fontWeight: "700",
-    marginTop: 14 },
+    marginTop: 14,
+  },
   emptySub: {
     color: c.textMuted,
-    fontSize: 13,
+    fontSize: isDesktop ? 14 : 13,
     marginTop: 6,
-    textAlign: "center" },
+    textAlign: "center",
+  },
+
+  cardsGrid: {
+    flexDirection: isDesktop ? "row" : "column",
+    flexWrap: isDesktop ? "wrap" : "nowrap",
+    gap: isDesktop ? 16 : 12,
+    marginTop: isDesktop ? 8 : 0,
+  },
 
   card: {
     backgroundColor: c.surface,
-    borderRadius: 16,
-    padding: 14,
-    marginBottom: 12,
+    borderRadius: isDesktop ? 12 : 16,
+    padding: isDesktop ? 20 : 14,
     borderWidth: 1,
-    borderColor: c.surfaceBorder },
+    borderColor: c.surfaceBorder,
+    width: isDesktop ? "calc(50% - 8px)" as DimensionValue : "100%" as DimensionValue,
+    ...(Platform.OS === "web" && isDesktop ? {
+      transition: "all 0.15s ease",
+      cursor: "default",
+    } : {}),
+  },
+  cardHover: {
+    backgroundColor: c.surfaceMuted,
+    borderColor: c.accent,
+  },
+  cardPressed: {
+    transform: [{ scale: 0.995 }],
+  },
+
   cardHead: {
     flexDirection: "row",
     alignItems: "center",
     gap: 12,
-    marginBottom: 12 },
-  avatar: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: c.accent,
-    justifyContent: "center",
-    alignItems: "center" },
-  avatarText: { color: "#fff", fontWeight: "800", fontSize: 15 },
-  cardName: { color: c.text, fontSize: 15, fontWeight: "700" },
-  cardEmail: { color: c.textMuted, fontSize: 12, marginTop: 2 },
+    marginBottom: 12,
+  },
+  cardName: {
+    color: c.text,
+    fontSize: isDesktop ? 16 : 15,
+    fontWeight: "700",
+  },
+  cardEmail: {
+    color: c.textMuted,
+    fontSize: isDesktop ? 13 : 12,
+    marginTop: 2,
+  },
   daysChip: {
     backgroundColor: c.accent,
     paddingHorizontal: 12,
     paddingVertical: 6,
-    borderRadius: 999 },
+    borderRadius: 999,
+  },
   daysChipText: {
     color: "#fff",
     fontSize: 13,
-    fontWeight: "800" },
+    fontWeight: "800",
+  },
 
   timeBox: {
     backgroundColor: c.surfaceMuted,
-    borderRadius: 12,
+    borderRadius: isDesktop ? 10 : 12,
     padding: 12,
     borderWidth: 1,
     borderColor: c.surfaceBorder,
-    marginBottom: 12 },
+    marginBottom: 12,
+  },
   timeRow: {
     flexDirection: "row",
     justifyContent: "space-between",
     paddingVertical: 4,
-    gap: 12 },
+    gap: 12,
+  },
   timeLabel: {
     color: c.textMuted,
     fontSize: 12,
-    fontWeight: "600" },
+    fontWeight: "600",
+  },
   timeValue: {
     color: c.text,
     fontSize: 13,
     fontWeight: "700",
     flexShrink: 1,
-    textAlign: "right" },
+    textAlign: "right",
+  },
 
   reasonLabel: {
     color: c.textMuted,
     fontSize: 12,
     fontWeight: "600",
-    marginBottom: 6 },
+    marginBottom: 6,
+  },
   reasonText: {
     color: c.text,
     fontSize: 14,
-    lineHeight: 20 },
+    lineHeight: 20,
+  },
   attachmentLink: {
     color: "#60a5fa",
     fontSize: 12,
-    marginTop: 8 },
+    marginTop: 8,
+    ...(Platform.OS === "web" ? { cursor: "pointer" } : {}),
+  },
 
   actions: {
     flexDirection: "row",
-    gap: 10,
-    marginTop: 14 },
-  rejectBtn: {
-    flex: 1,
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    backgroundColor: "#dc2626",
-    paddingVertical: 11,
-    borderRadius: 10,
-    gap: 5 },
-  approveBtn: {
-    flex: 1,
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    backgroundColor: "#16a34a",
-    paddingVertical: 11,
-    borderRadius: 10,
-    gap: 5 },
-  actionText: {
-    color: c.text,
-    fontWeight: "700",
-    fontSize: 14 },
-
-  modalOverlay: {
-    flex: 1,
-    backgroundColor: c.overlay,
-    justifyContent: "center",
-    padding: 20 },
-  modalCard: {
-    backgroundColor: c.surface,
-    borderRadius: 18,
-    padding: 20 },
-  modalTitle: {
-    color: c.text,
-    fontSize: 20,
-    fontWeight: "800",
-    marginBottom: 16 },
-  label: {
-    color: c.textMuted,
-    fontSize: 13,
-    fontWeight: "600",
-    marginBottom: 6 },
-  input: {
-    backgroundColor: c.surfaceMuted,
-    color: c.text,
-    borderRadius: 12,
-    padding: 13,
-    minHeight: 80,
-    textAlignVertical: "top",
-    borderWidth: 1,
-    borderColor: c.surfaceBorder,
-    fontSize: 14 },
-  modalActions: {
-    flexDirection: "row",
-    gap: 10,
-    marginTop: 18 },
-  cancelBtn: {
-    flex: 1,
-    backgroundColor: c.surfaceMuted,
-    padding: 13,
-    borderRadius: 11,
-    alignItems: "center" },
-  rejectConfirm: {
-    flex: 1,
-    backgroundColor: "#dc2626",
-    padding: 13,
-    borderRadius: 11,
-    alignItems: "center" },
-  modalBtnText: { color: c.text, fontWeight: "700" } });
+    gap: isDesktop ? 12 : 10,
+    marginTop: isDesktop ? 16 : 14,
+  },
+});
 

@@ -8,13 +8,12 @@ import {
   TouchableOpacity,
   ActivityIndicator,
   RefreshControl,
-  Modal,
   TextInput,
   Alert,
   ScrollView,
   Platform } from "react-native";
-import { KeyboardAvoidingView } from "react-native-keyboard-controller";
 import { SafeAreaView } from "react-native-safe-area-context";
+import { WebModal, ModalActions } from "../src/components/WebModal";
 
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useRouter } from "expo-router";
@@ -327,24 +326,32 @@ export default function HrCandidates() {
       )}
 
       {/* CREATE CANDIDATE MODAL */}
-      <Modal
+      <WebModal
         visible={showForm}
-        animationType="slide"
-        transparent
-        onRequestClose={() => setShowForm(false)}
+        onClose={() => setShowForm(false)}
+        title="New candidate"
+        size="md"
+        footer={
+          <ModalActions align="spread">
+            <TouchableOpacity
+              style={[styles.btn, styles.btnGhost]}
+              onPress={() => setShowForm(false)}
+              disabled={saving}
+            >
+              <Text style={styles.btnGhostText}>Cancel</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[styles.btn, styles.btnPrimary]}
+              onPress={onSave}
+              disabled={saving}
+            >
+              <Text style={styles.btnPrimaryText}>
+                {saving ? "..." : "Create"}
+              </Text>
+            </TouchableOpacity>
+          </ModalActions>
+        }
       >
-        <KeyboardAvoidingView
-          behavior="padding"
-          style={styles.modalWrap}
-        >
-          <View style={styles.modal}>
-            <View style={styles.modalHeader}>
-              <Text style={styles.modalTitle}>New candidate</Text>
-              <TouchableOpacity onPress={() => setShowForm(false)}>
-                <Ionicons name="close" size={24} color={c.textMuted} />
-              </TouchableOpacity>
-            </View>
-            <ScrollView style={{ maxHeight: 520 }}>
               <Text style={styles.label}>Name *</Text>
               <TextInput
                 style={styles.input}
@@ -501,49 +508,35 @@ export default function HrCandidates() {
                 placeholderTextColor={c.textFaint}
               />
               <View style={{ height: 12 }} />
-            </ScrollView>
-
-            <View style={styles.actions}>
-              <TouchableOpacity
-                style={[styles.btn, styles.btnGhost]}
-                onPress={() => setShowForm(false)}
-                disabled={saving}
-              >
-                <Text style={styles.btnGhostText}>Cancel</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={[styles.btn, styles.btnPrimary]}
-                onPress={onSave}
-                disabled={saving}
-              >
-                <Text style={styles.btnPrimaryText}>
-                  {saving ? "..." : "Create"}
-                </Text>
-              </TouchableOpacity>
-            </View>
-          </View>
-        </KeyboardAvoidingView>
-      </Modal>
+      </WebModal>
 
       {/* MOVE STAGE MODAL */}
-      <Modal
+      <WebModal
         visible={!!moveTarget}
-        animationType="slide"
-        transparent
-        onRequestClose={() => setMoveTarget(null)}
+        onClose={() => setMoveTarget(null)}
+        title="Move candidate"
+        size="md"
+        footer={
+          <ModalActions align="spread">
+            <TouchableOpacity
+              style={[styles.btn, styles.btnGhost]}
+              onPress={() => setMoveTarget(null)}
+              disabled={moving}
+            >
+              <Text style={styles.btnGhostText}>Cancel</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[styles.btn, styles.btnPrimary]}
+              onPress={onMove}
+              disabled={moving}
+            >
+              <Text style={styles.btnPrimaryText}>
+                {moving ? "..." : "Confirm"}
+              </Text>
+            </TouchableOpacity>
+          </ModalActions>
+        }
       >
-        <KeyboardAvoidingView
-          behavior="padding"
-          style={styles.modalWrap}
-        >
-          <View style={styles.modal}>
-            <View style={styles.modalHeader}>
-              <Text style={styles.modalTitle}>Move candidate</Text>
-              <TouchableOpacity onPress={() => setMoveTarget(null)}>
-                <Ionicons name="close" size={24} color={c.textMuted} />
-              </TouchableOpacity>
-            </View>
-
             {moveTarget && (
               <>
                 <Text style={styles.candidateName}>
@@ -591,30 +584,9 @@ export default function HrCandidates() {
                   multiline
                   textAlignVertical="top"
                 />
-
-                <View style={styles.actions}>
-                  <TouchableOpacity
-                    style={[styles.btn, styles.btnGhost]}
-                    onPress={() => setMoveTarget(null)}
-                    disabled={moving}
-                  >
-                    <Text style={styles.btnGhostText}>Cancel</Text>
-                  </TouchableOpacity>
-                  <TouchableOpacity
-                    style={[styles.btn, styles.btnPrimary]}
-                    onPress={onMove}
-                    disabled={moving}
-                  >
-                    <Text style={styles.btnPrimaryText}>
-                      {moving ? "..." : "Confirm"}
-                    </Text>
-                  </TouchableOpacity>
-                </View>
               </>
             )}
-          </View>
-        </KeyboardAvoidingView>
-      </Modal>
+      </WebModal>
     </SafeAreaView>
   );
 }

@@ -87,6 +87,20 @@ export const listUsers = (
 export const getUser = (token: string, id: string) =>
   apiCall<User>(`/hr/users/${id}`, { token });
 
+// HR/admin sets a user's password directly — no email round-trip. Used as
+// the rescue path when reset-link emails aren't being delivered.
+// Contract: POST /hr/users/{id}/set-password { password } -> { message }
+export const adminSetUserPassword = (
+  token: string,
+  id: string,
+  password: string
+) =>
+  apiCall<{ message: string }>(`/hr/users/${id}/set-password`, {
+    method: "POST",
+    body: { password },
+    token,
+  });
+
 export const updateUser = (
   token: string,
   id: string,

@@ -8,11 +8,11 @@ import {
   TouchableOpacity,
   ActivityIndicator,
   RefreshControl,
-  Modal,
-  ScrollView,
   TextInput,
   Alert } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
+
+import { WebModal } from "../src/components/WebModal";
 
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useRouter } from "expo-router";
@@ -195,23 +195,14 @@ export default function HrTimesheets() {
         />
       )}
 
-      <Modal
+      <WebModal
         visible={!!selected}
-        animationType="slide"
-        transparent
-        onRequestClose={() => setSelected(null)}
+        onClose={() => setSelected(null)}
+        title="Timesheet detail"
+        size="lg"
       >
-        <View style={styles.modalWrap}>
-          <View style={styles.modal}>
-            <View style={styles.modalHeader}>
-              <Text style={styles.modalTitle}>Timesheet detail</Text>
-              <TouchableOpacity onPress={() => setSelected(null)}>
-                <Ionicons name="close" size={24} color={c.textMuted} />
-              </TouchableOpacity>
-            </View>
-
             {selected && (
-              <ScrollView style={{ maxHeight: 460 }}>
+              <>
                 <View style={styles.detailRow}>
                   <Text style={styles.detailLabel}>Employee</Text>
                   <Text style={styles.detailValue}>
@@ -284,11 +275,9 @@ export default function HrTimesheets() {
                     </View>
                   )
                 )}
-              </ScrollView>
+              </>
             )}
-          </View>
-        </View>
-      </Modal>
+      </WebModal>
     </SafeAreaView>
   );
 }

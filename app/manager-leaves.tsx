@@ -8,12 +8,11 @@ import {
   TouchableOpacity,
   ActivityIndicator,
   RefreshControl,
-  Modal,
   TextInput,
   Alert,
   Platform } from "react-native";
-import { KeyboardAvoidingView } from "react-native-keyboard-controller";
 import { SafeAreaView } from "react-native-safe-area-context";
+import { WebModal, ModalActions } from "../src/components/WebModal";
 
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useRouter } from "expo-router";
@@ -23,7 +22,7 @@ import {
   listManagerLeaves,
   decideManagerLeave } from "../src/services/manager";
 import { LeaveRequest } from "../src/types";
-
+
 import { useTheme } from "../src/theme/ThemeProvider";
 export default function ManagerLeaves() {
   const router = useRouter();
@@ -182,26 +181,36 @@ export default function ManagerLeaves() {
         )}
       />
 
-      <Modal
+      <WebModal
         visible={!!selected}
-        animationType="slide"
-        transparent
-        onRequestClose={close}
+        onClose={close}
+        title="Decide leave"
+        size="md"
+        footer={
+          <ModalActions align="spread">
+            <TouchableOpacity
+              style={[styles.btn, styles.btnReject]}
+              onPress={() => onDecide("REJECT")}
+              disabled={acting !== null}
+            >
+              <Text style={styles.btnText}>
+                {acting === "REJECT" ? "..." : "Reject"}
+              </Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[styles.btn, styles.btnApprove]}
+              onPress={() => onDecide("APPROVE")}
+              disabled={acting !== null}
+            >
+              <Text style={styles.btnText}>
+                {acting === "APPROVE" ? "..." : "Approve"}
+              </Text>
+            </TouchableOpacity>
+          </ModalActions>
+        }
       >
-        <KeyboardAvoidingView
-          behavior="padding"
-          style={styles.modalWrap}
-        >
-          <View style={styles.modal}>
-            <View style={styles.modalHeader}>
-              <Text style={styles.modalTitle}>Decide leave</Text>
-              <TouchableOpacity onPress={close}>
-                <Ionicons name="close" size={24} color={c.textMuted} />
-              </TouchableOpacity>
-            </View>
-
-            {selected && (
-              <>
+        {selected && (
+          <>
                 <View style={styles.detailRow}>
                   <Text style={styles.detailLabel}>Employee</Text>
                   <Text style={styles.detailValue}>
@@ -254,32 +263,9 @@ export default function ManagerLeaves() {
                   placeholderTextColor={c.textFaint}
                   multiline
                 />
-
-                <View style={styles.actions}>
-                  <TouchableOpacity
-                    style={[styles.btn, styles.btnReject]}
-                    onPress={() => onDecide("REJECT")}
-                    disabled={acting !== null}
-                  >
-                    <Text style={styles.btnText}>
-                      {acting === "REJECT" ? "..." : "Reject"}
-                    </Text>
-                  </TouchableOpacity>
-                  <TouchableOpacity
-                    style={[styles.btn, styles.btnApprove]}
-                    onPress={() => onDecide("APPROVE")}
-                    disabled={acting !== null}
-                  >
-                    <Text style={styles.btnText}>
-                      {acting === "APPROVE" ? "..." : "Approve"}
-                    </Text>
-                  </TouchableOpacity>
-                </View>
               </>
-            )}
-          </View>
-        </KeyboardAvoidingView>
-      </Modal>
+        )}
+      </WebModal>
     </SafeAreaView>
   );
 }

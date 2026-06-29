@@ -10,13 +10,14 @@ import {
   ActivityIndicator,
   Alert,
   Switch,
-  Modal,
   FlatList,
   Image,
   Linking,
   Platform } from "react-native";
 import { KeyboardAvoidingView } from "react-native-keyboard-controller";
 import { SafeAreaView } from "react-native-safe-area-context";
+
+import { WebModal } from "../src/components/WebModal";
 
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useRouter, useLocalSearchParams } from "expo-router";
@@ -30,9 +31,13 @@ import {
 import { DatePickerField } from "../src/components/DatePickerField";
 import { FilePickButton } from "../src/components/FilePickButton";
 import { notify } from "../src/utils/confirm";
-import { getUser, updateUser, listUsers } from "../src/services/users";
+import {
+  getUser,
+  updateUser,
+  listUsers,
+  adminSetUserPassword,
+} from "../src/services/users";
 import { listDepartments } from "../src/services/departments";
-import { requestPasswordReset } from "../src/services/api";
 import {
   hrGetSalaryStructure,
   hrSetSalaryStructure } from "../src/services/payroll";
@@ -387,6 +392,13 @@ export default function HrUserProfile() {
   const [departments, setDepartments] = useState<Department[]>([]);
   const [allUsers, setAllUsers] = useState<User[]>([]);
   const [showMgrPicker, setShowMgrPicker] = useState(false);
+
+  // Admin "set password" modal — direct password reset (no email).
+  const [showPwModal, setShowPwModal] = useState(false);
+  const [newPw, setNewPw] = useState("");
+  const [confirmPw, setConfirmPw] = useState("");
+  const [showPw, setShowPw] = useState(false);
+  const [savingPw, setSavingPw] = useState(false);
 
   // Project managers — multi-pick from the same MANAGER+HR pool.
   const [projectManagerIds, setProjectManagerIds] = useState<string[]>([]);
@@ -1023,28 +1035,38 @@ export default function HrUserProfile() {
     }
   };
 
-  const onSendResetLink = () => {
-    if (!user?.email) return;
-    Alert.alert(
-      "Send password reset link?",
-      `An email with a setup link will be sent to ${user.email}. They'll click it to set a new password.`,
-      [
-        { text: "Cancel", style: "cancel" },
-        {
-          text: "Send",
-          onPress: async () => {
-            try {
-              await requestPasswordReset(user.email);
-              Alert.alert(
-                "Sent",
-                "If the email is registered, a reset link has been sent."
-              );
-            } catch (err: any) {
-              Alert.alert("Failed", err?.message || "");
-            }
-          } },
-      ]
-    );
+  const openSetPassword = () => {
+    setNewPw("");
+    setConfirmPw("");
+    setShowPw(false);
+    setShowPwModal(true);
+  };
+
+  const submitSetPassword = async () => {
+    if (savingPw) return;
+    if (newPw.length < 6) {
+      notify("Password too short", "Must be at least 6 characters.");
+      return;
+    }
+    if (newPw !== confirmPw) {
+      notify("Passwords don't match", "Re-enter the same password twice.");
+      return;
+    }
+    setSavingPw(true);
+    try {
+      const token = await AsyncStorage.getItem("token");
+      if (!token || !id) return;
+      await adminSetUserPassword(token, id, newPw);
+      setShowPwModal(false);
+      notify(
+        "Password updated",
+        `${user?.name || "The user"} can now log in with the new password.`
+      );
+    } catch (err: any) {
+      notify("Couldn't set password", err?.message || "");
+    } finally {
+      setSavingPw(false);
+    }
   };
 
   const managerCandidates = allUsers.filter(
@@ -1208,9 +1230,9 @@ export default function HrUserProfile() {
           <Ionicons name="airplane-outline" size={14} color={c.text} />
           <Text style={styles.quickLinkText}>Leave Balance</Text>
         </TouchableOpacity>
-        <TouchableOpacity style={styles.quickLink} onPress={onSendResetLink}>
+        <TouchableOpacity style={styles.quickLink} onPress={openSetPassword}>
           <Ionicons name="key-outline" size={14} color={c.text} />
-          <Text style={styles.quickLinkText}>Send reset link</Text>
+          <Text style={styles.quickLinkText}>Set password</Text>
         </TouchableOpacity>
         {!!profilePictureUrl && (
           <TouchableOpacity
@@ -2325,22 +2347,13 @@ export default function HrUserProfile() {
       </KeyboardAvoidingView>
 
       {/* MANAGER PICKER */}
-      <Modal
+      <WebModal
         visible={showMgrPicker}
-        animationType="slide"
-        transparent
-        onRequestClose={() => setShowMgrPicker(false)}
+        onClose={() => setShowMgrPicker(false)}
+        title="Choose reporting manager"
+        size="md"
+        scrollable={false}
       >
-        <View style={styles.modalWrap}>
-          <View style={styles.pickerModal}>
-            <View style={styles.modalHeader}>
-              <Text style={styles.modalTitle}>
-                Choose reporting manager
-              </Text>
-              <TouchableOpacity onPress={() => setShowMgrPicker(false)}>
-                <Ionicons name="close" size={24} color={c.textMuted} />
-              </TouchableOpacity>
-            </View>
             <View style={styles.searchBox}>
               <Ionicons name="search" size={16} color={c.textMuted} />
               <TextInput
@@ -2383,9 +2396,64 @@ export default function HrUserProfile() {
                 </TouchableOpacity>
               )}
             />
-          </View>
+      </WebModal>
+
+      <WebModal
+        visible={showPwModal}
+        onClose={() => setShowPwModal(false)}
+        title="Set new password"
+        size="sm"
+        scrollable={false}
+      >
+        <Text style={styles.hint}>
+          Sets {user?.name || "this user"}'s password directly — no email is
+          sent. Share it with them securely.
+        </Text>
+        <View style={[styles.searchBox, { marginTop: 12 }]}>
+          <Ionicons name="lock-closed-outline" size={16} color={c.textMuted} />
+          <TextInput
+            style={styles.searchInput}
+            value={newPw}
+            onChangeText={setNewPw}
+            placeholder="New password"
+            placeholderTextColor={c.textFaint}
+            autoCapitalize="none"
+            secureTextEntry={!showPw}
+            editable={!savingPw}
+          />
+          <TouchableOpacity onPress={() => setShowPw((v) => !v)}>
+            <Ionicons
+              name={showPw ? "eye-off-outline" : "eye-outline"}
+              size={16}
+              color={c.textMuted}
+            />
+          </TouchableOpacity>
         </View>
-      </Modal>
+        <View style={styles.searchBox}>
+          <Ionicons name="lock-closed-outline" size={16} color={c.textMuted} />
+          <TextInput
+            style={styles.searchInput}
+            value={confirmPw}
+            onChangeText={setConfirmPw}
+            placeholder="Confirm password"
+            placeholderTextColor={c.textFaint}
+            autoCapitalize="none"
+            secureTextEntry={!showPw}
+            editable={!savingPw}
+          />
+        </View>
+        <TouchableOpacity
+          style={[styles.pwSubmit, savingPw && { opacity: 0.7 }]}
+          onPress={submitSetPassword}
+          disabled={savingPw}
+        >
+          {savingPw ? (
+            <ActivityIndicator color="#fff" />
+          ) : (
+            <Text style={styles.pwSubmitText}>Update password</Text>
+          )}
+        </TouchableOpacity>
+      </WebModal>
     </SafeAreaView>
   );
 }
@@ -2508,6 +2576,14 @@ const makeStyles = (c: any) => StyleSheet.create({
     borderColor: c.surfaceBorder,
     gap: 6 },
   quickLinkText: { color: c.text, fontSize: 12, fontWeight: "700" },
+  pwSubmit: {
+    backgroundColor: c.accent,
+    paddingVertical: 13,
+    borderRadius: 12,
+    alignItems: "center",
+    marginTop: 14,
+    ...(Platform.OS === "web" ? { cursor: "pointer" } : {}) },
+  pwSubmitText: { color: "#fff", fontSize: 15, fontWeight: "700" },
 
   // ===== TABS (underline indicator) =====
   tabsBar: {

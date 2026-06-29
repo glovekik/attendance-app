@@ -10,10 +10,8 @@ import {
   TouchableOpacity,
   TextInput,
   ActivityIndicator,
-  Modal,
   Platform,
   Alert } from "react-native";
-import { KeyboardAvoidingView } from "react-native-keyboard-controller";
 import { SafeAreaView } from "react-native-safe-area-context";
 
 import AsyncStorage from "@react-native-async-storage/async-storage";
@@ -30,6 +28,9 @@ import {
 import { PayrollRun } from "../../src/types";
 
 import { useTheme } from "../../src/theme/ThemeProvider";
+
+import { WebModal, ModalActions } from "../../src/components/WebModal";
+
 const monthLabel = (year: number, month: number) =>
   new Date(year, month - 1, 1).toLocaleDateString("en-US", {
     month: "long",
@@ -290,89 +291,80 @@ export default function HRPayroll() {
 
       </ScrollView>
 
-      <Modal
+      <WebModal
         visible={modalVisible}
-        transparent
-        animationType="slide"
-        onRequestClose={() => setModalVisible(false)}
-      >
-        <KeyboardAvoidingView behavior="padding" style={{ flex: 1 }}>
-        <View style={s.modalOverlay}>
-          <View style={s.modalCard}>
-
-            <Text style={s.modalTitle}>New Payroll Run</Text>
-
-            <Text style={s.label}>Year</Text>
-            <TextInput
-              style={s.input}
-              value={String(year)}
-              onChangeText={(v) =>
-                setYear(parseInt(v, 10) || now.getFullYear())
-              }
-              keyboardType="number-pad"
-            />
-
-            <Text style={s.label}>Month</Text>
-            <ScrollView
-              horizontal
-              showsHorizontalScrollIndicator={false}
-              contentContainerStyle={{ gap: 6 }}
+        onClose={() => setModalVisible(false)}
+        title="New Payroll Run"
+        size="md"
+        footer={
+          <ModalActions align="spread">
+            <TouchableOpacity
+              style={s.cancelBtn}
+              onPress={() => setModalVisible(false)}
             >
-              {MONTHS.map((m, i) => (
-                <TouchableOpacity
-                  key={m}
-                  style={[
-                    s.monthBtn,
-                    month === i + 1 && s.monthActive,
-                  ]}
-                  onPress={() => setMonth(i + 1)}
-                >
-                  <Text
-                    style={[
-                      s.monthText,
-                      month === i + 1 && { color: "#fff" },
-                    ]}
-                  >
-                    {m}
-                  </Text>
-                </TouchableOpacity>
-              ))}
-            </ScrollView>
+              <Text style={s.modalBtnText}>Cancel</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[s.saveBtn, saving && { opacity: 0.7 }]}
+              onPress={submitCreate}
+              disabled={saving}
+            >
+              {saving ? (
+                <ActivityIndicator color="#fff" />
+              ) : (
+                <Text style={s.modalBtnText}>Create</Text>
+              )}
+            </TouchableOpacity>
+          </ModalActions>
+        }
+      >
+        <Text style={s.label}>Year</Text>
+        <TextInput
+          style={s.input}
+          value={String(year)}
+          onChangeText={(v) =>
+            setYear(parseInt(v, 10) || now.getFullYear())
+          }
+          keyboardType="number-pad"
+        />
 
-            <Text style={s.label}>Working days</Text>
-            <TextInput
-              style={s.input}
-              value={workingDays}
-              onChangeText={setWorkingDays}
-              placeholder="22"
-              placeholderTextColor={c.textFaint}
-              keyboardType="number-pad"
-            />
-
-            <View style={s.modalActions}>
-              <TouchableOpacity
-                style={s.cancelBtn}
-                onPress={() => setModalVisible(false)}
+        <Text style={s.label}>Month</Text>
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          contentContainerStyle={{ gap: 6 }}
+        >
+          {MONTHS.map((m, i) => (
+            <TouchableOpacity
+              key={m}
+              style={[
+                s.monthBtn,
+                month === i + 1 && s.monthActive,
+              ]}
+              onPress={() => setMonth(i + 1)}
+            >
+              <Text
+                style={[
+                  s.monthText,
+                  month === i + 1 && { color: "#fff" },
+                ]}
               >
-                <Text style={s.modalBtnText}>Cancel</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={[s.saveBtn, saving && { opacity: 0.7 }]}
-                onPress={submitCreate}
-                disabled={saving}
-              >
-                {saving ? (
-                  <ActivityIndicator color="#fff" />
-                ) : (
-                  <Text style={s.modalBtnText}>Create</Text>
-                )}
-              </TouchableOpacity>
-            </View>
+                {m}
+              </Text>
+            </TouchableOpacity>
+          ))}
+        </ScrollView>
 
-          </View>
-        </View>
-        </KeyboardAvoidingView>
-      </Modal>
+        <Text style={s.label}>Working days</Text>
+        <TextInput
+          style={s.input}
+          value={workingDays}
+          onChangeText={setWorkingDays}
+          placeholder="22"
+          placeholderTextColor={c.textFaint}
+          keyboardType="number-pad"
+        />
+      </WebModal>
 
     </SafeAreaView>
   );

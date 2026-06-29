@@ -199,6 +199,38 @@ export const resetPassword =
   };
 
 
+// ================= CHANGE PASSWORD (logged-in) =================
+export const changePassword =
+  async (
+    token: string,
+    currentPassword: string,
+    newPassword: string
+  ) => {
+
+    const response = await fetch(
+      `${API_URL}/auth/change-password`,
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({ currentPassword, newPassword }),
+      }
+    );
+
+    const result = await response.json().catch(() => ({}));
+
+    if (!response.ok) {
+      throw new Error(
+        result.detail || "Could not change password"
+      );
+    }
+
+    return result;
+  };
+
+
 // ================= GET ME =================
 export const getMe =
   async (token: string) => {

@@ -8,11 +8,9 @@ import {
   TouchableOpacity,
   ActivityIndicator,
   RefreshControl,
-  Modal,
   TextInput,
   Alert,
   Platform } from "react-native";
-import { KeyboardAvoidingView } from "react-native-keyboard-controller";
 import { SafeAreaView } from "react-native-safe-area-context";
 
 import AsyncStorage from "@react-native-async-storage/async-storage";
@@ -23,7 +21,8 @@ import {
   listManagerReimbursements,
   decideManagerReimbursement } from "../src/services/manager";
 import { Reimbursement } from "../src/types";
-
+import { WebModal, ModalActions } from "../src/components/WebModal";
+
 import { useTheme } from "../src/theme/ThemeProvider";
 const fmtMoney = (n: number): string => {
   if (typeof n !== "number") return "—";
@@ -195,26 +194,34 @@ export default function ManagerReimbursements() {
         )}
       />
 
-      <Modal
+      <WebModal
         visible={!!selected}
-        animationType="slide"
-        transparent
-        onRequestClose={close}
-      >
-        <KeyboardAvoidingView
-          behavior="padding"
-          style={styles.modalWrap}
-        >
-          <View style={styles.modal}>
-            <View style={styles.modalHeader}>
-              <Text style={styles.modalTitle}>
-                Decide reimbursement
+        onClose={close}
+        title="Decide reimbursement"
+        size="md"
+        footer={
+          <ModalActions align="spread">
+            <TouchableOpacity
+              style={[styles.btn, styles.btnReject]}
+              onPress={() => onDecide("REJECT")}
+              disabled={acting !== null}
+            >
+              <Text style={styles.btnText}>
+                {acting === "REJECT" ? "..." : "Reject"}
               </Text>
-              <TouchableOpacity onPress={close}>
-                <Ionicons name="close" size={24} color={c.textMuted} />
-              </TouchableOpacity>
-            </View>
-
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[styles.btn, styles.btnApprove]}
+              onPress={() => onDecide("APPROVE")}
+              disabled={acting !== null}
+            >
+              <Text style={styles.btnText}>
+                {acting === "APPROVE" ? "..." : "Approve"}
+              </Text>
+            </TouchableOpacity>
+          </ModalActions>
+        }
+      >
             {selected && (
               <>
                 <View style={styles.detailRow}>
@@ -314,32 +321,9 @@ export default function ManagerReimbursements() {
                   placeholderTextColor={c.textFaint}
                   multiline
                 />
-
-                <View style={styles.actions}>
-                  <TouchableOpacity
-                    style={[styles.btn, styles.btnReject]}
-                    onPress={() => onDecide("REJECT")}
-                    disabled={acting !== null}
-                  >
-                    <Text style={styles.btnText}>
-                      {acting === "REJECT" ? "..." : "Reject"}
-                    </Text>
-                  </TouchableOpacity>
-                  <TouchableOpacity
-                    style={[styles.btn, styles.btnApprove]}
-                    onPress={() => onDecide("APPROVE")}
-                    disabled={acting !== null}
-                  >
-                    <Text style={styles.btnText}>
-                      {acting === "APPROVE" ? "..." : "Approve"}
-                    </Text>
-                  </TouchableOpacity>
-                </View>
               </>
             )}
-          </View>
-        </KeyboardAvoidingView>
-      </Modal>
+      </WebModal>
     </SafeAreaView>
   );
 }

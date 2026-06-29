@@ -8,17 +8,16 @@ import {
   TouchableOpacity,
   ActivityIndicator,
   RefreshControl,
-  Modal,
   TextInput,
   Alert,
   Platform } from "react-native";
-import { KeyboardAvoidingView } from "react-native-keyboard-controller";
 import { SafeAreaView } from "react-native-safe-area-context";
 
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 
+import { WebModal, ModalActions } from "../src/components/WebModal";
 import { useTheme } from "../src/theme/ThemeProvider";
 import {
   interviewStatusColor,
@@ -212,132 +211,119 @@ export default function MyInterviews() {
         }}
       />
 
-      <Modal
+      <WebModal
         visible={!!target}
-        animationType="slide"
-        transparent
-        onRequestClose={() => setTarget(null)}
+        onClose={() => setTarget(null)}
+        title="Interview feedback"
+        size="md"
+        footer={
+          <ModalActions align="spread">
+            <TouchableOpacity
+              style={[styles.btn, styles.btnGhost]}
+              onPress={() => setTarget(null)}
+              disabled={submitting}
+            >
+              <Text style={styles.btnGhostText}>Cancel</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[styles.btn, styles.btnPrimary]}
+              onPress={onSubmit}
+              disabled={submitting}
+            >
+              <Text style={styles.btnPrimaryText}>
+                {submitting ? "..." : "Submit"}
+              </Text>
+            </TouchableOpacity>
+          </ModalActions>
+        }
       >
-        <KeyboardAvoidingView
-          behavior="padding"
-          style={styles.modalWrap}
-        >
-          <View style={styles.modal}>
-            <View style={styles.modalHeader}>
-              <Text style={styles.modalTitle}>Interview feedback</Text>
-              <TouchableOpacity onPress={() => setTarget(null)}>
-                <Ionicons name="close" size={24} color={c.textMuted} />
-              </TouchableOpacity>
+        {target && (
+          <>
+            <Text style={styles.candidate}>
+              {target.candidate?.name || target.candidateId}
+            </Text>
+            <Text style={styles.hint}>
+              {fmtTime(target.scheduledAt)}
+              {target.round ? ` · ${target.round}` : ""}
+            </Text>
+
+            <Text style={styles.label}>Rating</Text>
+            <View style={styles.starsRow}>
+              {[1, 2, 3, 4, 5].map((r) => (
+                <TouchableOpacity
+                  key={r}
+                  onPress={() => setRating(r)}
+                >
+                  <Ionicons
+                    name={r <= rating ? "star" : "star-outline"}
+                    size={30}
+                    color="#f59e0b"
+                  />
+                </TouchableOpacity>
+              ))}
             </View>
 
-            {target && (
-              <>
-                <Text style={styles.candidate}>
-                  {target.candidate?.name || target.candidateId}
-                </Text>
-                <Text style={styles.hint}>
-                  {fmtTime(target.scheduledAt)}
-                  {target.round ? ` · ${target.round}` : ""}
-                </Text>
-
-                <Text style={styles.label}>Rating</Text>
-                <View style={styles.starsRow}>
-                  {[1, 2, 3, 4, 5].map((r) => (
-                    <TouchableOpacity
-                      key={r}
-                      onPress={() => setRating(r)}
+            <Text style={styles.label}>Recommendation</Text>
+            <View style={styles.chipRow}>
+              {INTERVIEW_RECS.map((r) => {
+                const sc = recommendationColor(r, c);
+                return (
+                  <TouchableOpacity
+                    key={r}
+                    style={[
+                      styles.chip,
+                      recommendation === r && {
+                        backgroundColor: sc.bg,
+                        borderColor: sc.solid },
+                    ]}
+                    onPress={() => setRecommendation(r)}
+                  >
+                    <Text
+                      style={[
+                        styles.chipText,
+                        recommendation === r && { color: sc.fg },
+                      ]}
                     >
-                      <Ionicons
-                        name={r <= rating ? "star" : "star-outline"}
-                        size={30}
-                        color="#f59e0b"
-                      />
-                    </TouchableOpacity>
-                  ))}
-                </View>
-
-                <Text style={styles.label}>Recommendation</Text>
-                <View style={styles.chipRow}>
-                  {INTERVIEW_RECS.map((r) => {
-                    const sc = recommendationColor(r, c);
-                    return (
-                      <TouchableOpacity
-                        key={r}
-                        style={[
-                          styles.chip,
-                          recommendation === r && {
-                            backgroundColor: sc.bg,
-                            borderColor: sc.solid },
-                        ]}
-                        onPress={() => setRecommendation(r)}
-                      >
-                        <Text
-                          style={[
-                            styles.chipText,
-                            recommendation === r && { color: sc.fg },
-                          ]}
-                        >
-                          {r.replace("_", " ")}
-                        </Text>
-                      </TouchableOpacity>
-                    );
-                  })}
-                </View>
-
-                <Text style={styles.label}>Strengths</Text>
-                <TextInput
-                  style={[styles.input, { minHeight: 60 }]}
-                  value={strengths}
-                  onChangeText={setStrengths}
-                  placeholder="What went well..."
-                  placeholderTextColor={c.textFaint}
-                  multiline
-                  textAlignVertical="top"
-                />
-                <Text style={styles.label}>Concerns</Text>
-                <TextInput
-                  style={[styles.input, { minHeight: 60 }]}
-                  value={concerns}
-                  onChangeText={setConcerns}
-                  placeholder="Any red flags..."
-                  placeholderTextColor={c.textFaint}
-                  multiline
-                  textAlignVertical="top"
-                />
-                <Text style={styles.label}>Notes</Text>
-                <TextInput
-                  style={[styles.input, { minHeight: 60 }]}
-                  value={notes}
-                  onChangeText={setNotes}
-                  placeholder="Additional context"
-                  placeholderTextColor={c.textFaint}
-                  multiline
-                  textAlignVertical="top"
-                />
-
-                <View style={styles.actions}>
-                  <TouchableOpacity
-                    style={[styles.btn, styles.btnGhost]}
-                    onPress={() => setTarget(null)}
-                    disabled={submitting}
-                  >
-                    <Text style={styles.btnGhostText}>Cancel</Text>
-                  </TouchableOpacity>
-                  <TouchableOpacity
-                    style={[styles.btn, styles.btnPrimary]}
-                    onPress={onSubmit}
-                    disabled={submitting}
-                  >
-                    <Text style={styles.btnPrimaryText}>
-                      {submitting ? "..." : "Submit"}
+                      {r.replace("_", " ")}
                     </Text>
                   </TouchableOpacity>
-                </View>
-              </>
-            )}
-          </View>
-        </KeyboardAvoidingView>
-      </Modal>
+                );
+              })}
+            </View>
+
+            <Text style={styles.label}>Strengths</Text>
+            <TextInput
+              style={[styles.input, { minHeight: 60 }]}
+              value={strengths}
+              onChangeText={setStrengths}
+              placeholder="What went well..."
+              placeholderTextColor={c.textFaint}
+              multiline
+              textAlignVertical="top"
+            />
+            <Text style={styles.label}>Concerns</Text>
+            <TextInput
+              style={[styles.input, { minHeight: 60 }]}
+              value={concerns}
+              onChangeText={setConcerns}
+              placeholder="Any red flags..."
+              placeholderTextColor={c.textFaint}
+              multiline
+              textAlignVertical="top"
+            />
+            <Text style={styles.label}>Notes</Text>
+            <TextInput
+              style={[styles.input, { minHeight: 60 }]}
+              value={notes}
+              onChangeText={setNotes}
+              placeholder="Additional context"
+              placeholderTextColor={c.textFaint}
+              multiline
+              textAlignVertical="top"
+            />
+          </>
+        )}
+      </WebModal>
     </SafeAreaView>
   );
 }

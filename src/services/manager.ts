@@ -53,6 +53,27 @@ export const decideManagerCorrection = (
     token,
   });
 
+export interface ManagerBulkDecideResult {
+  message: string;
+  total: number;
+  succeeded: number;
+  failed: number;
+  results: { id: string; ok: boolean; error?: string }[];
+}
+
+// Approve/reject many of a manager's direct-report corrections at once.
+export const bulkDecideManagerCorrections = (
+  token: string,
+  ids: string[],
+  action: "APPROVE" | "REJECT" = "APPROVE",
+  note?: string
+): Promise<ManagerBulkDecideResult> =>
+  apiCall(`/manager/correction-requests/bulk-decide`, {
+    method: "POST",
+    body: { ids, action, note },
+    token,
+  });
+
 // ===== REIMBURSEMENTS =====
 export const listManagerReimbursements = (
   token: string,

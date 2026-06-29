@@ -8,12 +8,11 @@ import {
   TouchableOpacity,
   ActivityIndicator,
   RefreshControl,
-  Modal,
   TextInput,
   Alert,
   Platform } from "react-native";
-import { KeyboardAvoidingView } from "react-native-keyboard-controller";
 import { SafeAreaView } from "react-native-safe-area-context";
+import { WebModal, ModalActions } from "../src/components/WebModal";
 
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useRouter } from "expo-router";
@@ -21,9 +20,10 @@ import { Ionicons } from "@expo/vector-icons";
 
 import {
   listManagerCorrections,
-  decideManagerCorrection } from "../src/services/manager";
+  decideManagerCorrection,
+  bulkDecideManagerCorrections } from "../src/services/manager";
 import { AttendanceCorrection } from "../src/types";
-
+
 import { useTheme } from "../src/theme/ThemeProvider";
 const fmtTime = (iso?: string | null): string => {
   if (!iso) return "—";
@@ -49,6 +49,8 @@ export default function ManagerCorrections() {
   const [acting, setActing] = useState<"APPROVE" | "REJECT" | null>(
     null
   );
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [bulkBusy, setBulkBusy] = useState(false);
 
   const load = useCallback(async () => {
     try {
@@ -58,7 +60,10 @@ export default function ManagerCorrections() {
         return;
       }
       const data = await listManagerCorrections(token, "PENDING");
-      setItems(data || []);
+      const list = data || [];
+      setItems(list);
+      const valid = new Set(list.map((i) => i.id));
+      setSelectedIds((prev) => new Set([...prev].filter((id) => valid.has(id))));
     } catch (err: any) {
       Alert.alert(
         "Couldn't load corrections",
@@ -121,6 +126,72 @@ export default function ManagerCorrections() {
     }
   };
 
+  const toggleSelect = (id: string) => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+
+  const allSelected =
+    items.length > 0 && selectedIds.size === items.length;
+
+  const toggleSelectAll = () => {
+    setSelectedIds(allSelected ? new Set() : new Set(items.map((i) => i.id)));
+  };
+
+  const confirmBulk = async (count: number): Promise<boolean> => {
+    const msg = `Approve ${count} correction${count === 1 ? "" : "s"}?`;
+    if (Platform.OS === "web") {
+      return Promise.resolve(
+        typeof window !== "undefined" && window.confirm(msg)
+      );
+    }
+    return new Promise((resolve) => {
+      Alert.alert("Approve corrections?", msg, [
+        { text: "Cancel", style: "cancel", onPress: () => resolve(false) },
+        { text: "Approve", onPress: () => resolve(true) },
+      ]);
+    });
+  };
+
+  const approveMany = async (targets: AttendanceCorrection[]) => {
+    if (bulkBusy || acting || targets.length === 0) return;
+    const ok = await confirmBulk(targets.length);
+    if (!ok) return;
+    try {
+      setBulkBusy(true);
+      const token = await AsyncStorage.getItem("token");
+      if (!token) return;
+      const res = await bulkDecideManagerCorrections(
+        token,
+        targets.map((t) => t.id),
+        "APPROVE"
+      );
+      const ids = new Set(targets.map((t) => t.id));
+      setItems((prev) => prev.filter((x) => !ids.has(x.id)));
+      setSelectedIds(new Set());
+      if (res.failed === 0) {
+        Alert.alert(
+          "Done",
+          `Approved ${res.succeeded} correction${res.succeeded === 1 ? "" : "s"}`
+        );
+      } else {
+        Alert.alert("Partly done", `Approved ${res.succeeded}, ${res.failed} failed`);
+      }
+    } catch (err: any) {
+      Alert.alert("Bulk approve failed", err?.message || "");
+    } finally {
+      setBulkBusy(false);
+    }
+  };
+
+  const approveAll = () => approveMany(items);
+  const approveSelected = () =>
+    approveMany(items.filter((i) => selectedIds.has(i.id)));
+
   if (loading) {
     return (
       <View style={styles.loader}>
@@ -138,6 +209,45 @@ export default function ManagerCorrections() {
         <Text style={styles.title}>Attendance Corrections</Text>
         <View style={{ width: 24 }} />
       </View>
+
+      {items.length > 0 && (
+        <View style={styles.bulkBar}>
+          <TouchableOpacity onPress={toggleSelectAll} style={styles.selectAll}>
+            <Ionicons
+              name={allSelected ? "checkbox" : "square-outline"}
+              size={20}
+              color={c.accent}
+            />
+            <Text style={styles.selectAllText}>
+              {allSelected ? "Unselect all" : "Select all"}
+            </Text>
+          </TouchableOpacity>
+          <View style={styles.bulkBtns}>
+            <TouchableOpacity
+              style={[
+                styles.bulkBtn,
+                styles.bulkBtnGhost,
+                selectedIds.size === 0 && styles.bulkBtnDisabled,
+              ]}
+              onPress={approveSelected}
+              disabled={selectedIds.size === 0 || bulkBusy}
+            >
+              <Text style={styles.bulkBtnGhostText}>
+                {bulkBusy ? "..." : `Approve selected (${selectedIds.size})`}
+              </Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[styles.bulkBtn, styles.bulkBtnPrimary]}
+              onPress={approveAll}
+              disabled={bulkBusy}
+            >
+              <Text style={styles.bulkBtnPrimaryText}>
+                {bulkBusy ? "..." : "Approve all"}
+              </Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      )}
 
       <FlatList
         data={items}
@@ -166,9 +276,25 @@ export default function ManagerCorrections() {
             activeOpacity={0.8}
           >
             <View style={styles.cardTop}>
-              <Text style={styles.who}>
-                {item.user?.name || "Unknown"}
-              </Text>
+              <View style={styles.whoRow}>
+                <TouchableOpacity
+                  onPress={() => toggleSelect(item.id)}
+                  hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                >
+                  <Ionicons
+                    name={
+                      selectedIds.has(item.id)
+                        ? "checkbox"
+                        : "square-outline"
+                    }
+                    size={20}
+                    color={c.accent}
+                  />
+                </TouchableOpacity>
+                <Text style={styles.who}>
+                  {item.user?.name || "Unknown"}
+                </Text>
+              </View>
               {!!item.attendanceDate && (
                 <View style={styles.pill}>
                   <Text style={styles.pillText}>
@@ -200,26 +326,36 @@ export default function ManagerCorrections() {
         )}
       />
 
-      <Modal
+      <WebModal
         visible={!!selected}
-        animationType="slide"
-        transparent
-        onRequestClose={close}
+        onClose={close}
+        title="Decide correction"
+        size="md"
+        footer={
+          <ModalActions align="spread">
+            <TouchableOpacity
+              style={[styles.btn, styles.btnReject]}
+              onPress={() => onDecide("REJECT")}
+              disabled={acting !== null}
+            >
+              <Text style={styles.btnText}>
+                {acting === "REJECT" ? "..." : "Reject"}
+              </Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[styles.btn, styles.btnApprove]}
+              onPress={() => onDecide("APPROVE")}
+              disabled={acting !== null}
+            >
+              <Text style={styles.btnText}>
+                {acting === "APPROVE" ? "..." : "Approve"}
+              </Text>
+            </TouchableOpacity>
+          </ModalActions>
+        }
       >
-        <KeyboardAvoidingView
-          behavior="padding"
-          style={styles.modalWrap}
-        >
-          <View style={styles.modal}>
-            <View style={styles.modalHeader}>
-              <Text style={styles.modalTitle}>Decide correction</Text>
-              <TouchableOpacity onPress={close}>
-                <Ionicons name="close" size={24} color={c.textMuted} />
-              </TouchableOpacity>
-            </View>
-
-            {selected && (
-              <>
+        {selected && (
+          <>
                 <View style={styles.detailRow}>
                   <Text style={styles.detailValueLabel}>Employee</Text>
                   <Text style={styles.detailValue}>
@@ -274,32 +410,9 @@ export default function ManagerCorrections() {
                   placeholderTextColor={c.textFaint}
                   multiline
                 />
-
-                <View style={styles.actions}>
-                  <TouchableOpacity
-                    style={[styles.btn, styles.btnReject]}
-                    onPress={() => onDecide("REJECT")}
-                    disabled={acting !== null}
-                  >
-                    <Text style={styles.btnText}>
-                      {acting === "REJECT" ? "..." : "Reject"}
-                    </Text>
-                  </TouchableOpacity>
-                  <TouchableOpacity
-                    style={[styles.btn, styles.btnApprove]}
-                    onPress={() => onDecide("APPROVE")}
-                    disabled={acting !== null}
-                  >
-                    <Text style={styles.btnText}>
-                      {acting === "APPROVE" ? "..." : "Approve"}
-                    </Text>
-                  </TouchableOpacity>
-                </View>
               </>
-            )}
-          </View>
-        </KeyboardAvoidingView>
-      </Modal>
+        )}
+      </WebModal>
     </SafeAreaView>
   );
 }
@@ -332,6 +445,30 @@ const makeStyles = (c: any) => StyleSheet.create({
     justifyContent: "space-between",
     alignItems: "center" },
   who: { color: c.text, fontSize: 15, fontWeight: "700" },
+  whoRow: { flexDirection: "row", alignItems: "center", gap: 8 },
+  bulkBar: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    gap: 8,
+    borderBottomWidth: 1,
+    borderBottomColor: c.surfaceBorder },
+  selectAll: { flexDirection: "row", alignItems: "center", gap: 6 },
+  selectAllText: { color: c.text, fontSize: 13, fontWeight: "600" },
+  bulkBtns: { flexDirection: "row", gap: 8, flexShrink: 1 },
+  bulkBtn: {
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 10,
+    alignItems: "center",
+    justifyContent: "center" },
+  bulkBtnGhost: { borderWidth: 1, borderColor: c.accent },
+  bulkBtnGhostText: { color: c.accent, fontSize: 12, fontWeight: "700" },
+  bulkBtnPrimary: { backgroundColor: "#16a34a" },
+  bulkBtnPrimaryText: { color: "#fff", fontSize: 12, fontWeight: "800" },
+  bulkBtnDisabled: { opacity: 0.4 },
   pill: {
     backgroundColor: "#f59e0b",
     paddingHorizontal: 8,

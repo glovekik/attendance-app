@@ -9,10 +9,11 @@ import {
   TouchableOpacity,
   TextInput,
   ActivityIndicator,
-  Modal,
   Platform,
 } from "react-native";
 import { KeyboardAwareScrollView } from "react-native-keyboard-controller";
+
+import { WebModal, ModalActions } from "../../src/components/WebModal";
 
 import { SafeAreaView } from "react-native-safe-area-context";
 
@@ -580,25 +581,42 @@ export default function HRExitDetail() {
       </KeyboardAwareScrollView>
 
       {/* DECIDE MODAL */}
-      <Modal
+      <WebModal
         visible={decideVisible}
-        transparent
-        animationType="slide"
-        onRequestClose={() => setDecideVisible(false)}
-      >
-        <View style={s.modalOverlay}>
-          <View style={s.modalCard}>
-            <KeyboardAwareScrollView
-              showsVerticalScrollIndicator={false}
-              bottomOffset={24}
-              keyboardShouldPersistTaps="handled"
+        onClose={() => setDecideVisible(false)}
+        title={decideAction === "APPROVE" ? "Approve Exit" : "Reject Exit"}
+        size="md"
+        footer={
+          <ModalActions align="spread">
+            <TouchableOpacity
+              style={s.cancelBtn}
+              onPress={() => setDecideVisible(false)}
             >
-
-              <Text style={s.modalTitle}>
-                {decideAction === "APPROVE"
-                  ? "Approve Exit"
-                  : "Reject Exit"}
-              </Text>
+              <Text style={s.modalBtnText}>Cancel</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[
+                decideAction === "APPROVE"
+                  ? s.approveConfirm
+                  : s.rejectConfirm,
+                busy && { opacity: 0.7 },
+              ]}
+              onPress={submitDecision}
+              disabled={busy}
+            >
+              {busy ? (
+                <ActivityIndicator color="#fff" />
+              ) : (
+                <Text style={s.modalBtnText}>
+                  {decideAction === "APPROVE"
+                    ? "Approve"
+                    : "Reject"}
+                </Text>
+              )}
+            </TouchableOpacity>
+          </ModalActions>
+        }
+      >
 
               {decideAction === "APPROVE" && (
                 <>
@@ -663,39 +681,7 @@ export default function HRExitDetail() {
                 multiline
               />
 
-              <View style={s.modalActions}>
-                <TouchableOpacity
-                  style={s.cancelBtn}
-                  onPress={() => setDecideVisible(false)}
-                >
-                  <Text style={s.modalBtnText}>Cancel</Text>
-                </TouchableOpacity>
-                <TouchableOpacity
-                  style={[
-                    decideAction === "APPROVE"
-                      ? s.approveConfirm
-                      : s.rejectConfirm,
-                    busy && { opacity: 0.7 },
-                  ]}
-                  onPress={submitDecision}
-                  disabled={busy}
-                >
-                  {busy ? (
-                    <ActivityIndicator color="#fff" />
-                  ) : (
-                    <Text style={s.modalBtnText}>
-                      {decideAction === "APPROVE"
-                        ? "Approve"
-                        : "Reject"}
-                    </Text>
-                  )}
-                </TouchableOpacity>
-              </View>
-
-            </KeyboardAwareScrollView>
-          </View>
-        </View>
-      </Modal>
+      </WebModal>
 
     </SafeAreaView>
   );

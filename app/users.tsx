@@ -1,4 +1,4 @@
-﻿import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 
 import {
   View,
@@ -8,9 +8,11 @@ import {
   TouchableOpacity,
   TextInput,
   ActivityIndicator,
-  Modal,
-  Platform } from "react-native";
-import { KeyboardAvoidingView, KeyboardAwareScrollView } from "react-native-keyboard-controller";
+  Pressable,
+  Platform,
+  Image,
+} from "react-native";
+import { KeyboardAwareScrollView } from "react-native-keyboard-controller";
 import { SafeAreaView } from "react-native-safe-area-context";
 
 import AsyncStorage from "@react-native-async-storage/async-storage";
@@ -22,29 +24,39 @@ import { Ionicons } from "@expo/vector-icons";
 import {
   listUsers,
   createUser,
-  updateUser } from "../src/services/users";
+  updateUser,
+} from "../src/services/users";
 
 import { hrListAssets } from "../src/services/assets";
 
 import {
   addUserDocument,
-  DOC_CATEGORIES } from "../src/services/documents";
+  DOC_CATEGORIES,
+} from "../src/services/documents";
 
 import { FilePickButton } from "../src/components/FilePickButton";
 import { DatePickerField } from "../src/components/DatePickerField";
+import { WebModal, ModalActions, ConfirmModal } from "../src/components/WebModal";
+import { DataTable, Column } from "../src/components/DataTable";
+import { PageHeader } from "../src/components/PageHeader";
+import { WebInput, FormField, ChipPicker } from "../src/components/WebFormFields";
+import { ProButton, StatusBadge, Avatar } from "../src/components/ProUI";
 
 import {
   User,
   UserStatus,
   USER_STATUSES,
-  Asset } from "../src/types";
+  Asset,
+} from "../src/types";
 
 import { useTheme } from "../src/theme/ThemeProvider";
 import { getMe } from "../src/services/api";
 import {
   BottomTabBar,
-  BOTTOM_BAR_RESERVED_HEIGHT } from "../src/components/BottomTabBar";
-import { confirmAction, notify } from "../src/utils/confirm";
+  BOTTOM_BAR_RESERVED_HEIGHT,
+} from "../src/components/BottomTabBar";
+import { notify } from "../src/utils/confirm";
+import { useResponsive, getResponsiveSpacing } from "../src/utils/responsive";
 
 interface StagedDoc {
   category: string;
@@ -53,14 +65,17 @@ interface StagedDoc {
 }
 
 /**
- * Employees list — Koru-style card grid. Tabs (Active / Not Active),
- * search, big create button. Profile / terminate inline.
+ * Employees list — Responsive design with DataTable for desktop,
+ * cards for mobile. Tabs (Active / Not Active), search, create modal.
  */
 export default function Users() {
   const router = useRouter();
   const { theme } = useTheme();
+  const responsive = useResponsive();
+  const spacing = getResponsiveSpacing(responsive.breakpoint);
   const c = theme.colors;
-  const styles = useMemo(() => makeStyles(c), [c]);
+  const isDesktop = responsive.isDesktop;
+  const styles = useMemo(() => makeStyles(c, isDesktop), [c, isDesktop]);
 
   const [users, setUsers] = useState<User[]>([]);
   const [loading, setLoading] = useState(true);
@@ -187,7 +202,8 @@ export default function Users() {
         joiningDate: joiningDate || undefined,
         status,
         initialAssetIds:
-          selectedAssetIds.length > 0 ? selectedAssetIds : undefined });
+          selectedAssetIds.length > 0 ? selectedAssetIds : undefined,
+      });
       // Upload staged docs.
       for (const d of stagedDocs) {
         await addUserDocument(token, res.id, d).catch(() => {});
@@ -201,7 +217,8 @@ export default function Users() {
       );
       router.push({
         pathname: "/hr-user-profile" as any,
-        params: { id: res.id } });
+        params: { id: res.id },
+      });
       await load();
     } catch (err: any) {
       notify("Couldn't create", err?.message || "");
@@ -212,11 +229,8 @@ export default function Users() {
 
   const askTerminate = async (u: User) => {
     if (u.status === "Terminated") {
-      const ok = await confirmAction({
-        title: "Reactivate user?",
-        message: `${u.name} is currently NOT ACTIVE. Set status back to Active?`,
-        confirmLabel: "Reactivate" });
-      if (ok) await doSetStatus(u, "Active");
+      // Reactivate directly
+      await doSetStatus(u, "Active");
       return;
     }
     setTerminateTarget(u);
@@ -261,6 +275,125 @@ export default function Users() {
     }
   };
 
+  // DataTable columns for desktop
+  const columns: Column<User>[] = useMemo(() => [
+    {
+      key: "name",
+      label: "Employee",
+      width: "30%",
+      render: (user) => (
+        <View style={styles.employeeCell}>
+          <Avatar
+            name={user.name}
+            src={user.profilePictureUrl}
+            size="sm"
+          />
+          <View style={{ flex: 1, marginLeft: 12 }}>
+            <Text style={[styles.cellName, { color: c.text }]} numberOfLines={1}>
+              {user.name}
+            </Text>
+            <Text style={[styles.cellEmail, { color: c.textMuted }]} numberOfLines={1}>
+              {user.email}
+            </Text>
+          </View>
+        </View>
+      ),
+    },
+    {
+      key: "employeeCode",
+      label: "Code",
+      width: "12%",
+      render: (user) => (
+        <Text style={[styles.cellText, { color: c.text }]}>
+          {user.employeeCode || "—"}
+        </Text>
+      ),
+    },
+    {
+      key: "tag",
+      label: "Designation",
+      width: "18%",
+      render: (user) => (
+        <Text style={[styles.cellText, { color: c.text }]} numberOfLines={1}>
+          {user.tag || "—"}
+        </Text>
+      ),
+    },
+    {
+      key: "role",
+      label: "Role",
+      width: "12%",
+      render: (user) => {
+        const roleTint =
+          user.role === "HR"
+            ? "purple"
+            : user.role === "CEO"
+            ? "warning"
+            : user.role === "MANAGER"
+            ? "info"
+            : "default";
+        return (
+          <StatusBadge
+            status={user.role || "EMPLOYEE"}
+            variant={roleTint as any}
+          />
+        );
+      },
+    },
+    {
+      key: "status",
+      label: "Status",
+      width: "12%",
+      render: (user) => (
+        <StatusBadge
+          status={user.status === "Terminated" ? "INACTIVE" : "ACTIVE"}
+          variant={user.status === "Terminated" ? "danger" : "success"}
+        />
+      ),
+    },
+    {
+      key: "actions",
+      label: "",
+      width: "16%",
+      align: "right",
+      render: (user) => (
+        <View style={styles.actionsCell}>
+          <Pressable
+            onPress={() => router.push(`/hr-user-profile?id=${user.id}` as any)}
+            style={({ hovered }: any) => [
+              styles.actionBtn,
+              { backgroundColor: c.surfaceMuted },
+              hovered && { backgroundColor: c.accentSoft },
+            ]}
+          >
+            <Ionicons name="eye-outline" size={16} color={c.accent} />
+          </Pressable>
+          <Pressable
+            onPress={() => askTerminate(user)}
+            style={({ hovered }: any) => [
+              styles.actionBtn,
+              {
+                backgroundColor: user.status === "Terminated"
+                  ? c.successBg
+                  : c.dangerBg,
+              },
+              hovered && { opacity: 0.8 },
+            ]}
+          >
+            <Ionicons
+              name={user.status === "Terminated" ? "refresh-outline" : "trash-outline"}
+              size={16}
+              color={user.status === "Terminated" ? c.successText : c.dangerText}
+            />
+          </Pressable>
+        </View>
+      ),
+    },
+  ], [c, styles]);
+
+  // Desktop shows sidebar, so we don't need bottom bar padding
+  const bottomPadding = responsive.showSidebar ? 40 : BOTTOM_BAR_RESERVED_HEIGHT + 24;
+
   if (loading) {
     return (
       <View style={[styles.loader, { backgroundColor: c.bg }]}>
@@ -273,564 +406,427 @@ export default function Users() {
     <SafeAreaView style={[styles.safe, { backgroundColor: c.bg }]}>
       <ScrollView
         contentContainerStyle={{
-          padding: 20,
-          paddingBottom: BOTTOM_BAR_RESERVED_HEIGHT + 24 }}
+          padding: spacing.padding,
+          paddingBottom: bottomPadding,
+          ...(isDesktop && {
+            maxWidth: 1400,
+            alignSelf: "center" as const,
+            width: "100%",
+          }),
+        }}
         showsVerticalScrollIndicator={false}
       >
         {/* HEADER */}
-        <View style={styles.headerRow}>
-          <TouchableOpacity
-            onPress={() =>
-              router.canGoBack() ? router.back() : router.replace("/")
-            }
-            style={[
-              styles.iconBtn,
-              {
-                backgroundColor: c.surface,
-                borderColor: c.surfaceBorder },
-            ]}
-          >
-            <Ionicons name="chevron-back" size={22} color={c.text} />
-          </TouchableOpacity>
-          <View style={{ flex: 1, marginLeft: 12 }}>
-            <Text style={[styles.title, { color: c.text }]}>
-              Employees
-            </Text>
-            <Text style={[styles.subtitle, { color: c.textMuted }]}>
-              {activeCount} active
-            </Text>
-          </View>
-          <TouchableOpacity
-            onPress={openCreate}
-            style={[
-              styles.addBtn,
-              {
-                backgroundColor: c.accent,
-                shadowColor: c.shadow },
-            ]}
-            activeOpacity={0.85}
-          >
-            <Ionicons name="add" size={22} color="#fff" />
-          </TouchableOpacity>
-        </View>
-
-        {/* TABS */}
-        <View style={styles.tabsRow}>
-          <TouchableOpacity
-            onPress={() => setTab("ACTIVE")}
-            activeOpacity={0.85}
-            style={[
-              styles.tabBtn,
-              {
-                backgroundColor:
-                  tab === "ACTIVE" ? c.accentSoft : c.surfaceMuted,
-                borderColor:
-                  tab === "ACTIVE" ? c.accent : c.surfaceBorder },
-            ]}
-          >
-            <Text
-              style={{
-                color: tab === "ACTIVE" ? c.accent : c.textMuted,
-                fontWeight: "800",
-                fontSize: 13 }}
-            >
-              Active · {activeCount}
-            </Text>
-          </TouchableOpacity>
-          <TouchableOpacity
-            onPress={() => setTab("INACTIVE")}
-            activeOpacity={0.85}
-            style={[
-              styles.tabBtn,
-              {
-                backgroundColor:
-                  tab === "INACTIVE" ? c.accentSoft : c.surfaceMuted,
-                borderColor:
-                  tab === "INACTIVE" ? c.accent : c.surfaceBorder },
-            ]}
-          >
-            <Text
-              style={{
-                color: tab === "INACTIVE" ? c.accent : c.textMuted,
-                fontWeight: "800",
-                fontSize: 13 }}
-            >
-              Not Active · {inactiveCount}
-            </Text>
-          </TouchableOpacity>
-        </View>
-
-        {/* SEARCH */}
-        <View
-          style={[
-            styles.searchBox,
-            {
-              backgroundColor: c.surface,
-              borderColor: c.surfaceBorder },
+        <PageHeader
+          title="Employees"
+          subtitle={`${activeCount} active employees`}
+          breadcrumbs={[
+            { label: "Home", href: "/" },
+            { label: "HR Admin", href: "/hr-admin" },
+            { label: "Employees" },
           ]}
-        >
-          <Ionicons name="search" size={18} color={c.textMuted} />
-          <TextInput
-            style={[styles.searchInput, { color: c.text }]}
-            value={search}
-            onChangeText={setSearch}
-            placeholder="Search by name, email, or code"
-            placeholderTextColor={c.textFaint}
-            autoCapitalize="none"
-          />
-          {search.length > 0 && (
-            <TouchableOpacity onPress={() => setSearch("")} hitSlop={8}>
-              <Ionicons
-                name="close-circle"
-                size={18}
-                color={c.textMuted}
-              />
-            </TouchableOpacity>
-          )}
-        </View>
+          actions={
+            <ProButton
+              label={isDesktop ? "Add Employee" : ""}
+              icon="add"
+              onPress={openCreate}
+              variant="primary"
+              size={isDesktop ? "md" : "sm"}
+            />
+          }
+        />
 
-        {/* LIST */}
-        {filteredUsers.length === 0 ? (
+        {/* TABS & SEARCH */}
+        <View style={[styles.filterRow, isDesktop && styles.filterRowDesktop]}>
+          <View style={styles.tabsRow}>
+            <Pressable
+              onPress={() => setTab("ACTIVE")}
+              style={({ hovered }: any) => [
+                styles.tabBtn,
+                {
+                  backgroundColor:
+                    tab === "ACTIVE" ? c.accentSoft : c.surfaceMuted,
+                  borderColor:
+                    tab === "ACTIVE" ? c.accent : c.surfaceBorder,
+                },
+                Platform.OS === "web" && hovered && tab !== "ACTIVE" && {
+                  borderColor: c.accent,
+                },
+              ]}
+            >
+              <Text
+                style={{
+                  color: tab === "ACTIVE" ? c.accent : c.textMuted,
+                  fontWeight: "700",
+                  fontSize: 13,
+                }}
+              >
+                Active · {activeCount}
+              </Text>
+            </Pressable>
+            <Pressable
+              onPress={() => setTab("INACTIVE")}
+              style={({ hovered }: any) => [
+                styles.tabBtn,
+                {
+                  backgroundColor:
+                    tab === "INACTIVE" ? c.accentSoft : c.surfaceMuted,
+                  borderColor:
+                    tab === "INACTIVE" ? c.accent : c.surfaceBorder,
+                },
+                Platform.OS === "web" && hovered && tab !== "INACTIVE" && {
+                  borderColor: c.accent,
+                },
+              ]}
+            >
+              <Text
+                style={{
+                  color: tab === "INACTIVE" ? c.accent : c.textMuted,
+                  fontWeight: "700",
+                  fontSize: 13,
+                }}
+              >
+                Not Active · {inactiveCount}
+              </Text>
+            </Pressable>
+          </View>
+
+          {/* SEARCH */}
           <View
             style={[
-              styles.emptyCard,
+              styles.searchBox,
               {
                 backgroundColor: c.surface,
                 borderColor: c.surfaceBorder,
-                shadowColor: c.shadow },
+              },
+              isDesktop && styles.searchBoxDesktop,
             ]}
           >
-            <Ionicons
-              name={
-                tab === "ACTIVE"
-                  ? "people-outline"
-                  : "person-remove-outline"
-              }
-              size={32}
-              color={c.textMuted}
+            <Ionicons name="search" size={18} color={c.textMuted} />
+            <TextInput
+              style={[styles.searchInput, { color: c.text }]}
+              value={search}
+              onChangeText={setSearch}
+              placeholder="Search by name, email, or code"
+              placeholderTextColor={c.textFaint}
+              autoCapitalize="none"
             />
-            <Text style={[styles.emptyText, { color: c.text }]}>
-              {search
+            {search.length > 0 && (
+              <TouchableOpacity onPress={() => setSearch("")} hitSlop={8}>
+                <Ionicons
+                  name="close-circle"
+                  size={18}
+                  color={c.textMuted}
+                />
+              </TouchableOpacity>
+            )}
+          </View>
+        </View>
+
+        {/* LIST - DataTable for desktop, Cards for mobile */}
+        {isDesktop ? (
+          <DataTable
+            columns={columns}
+            data={filteredUsers}
+            keyExtractor={(user) => user.id}
+            onRowPress={(user) =>
+              router.push(`/hr-user-profile?id=${user.id}` as any)
+            }
+            emptyMessage={
+              search
                 ? "No matching employees"
                 : tab === "ACTIVE"
                 ? "No active employees yet"
-                : "No terminated employees"}
-            </Text>
-            {!search && tab === "ACTIVE" && (
-              <Text style={[styles.emptySub, { color: c.textMuted }]}>
-                Tap + to create your first employee.
-              </Text>
-            )}
-          </View>
+                : "No terminated employees"
+            }
+          />
         ) : (
-          filteredUsers.map((u) => (
-            <UserCard
-              key={u.id}
-              user={u}
-              onPress={() =>
-                router.push(`/hr-user-profile?id=${u.id}` as any)
-              }
-              onTerminate={() => askTerminate(u)}
-              theme={theme}
-            />
-          ))
+          <>
+            {filteredUsers.length === 0 ? (
+              <View
+                style={[
+                  styles.emptyCard,
+                  {
+                    backgroundColor: c.surface,
+                    borderColor: c.surfaceBorder,
+                    shadowColor: c.shadow,
+                  },
+                ]}
+              >
+                <Ionicons
+                  name={
+                    tab === "ACTIVE"
+                      ? "people-outline"
+                      : "person-remove-outline"
+                  }
+                  size={32}
+                  color={c.textMuted}
+                />
+                <Text style={[styles.emptyText, { color: c.text }]}>
+                  {search
+                    ? "No matching employees"
+                    : tab === "ACTIVE"
+                    ? "No active employees yet"
+                    : "No terminated employees"}
+                </Text>
+                {!search && tab === "ACTIVE" && (
+                  <Text style={[styles.emptySub, { color: c.textMuted }]}>
+                    Tap + to create your first employee.
+                  </Text>
+                )}
+              </View>
+            ) : (
+              filteredUsers.map((u) => (
+                <UserCard
+                  key={u.id}
+                  user={u}
+                  onPress={() =>
+                    router.push(`/hr-user-profile?id=${u.id}` as any)
+                  }
+                  onTerminate={() => askTerminate(u)}
+                  theme={theme}
+                />
+              ))
+            )}
+          </>
         )}
       </ScrollView>
 
       {/* CREATE MODAL */}
-      <Modal
+      <WebModal
         visible={modalVisible}
-        transparent
-        animationType="slide"
-        onRequestClose={() => setModalVisible(false)}
+        onClose={() => setModalVisible(false)}
+        title="New Employee"
+        subtitle="Add a new team member to your organization"
+        size="lg"
+        footer={
+          <ModalActions align="spread">
+            <ProButton
+              label="Cancel"
+              variant="secondary"
+              onPress={() => setModalVisible(false)}
+              disabled={saving}
+            />
+            <ProButton
+              label={saving ? "Creating..." : "Create Employee"}
+              variant="primary"
+              onPress={saveNew}
+              loading={saving}
+              icon="checkmark"
+            />
+          </ModalActions>
+        }
       >
-        <View style={[styles.modalScrim, { backgroundColor: c.overlay }]}>
-          <View
-            style={[
-              styles.modalCard,
-              { backgroundColor: c.surface, shadowColor: c.shadow },
-            ]}
-          >
-            <KeyboardAwareScrollView
-              showsVerticalScrollIndicator={false}
-              keyboardShouldPersistTaps="handled"
-              bottomOffset={24}
-            >
-              <View style={styles.modalHeader}>
-                <Text style={[styles.modalTitle, { color: c.text }]}>
-                  New employee
-                </Text>
-                <TouchableOpacity
-                  onPress={() => setModalVisible(false)}
-                  hitSlop={8}
-                >
-                  <Ionicons name="close" size={22} color={c.textMuted} />
-                </TouchableOpacity>
-              </View>
+        <KeyboardAwareScrollView
+          showsVerticalScrollIndicator={false}
+          keyboardShouldPersistTaps="handled"
+          bottomOffset={24}
+        >
+          <View style={[styles.formGrid, isDesktop && styles.formGridDesktop]}>
+            <FormField label="Full Name" required>
+              <WebInput
+                value={name}
+                onChangeText={setName}
+                placeholder="Enter employee name"
+                leftIcon="person-outline"
+              />
+            </FormField>
 
-              <Field label="NAME" theme={theme}>
-                <Input
-                  value={name}
-                  onChangeText={setName}
-                  placeholder="Full name"
-                  theme={theme}
-                />
-              </Field>
-              <Field label="EMAIL" theme={theme}>
-                <Input
-                  value={email}
-                  onChangeText={setEmail}
-                  placeholder="user@example.com"
-                  autoCapitalize="none"
-                  keyboardType="email-address"
-                  theme={theme}
-                />
-              </Field>
-              <Field label="PASSWORD" theme={theme}>
-                <View style={{ position: "relative" }}>
-                  <Input
-                    value={password}
-                    onChangeText={setPassword}
-                    placeholder="Min 6 characters"
-                    secureTextEntry={!showPassword}
-                    autoCapitalize="none"
-                    theme={theme}
-                  />
-                  <TouchableOpacity
-                    onPress={() => setShowPassword((v) => !v)}
-                    style={styles.eyeBtn}
-                    hitSlop={8}
+            <FormField label="Email Address" required>
+              <WebInput
+                value={email}
+                onChangeText={setEmail}
+                placeholder="user@company.com"
+                autoCapitalize="none"
+                keyboardType="email-address"
+                leftIcon="mail-outline"
+              />
+            </FormField>
+
+            <FormField label="Password" required>
+              <WebInput
+                value={password}
+                onChangeText={setPassword}
+                placeholder="Min 6 characters"
+                secureTextEntry={!showPassword}
+                autoCapitalize="none"
+                leftIcon="lock-closed-outline"
+                rightIcon={showPassword ? "eye-off-outline" : "eye-outline"}
+                onRightIconPress={() => setShowPassword((v) => !v)}
+              />
+            </FormField>
+
+            <FormField label="Designation">
+              <WebInput
+                value={tag}
+                onChangeText={setTag}
+                placeholder="e.g. Senior Engineer"
+                leftIcon="briefcase-outline"
+              />
+            </FormField>
+
+            <FormField label="Employee Code" helper="Leave blank to auto-generate">
+              <WebInput
+                value={employeeCode}
+                onChangeText={setEmployeeCode}
+                placeholder="EMP001"
+                leftIcon="barcode-outline"
+              />
+            </FormField>
+
+            <FormField label="Work Phone">
+              <WebInput
+                value={workPhone}
+                onChangeText={setWorkPhone}
+                placeholder="+91..."
+                keyboardType="phone-pad"
+                leftIcon="call-outline"
+              />
+            </FormField>
+
+            <FormField label="Joining Date">
+              <DatePickerField
+                value={joiningDate}
+                onChange={setJoiningDate}
+              />
+            </FormField>
+
+            <FormField label="Status">
+              <ChipPicker
+                value={status}
+                onChange={(v) => setStatus(v as UserStatus)}
+                options={USER_STATUSES.map((s) => ({
+                  value: s,
+                  label: s === "Terminated" ? "Not Active" : s,
+                }))}
+              />
+            </FormField>
+          </View>
+
+          {availableAssets.length > 0 && (
+            <FormField label="Assign Assets (Optional)">
+              <ChipPicker
+                value={selectedAssetIds}
+                onChange={(v) => setSelectedAssetIds(v as string[])}
+                options={availableAssets.map((a) => ({
+                  value: a.id,
+                  label: `${a.code} · ${a.name}`,
+                }))}
+                multiple
+              />
+            </FormField>
+          )}
+
+          <FormField label="Documents (Optional)">
+            <ChipPicker
+              value={docCategory}
+              onChange={(v) => setDocCategory(v as string)}
+              options={DOC_CATEGORIES.map((cat) => ({
+                value: cat,
+                label: cat,
+              }))}
+            />
+            <View style={{ marginTop: 12 }}>
+              <FilePickButton
+                label={`Upload ${docCategory}`}
+                onUploaded={(url, fileName) =>
+                  setStagedDocs((prev) => [
+                    ...prev,
+                    { category: docCategory, fileName, fileUrl: url },
+                  ])
+                }
+              />
+            </View>
+            {stagedDocs.length > 0 && (
+              <View style={{ marginTop: 12, gap: 8 }}>
+                {stagedDocs.map((d, i) => (
+                  <View
+                    key={`${d.category}-${i}`}
+                    style={[
+                      styles.docRow,
+                      {
+                        backgroundColor: c.surfaceMuted,
+                        borderColor: c.surfaceBorder,
+                      },
+                    ]}
                   >
                     <Ionicons
-                      name={showPassword ? "eye-off-outline" : "eye-outline"}
-                      size={20}
-                      color={c.textMuted}
+                      name="document-text-outline"
+                      size={16}
+                      color={c.accent}
                     />
-                  </TouchableOpacity>
-                </View>
-              </Field>
-
-              <Field label="DESIGNATION" theme={theme}>
-                <Input
-                  value={tag}
-                  onChangeText={setTag}
-                  placeholder="e.g. Senior Engineer"
-                  theme={theme}
-                />
-              </Field>
-
-              <Field
-                label="EMPLOYEE CODE (optional)"
-                theme={theme}
-              >
-                <Input
-                  value={employeeCode}
-                  onChangeText={setEmployeeCode}
-                  placeholder="Leave blank to auto-generate"
-                  theme={theme}
-                />
-              </Field>
-
-              <Field label="WORK PHONE" theme={theme}>
-                <Input
-                  value={workPhone}
-                  onChangeText={setWorkPhone}
-                  placeholder="+91…"
-                  keyboardType="phone-pad"
-                  theme={theme}
-                />
-              </Field>
-
-              <Field label="JOINING DATE" theme={theme}>
-                <DatePickerField
-                  value={joiningDate}
-                  onChange={setJoiningDate}
-                />
-              </Field>
-
-              <Field label="STATUS" theme={theme}>
-                <View style={styles.chipsRow}>
-                  {USER_STATUSES.map((s) => {
-                    const active = status === s;
-                    return (
-                      <TouchableOpacity
-                        key={s}
-                        onPress={() => setStatus(s)}
-                        style={[
-                          styles.chip,
-                          {
-                            backgroundColor: active
-                              ? c.accentSoft
-                              : c.surfaceMuted,
-                            borderColor: active
-                              ? c.accent
-                              : c.surfaceBorder },
-                        ]}
-                      >
-                        <Text
-                          style={{
-                            color: active ? c.accent : c.textMuted,
-                            fontSize: 12,
-                            fontWeight: "700" }}
-                        >
-                          {s === "Terminated" ? "Not Active" : s}
-                        </Text>
-                      </TouchableOpacity>
-                    );
-                  })}
-                </View>
-              </Field>
-
-              {availableAssets.length > 0 && (
-                <Field
-                  label="ASSIGN ASSETS (optional)"
-                  theme={theme}
-                >
-                  <View style={styles.chipsRow}>
-                    {availableAssets.map((a) => {
-                      const picked = selectedAssetIds.includes(a.id);
-                      return (
-                        <TouchableOpacity
-                          key={a.id}
-                          onPress={() =>
-                            setSelectedAssetIds((prev) =>
-                              picked
-                                ? prev.filter((x) => x !== a.id)
-                                : [...prev, a.id]
-                            )
-                          }
-                          style={[
-                            styles.chip,
-                            {
-                              backgroundColor: picked
-                                ? c.accentSoft
-                                : c.surfaceMuted,
-                              borderColor: picked
-                                ? c.accent
-                                : c.surfaceBorder },
-                          ]}
-                        >
-                          <Text
-                            style={{
-                              color: picked ? c.accent : c.textMuted,
-                              fontSize: 12,
-                              fontWeight: "700" }}
-                          >
-                            {a.code} · {a.name}
-                          </Text>
-                        </TouchableOpacity>
-                      );
-                    })}
-                  </View>
-                </Field>
-              )}
-
-              <Field label="DOCUMENTS (optional)" theme={theme}>
-                <View style={styles.chipsRow}>
-                  {DOC_CATEGORIES.map((cat) => {
-                    const active = docCategory === cat;
-                    return (
-                      <TouchableOpacity
-                        key={cat}
-                        onPress={() => setDocCategory(cat)}
-                        style={[
-                          styles.chip,
-                          {
-                            backgroundColor: active
-                              ? c.accentSoft
-                              : c.surfaceMuted,
-                            borderColor: active
-                              ? c.accent
-                              : c.surfaceBorder },
-                        ]}
-                      >
-                        <Text
-                          style={{
-                            color: active ? c.accent : c.textMuted,
-                            fontSize: 12,
-                            fontWeight: "700" }}
-                        >
-                          {cat}
-                        </Text>
-                      </TouchableOpacity>
-                    );
-                  })}
-                </View>
-                <View style={{ marginTop: 10 }}>
-                  <FilePickButton
-                    label={`Upload ${docCategory}`}
-                    onUploaded={(url, fileName) =>
-                      setStagedDocs((prev) => [
-                        ...prev,
-                        { category: docCategory, fileName, fileUrl: url },
-                      ])
-                    }
-                  />
-                </View>
-                {stagedDocs.length > 0 && (
-                  <View style={{ marginTop: 10, gap: 6 }}>
-                    {stagedDocs.map((d, i) => (
-                      <View
-                        key={`${d.category}-${i}`}
-                        style={[
-                          styles.docRow,
-                          {
-                            backgroundColor: c.surfaceMuted,
-                            borderColor: c.surfaceBorder },
-                        ]}
-                      >
-                        <Ionicons
-                          name="document-text-outline"
-                          size={16}
-                          color={c.accent}
-                        />
-                        <Text
-                          style={{
-                            color: c.text,
-                            fontSize: 12,
-                            flex: 1 }}
-                          numberOfLines={1}
-                        >
-                          {d.category} · {d.fileName}
-                        </Text>
-                        <TouchableOpacity
-                          onPress={() =>
-                            setStagedDocs((prev) =>
-                              prev.filter((_, j) => j !== i)
-                            )
-                          }
-                          hitSlop={6}
-                        >
-                          <Ionicons
-                            name="close-circle"
-                            size={16}
-                            color={c.dangerText}
-                          />
-                        </TouchableOpacity>
-                      </View>
-                    ))}
-                  </View>
-                )}
-              </Field>
-
-              <View style={styles.modalActions}>
-                <TouchableOpacity
-                  onPress={() => setModalVisible(false)}
-                  disabled={saving}
-                  style={[
-                    styles.cancelBtn,
-                    { backgroundColor: c.surfaceMuted },
-                  ]}
-                >
-                  <Text
-                    style={{ color: c.text, fontWeight: "700" }}
-                  >
-                    Cancel
-                  </Text>
-                </TouchableOpacity>
-                <TouchableOpacity
-                  onPress={saveNew}
-                  disabled={saving}
-                  style={[
-                    styles.submitBtn,
-                    {
-                      backgroundColor: c.accent,
-                      shadowColor: c.shadow,
-                      opacity: saving ? 0.7 : 1 },
-                  ]}
-                >
-                  {saving ? (
-                    <ActivityIndicator color="#fff" />
-                  ) : (
-                    <Text style={{ color: "#fff", fontWeight: "800" }}>
-                      Create
+                    <Text
+                      style={{
+                        color: c.text,
+                        fontSize: 13,
+                        flex: 1,
+                      }}
+                      numberOfLines={1}
+                    >
+                      {d.category} · {d.fileName}
                     </Text>
-                  )}
-                </TouchableOpacity>
+                    <TouchableOpacity
+                      onPress={() =>
+                        setStagedDocs((prev) =>
+                          prev.filter((_, j) => j !== i)
+                        )
+                      }
+                      hitSlop={6}
+                    >
+                      <Ionicons
+                        name="close-circle"
+                        size={18}
+                        color={c.dangerText}
+                      />
+                    </TouchableOpacity>
+                  </View>
+                ))}
               </View>
-            </KeyboardAwareScrollView>
-          </View>
-        </View>
-      </Modal>
+            )}
+          </FormField>
+        </KeyboardAwareScrollView>
+      </WebModal>
 
       {/* TERMINATE MODAL */}
-      <Modal
+      <WebModal
         visible={terminateModalVisible}
-        transparent
-        animationType="fade"
-        onRequestClose={() => setTerminateModalVisible(false)}
+        onClose={() => {
+          setTerminateModalVisible(false);
+          setTerminateReason("");
+          setTerminateTarget(null);
+        }}
+        title={`Mark ${terminateTarget?.name || "user"} NOT ACTIVE`}
+        subtitle="Account is preserved (audit / payroll history kept) but the user can no longer log in."
+        size="sm"
+        footer={
+          <ModalActions align="spread">
+            <ProButton
+              label="Cancel"
+              variant="secondary"
+              onPress={() => {
+                setTerminateModalVisible(false);
+                setTerminateReason("");
+                setTerminateTarget(null);
+              }}
+            />
+            <ProButton
+              label={terminating ? "Processing..." : "Mark NOT ACTIVE"}
+              variant="danger"
+              onPress={confirmTerminate}
+              loading={terminating}
+            />
+          </ModalActions>
+        }
       >
-        <KeyboardAvoidingView behavior="padding" style={{ flex: 1 }}>
-        <View
-          style={[
-            styles.modalScrim,
-            { backgroundColor: c.overlay, justifyContent: "center" },
-          ]}
-        >
-          <View
-            style={[
-              styles.terminateCard,
-              { backgroundColor: c.surface, shadowColor: c.shadow },
-            ]}
-          >
-            <Text style={[styles.modalTitle, { color: c.text }]}>
-              Mark {terminateTarget?.name || "user"} NOT ACTIVE
-            </Text>
-            <Text style={[styles.terminateHint, { color: c.textMuted }]}>
-              Account is preserved (audit / payroll history kept) but the
-              user can no longer log in. Reactivate later from this list.
-            </Text>
-            <Field label="REASON *" theme={theme}>
-              <Input
-                value={terminateReason}
-                onChangeText={setTerminateReason}
-                placeholder="e.g. Resigned, end of contract…"
-                multiline
-                theme={theme}
-              />
-            </Field>
-            <View style={styles.modalActions}>
-              <TouchableOpacity
-                onPress={() => {
-                  setTerminateModalVisible(false);
-                  setTerminateReason("");
-                  setTerminateTarget(null);
-                }}
-                style={[
-                  styles.cancelBtn,
-                  { backgroundColor: c.surfaceMuted },
-                ]}
-              >
-                <Text
-                  style={{ color: c.text, fontWeight: "700" }}
-                >
-                  Cancel
-                </Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                onPress={confirmTerminate}
-                disabled={terminating}
-                style={[
-                  styles.submitBtn,
-                  {
-                    backgroundColor: c.dangerText,
-                    shadowColor: c.shadow,
-                    opacity: terminating ? 0.7 : 1 },
-                ]}
-              >
-                {terminating ? (
-                  <ActivityIndicator color="#fff" />
-                ) : (
-                  <Text style={{ color: "#fff", fontWeight: "800" }}>
-                    Mark NOT ACTIVE
-                  </Text>
-                )}
-              </TouchableOpacity>
-            </View>
-          </View>
-        </View>
-        </KeyboardAvoidingView>
-      </Modal>
+        <FormField label="Reason" required>
+          <WebInput
+            value={terminateReason}
+            onChangeText={setTerminateReason}
+            placeholder="e.g. Resigned, end of contract..."
+            leftIcon="document-text-outline"
+          />
+        </FormField>
+      </WebModal>
 
       <BottomTabBar user={me} />
     </SafeAreaView>
@@ -845,14 +841,14 @@ const UserCard = ({
   user,
   onPress,
   onTerminate,
-  theme }: {
+  theme,
+}: {
   user: User;
   onPress: () => void;
   onTerminate: () => void;
   theme: any;
 }) => {
   const c = theme.colors;
-  const styles = useMemo(() => makeStyles(c), [c]);
   const roleTint =
     user.role === "HR"
       ? { bg: c.roleHrBg, fg: c.roleHrText }
@@ -866,51 +862,60 @@ const UserCard = ({
   return (
     <View
       style={[
-        styles.userCard,
+        mobileStyles.userCard,
         {
           backgroundColor: c.surface,
           borderColor: c.surfaceBorder,
-          shadowColor: c.shadow },
+          shadowColor: c.shadow,
+        },
       ]}
     >
       <TouchableOpacity
         onPress={onPress}
         activeOpacity={0.85}
-        style={styles.userCardMain}
+        style={mobileStyles.userCardMain}
       >
-        <View
-          style={[
-            styles.avatar,
-            { backgroundColor: c.accentSoft },
-          ]}
-        >
-          <Text
-            style={{
-              color: c.accentText,
-              fontSize: 18,
-              fontWeight: "800" }}
+        {user.profilePictureUrl ? (
+          <Image
+            source={{ uri: user.profilePictureUrl }}
+            style={mobileStyles.avatar}
+          />
+        ) : (
+          <View
+            style={[
+              mobileStyles.avatar,
+              { backgroundColor: c.accentSoft },
+            ]}
           >
-            {user.name.charAt(0).toUpperCase()}
-          </Text>
-        </View>
+            <Text
+              style={{
+                color: c.accentText,
+                fontSize: 18,
+                fontWeight: "800",
+              }}
+            >
+              {user.name.charAt(0).toUpperCase()}
+            </Text>
+          </View>
+        )}
         <View style={{ flex: 1 }}>
           <Text
-            style={[styles.userName, { color: c.text }]}
+            style={[mobileStyles.userName, { color: c.text }]}
             numberOfLines={1}
           >
             {user.name}
           </Text>
           <Text
-            style={[styles.userMeta, { color: c.textMuted }]}
+            style={[mobileStyles.userMeta, { color: c.textMuted }]}
             numberOfLines={1}
           >
             {user.email}
             {user.employeeCode ? `  ·  ${user.employeeCode}` : ""}
           </Text>
-          <View style={styles.userChips}>
+          <View style={mobileStyles.userChips}>
             <View
               style={[
-                styles.miniChip,
+                mobileStyles.miniChip,
                 { backgroundColor: roleTint.bg },
               ]}
             >
@@ -918,7 +923,8 @@ const UserCard = ({
                 style={{
                   color: roleTint.fg,
                   fontSize: 10,
-                  fontWeight: "800" }}
+                  fontWeight: "800",
+                }}
               >
                 {user.role}
               </Text>
@@ -926,7 +932,7 @@ const UserCard = ({
             {!!user.tag && (
               <View
                 style={[
-                  styles.miniChip,
+                  mobileStyles.miniChip,
                   { backgroundColor: c.pastelSky },
                 ]}
               >
@@ -934,7 +940,8 @@ const UserCard = ({
                   style={{
                     color: "#0369a1",
                     fontSize: 10,
-                    fontWeight: "800" }}
+                    fontWeight: "800",
+                  }}
                 >
                   {user.tag}
                 </Text>
@@ -943,7 +950,7 @@ const UserCard = ({
             {isTerminated && (
               <View
                 style={[
-                  styles.miniChip,
+                  mobileStyles.miniChip,
                   { backgroundColor: c.dangerBg },
                 ]}
               >
@@ -951,7 +958,8 @@ const UserCard = ({
                   style={{
                     color: c.dangerText,
                     fontSize: 10,
-                    fontWeight: "800" }}
+                    fontWeight: "800",
+                  }}
                 >
                   NOT ACTIVE
                 </Text>
@@ -963,11 +971,12 @@ const UserCard = ({
       <TouchableOpacity
         onPress={onTerminate}
         style={[
-          styles.userAction,
+          mobileStyles.userAction,
           {
             backgroundColor: isTerminated
               ? c.successBg
-              : c.dangerBg },
+              : c.dangerBg,
+          },
         ]}
         hitSlop={6}
       >
@@ -981,112 +990,8 @@ const UserCard = ({
   );
 };
 
-const Field = ({
-  label,
-  theme,
-  children }: {
-  label: string;
-  theme: any;
-  children: React.ReactNode;
-}) => (
-  <View style={{ marginTop: 14 }}>
-    <Text
-      style={{
-        color: theme.colors.textMuted,
-        fontSize: 11,
-        fontWeight: "800",
-        letterSpacing: 1.2,
-        marginBottom: 6 }}
-    >
-      {label}
-    </Text>
-    {children}
-  </View>
-);
-
-const Input = ({
-  theme,
-  multiline,
-  ...rest
-}: any) => (
-  <TextInput
-    {...rest}
-    multiline={multiline}
-    placeholderTextColor={theme.colors.textFaint}
-    style={{
-      backgroundColor: theme.colors.surfaceMuted,
-      color: theme.colors.text,
-      paddingHorizontal: 12,
-      paddingVertical: multiline ? 12 : 11,
-      borderRadius: 12,
-      borderWidth: 1,
-      borderColor: theme.colors.surfaceBorder,
-      fontSize: 14,
-      minHeight: multiline ? 70 : 44,
-      textAlignVertical: multiline ? "top" : undefined }}
-  />
-);
-
-const makeStyles = (c: any) => StyleSheet.create({
-  safe: { flex: 1 },
-  loader: { flex: 1, alignItems: "center", justifyContent: "center" },
-  headerRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    marginBottom: 16,
-    gap: 8 },
-  iconBtn: {
-    width: 42,
-    height: 42,
-    borderRadius: 14,
-    borderWidth: 1,
-    alignItems: "center",
-    justifyContent: "center" },
-  title: { fontSize: 26, fontWeight: "800" },
-  subtitle: { fontSize: 13, marginTop: 2 },
-  addBtn: {
-    width: 46,
-    height: 46,
-    borderRadius: 16,
-    alignItems: "center",
-    justifyContent: "center",
-    shadowOpacity: 0.2,
-    shadowRadius: 10,
-    shadowOffset: { width: 0, height: 4 },
-    elevation: 3 },
-
-  tabsRow: { flexDirection: "row", gap: 8, marginBottom: 12 },
-  tabBtn: {
-    flex: 1,
-    paddingVertical: 11,
-    borderRadius: 14,
-    borderWidth: 1,
-    alignItems: "center" },
-
-  searchBox: {
-    flexDirection: "row",
-    alignItems: "center",
-    borderRadius: 14,
-    paddingHorizontal: 12,
-    borderWidth: 1,
-    gap: 10,
-    marginBottom: 14 },
-  searchInput: { flex: 1, paddingVertical: 12, fontSize: 14 },
-
-  emptyCard: {
-    padding: 30,
-    borderRadius: 18,
-    borderWidth: 1,
-    alignItems: "center",
-    gap: 8,
-    marginTop: 8,
-    shadowOpacity: 1,
-    shadowRadius: 12,
-    shadowOffset: { width: 0, height: 4 },
-    elevation: 2 },
-  emptyText: { fontSize: 14, fontWeight: "700" },
-  emptySub: { fontSize: 12 },
-
+// Mobile-only styles (unchanged from original)
+const mobileStyles = StyleSheet.create({
   userCard: {
     flexDirection: "row",
     alignItems: "center",
@@ -1098,98 +1003,156 @@ const makeStyles = (c: any) => StyleSheet.create({
     shadowRadius: 10,
     shadowOffset: { width: 0, height: 3 },
     elevation: 1,
-    gap: 8 },
+    gap: 8,
+  },
   userCardMain: {
     flex: 1,
     flexDirection: "row",
     alignItems: "center",
-    gap: 12 },
+    gap: 12,
+  },
   avatar: {
     width: 46,
     height: 46,
     borderRadius: 23,
     alignItems: "center",
-    justifyContent: "center" },
+    justifyContent: "center",
+  },
   userName: { fontSize: 15, fontWeight: "800" },
   userMeta: { fontSize: 12, marginTop: 2 },
   userChips: { flexDirection: "row", flexWrap: "wrap", gap: 4, marginTop: 6 },
   miniChip: {
     paddingHorizontal: 8,
     paddingVertical: 3,
-    borderRadius: 999 },
+    borderRadius: 999,
+  },
   userAction: {
     width: 36,
     height: 36,
     borderRadius: 12,
     alignItems: "center",
-    justifyContent: "center" },
+    justifyContent: "center",
+  },
+});
 
-  // Modals
-  modalScrim: { flex: 1, justifyContent: "flex-end" },
-  modalCard: {
-    padding: 20,
-    borderTopLeftRadius: 24,
-    borderTopRightRadius: 24,
-    maxHeight: "90%",
-    shadowOpacity: 1,
-    shadowRadius: 24,
-    shadowOffset: { width: 0, height: -8 },
-    elevation: 12 },
-  modalHeader: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    marginBottom: 6 },
-  modalTitle: { fontSize: 20, fontWeight: "800" },
-  chipsRow: { flexDirection: "row", flexWrap: "wrap", gap: 6 },
-  chip: {
-    paddingHorizontal: 12,
-    paddingVertical: 7,
-    borderRadius: 999,
-    borderWidth: 1 },
-  docRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 8,
-    paddingHorizontal: 10,
-    paddingVertical: 8,
-    borderRadius: 10,
-    borderWidth: 1 },
-  eyeBtn: {
-    position: "absolute",
-    right: 10,
-    top: 0,
-    bottom: 0,
-    justifyContent: "center" },
-  modalActions: {
-    flexDirection: "row",
-    gap: 10,
-    marginTop: 18,
-    marginBottom: Platform.OS === "ios" ? 10 : 0 },
-  cancelBtn: {
-    flex: 1,
-    paddingVertical: 14,
-    borderRadius: 14,
-    alignItems: "center" },
-  submitBtn: {
-    flex: 1.5,
-    paddingVertical: 14,
-    borderRadius: 14,
-    alignItems: "center",
-    shadowOpacity: 0.2,
-    shadowRadius: 10,
-    shadowOffset: { width: 0, height: 4 },
-    elevation: 3 },
+// Responsive styles
+const makeStyles = (c: any, isDesktop: boolean) =>
+  StyleSheet.create({
+    safe: { flex: 1 },
+    loader: { flex: 1, alignItems: "center", justifyContent: "center" },
 
-  terminateCard: {
-    margin: 20,
-    padding: 20,
-    borderRadius: 20,
-    shadowOpacity: 1,
-    shadowRadius: 24,
-    shadowOffset: { width: 0, height: 12 },
-    elevation: 12 },
-  terminateHint: {
-    fontSize: 12,
-    marginTop: 6,
-    lineHeight: 18 } });
+    // Filter row
+    filterRow: {
+      marginTop: 16,
+      marginBottom: 16,
+      gap: 12,
+    },
+    filterRowDesktop: {
+      flexDirection: "row",
+      alignItems: "center",
+      justifyContent: "space-between",
+    },
+
+    tabsRow: {
+      flexDirection: "row",
+      gap: 8,
+    },
+    tabBtn: {
+      paddingHorizontal: isDesktop ? 20 : 16,
+      paddingVertical: 10,
+      borderRadius: 10,
+      borderWidth: 1,
+      ...(Platform.OS === "web" && {
+        cursor: "pointer" as any,
+        transition: "all 0.15s ease" as any,
+      }),
+    },
+
+    searchBox: {
+      flexDirection: "row",
+      alignItems: "center",
+      borderRadius: 10,
+      paddingHorizontal: 14,
+      borderWidth: 1,
+      gap: 10,
+    },
+    searchBoxDesktop: {
+      width: 320,
+    },
+    searchInput: {
+      flex: 1,
+      paddingVertical: 10,
+      fontSize: 14,
+      ...(Platform.OS === "web" && {
+        outlineStyle: "none" as any,
+      }),
+    },
+
+    emptyCard: {
+      padding: 30,
+      borderRadius: 18,
+      borderWidth: 1,
+      alignItems: "center",
+      gap: 8,
+      marginTop: 8,
+      shadowOpacity: 1,
+      shadowRadius: 12,
+      shadowOffset: { width: 0, height: 4 },
+      elevation: 2,
+    },
+    emptyText: { fontSize: 14, fontWeight: "700" },
+    emptySub: { fontSize: 12 },
+
+    // DataTable cell styles
+    employeeCell: {
+      flexDirection: "row",
+      alignItems: "center",
+    },
+    cellName: {
+      fontSize: 14,
+      fontWeight: "600",
+    },
+    cellEmail: {
+      fontSize: 12,
+      marginTop: 2,
+    },
+    cellText: {
+      fontSize: 14,
+    },
+    actionsCell: {
+      flexDirection: "row",
+      gap: 8,
+      justifyContent: "flex-end",
+    },
+    actionBtn: {
+      width: 32,
+      height: 32,
+      borderRadius: 8,
+      alignItems: "center",
+      justifyContent: "center",
+      ...(Platform.OS === "web" && {
+        cursor: "pointer" as any,
+        transition: "all 0.15s ease" as any,
+      }),
+    },
+
+    // Form styles
+    formGrid: {
+      gap: 0,
+    },
+    formGridDesktop: {
+      flexDirection: "row",
+      flexWrap: "wrap",
+      gap: 16,
+    },
+
+    docRow: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 10,
+      paddingHorizontal: 12,
+      paddingVertical: 10,
+      borderRadius: 10,
+      borderWidth: 1,
+    },
+  });

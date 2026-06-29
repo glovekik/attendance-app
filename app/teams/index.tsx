@@ -10,10 +10,10 @@ import {
   TouchableOpacity,
   TextInput,
   ActivityIndicator,
-  Platform,
-  Modal } from "react-native";
-import { KeyboardAvoidingView } from "react-native-keyboard-controller";
+  Platform } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
+
+import { WebModal, ModalActions } from "../../src/components/WebModal";
 
 import AsyncStorage from "@react-native-async-storage/async-storage";
 
@@ -346,26 +346,35 @@ export default function Teams() {
       </ScrollView>
 
       {/* CREATE MODAL */}
-      <Modal
+      <WebModal
         visible={modalVisible}
-        transparent
-        animationType="slide"
-        onRequestClose={() => setModalVisible(false)}
-      >
-        <KeyboardAvoidingView
-          style={styles.modalOverlay}
-          behavior="padding"
-        >
-          <View style={styles.modalCard}>
-            <ScrollView
-              showsVerticalScrollIndicator={false}
-              keyboardShouldPersistTaps="handled"
+        onClose={() => setModalVisible(false)}
+        title={editingId ? "Edit Team" : "New Team"}
+        size="md"
+        footer={
+          <ModalActions align="spread">
+            <TouchableOpacity
+              style={styles.cancelBtn}
+              onPress={() => setModalVisible(false)}
             >
-
-              <Text style={styles.modalTitle}>
-                {editingId ? "Edit Team" : "New Team"}
-              </Text>
-
+              <Text style={styles.modalBtnText}>Cancel</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[styles.saveBtn, saving && { opacity: 0.7 }]}
+              onPress={save}
+              disabled={saving}
+            >
+              {saving ? (
+                <ActivityIndicator color="#fff" />
+              ) : (
+                <Text style={styles.modalBtnText}>
+                  {editingId ? "Save" : "Create"}
+                </Text>
+              )}
+            </TouchableOpacity>
+          </ModalActions>
+        }
+      >
               <Text style={styles.label}>Team Name</Text>
               <TextInput
                 style={styles.input}
@@ -494,32 +503,7 @@ export default function Teams() {
                 ))}
               </View>
 
-              <View style={styles.modalActions}>
-                <TouchableOpacity
-                  style={styles.cancelBtn}
-                  onPress={() => setModalVisible(false)}
-                >
-                  <Text style={styles.modalBtnText}>Cancel</Text>
-                </TouchableOpacity>
-                <TouchableOpacity
-                  style={[styles.saveBtn, saving && { opacity: 0.7 }]}
-                  onPress={save}
-                  disabled={saving}
-                >
-                  {saving ? (
-                    <ActivityIndicator color="#fff" />
-                  ) : (
-                    <Text style={styles.modalBtnText}>
-                      {editingId ? "Save" : "Create"}
-                    </Text>
-                  )}
-                </TouchableOpacity>
-              </View>
-
-            </ScrollView>
-          </View>
-        </KeyboardAvoidingView>
-      </Modal>
+      </WebModal>
 
     </SafeAreaView>
   );

@@ -1,4 +1,4 @@
-﻿import React, { useCallback, useState, useMemo} from "react";
+﻿import React, { useCallback, useState, useMemo } from "react";
 
 import {
   View,
@@ -7,7 +7,10 @@ import {
   TouchableOpacity,
   TextInput,
   ActivityIndicator,
-  RefreshControl } from "react-native";
+  RefreshControl,
+  Pressable,
+  Platform,
+} from "react-native";
 import { KeyboardAwareScrollView } from "react-native-keyboard-controller";
 import { SafeAreaView } from "react-native-safe-area-context";
 
@@ -19,7 +22,8 @@ import {
   checkIn,
   checkOut,
   getToday,
-  getMe } from "../src/services/api";
+  getMe,
+} from "../src/services/api";
 import { getMyTasks } from "../src/services/tasks";
 import { listTodos } from "../src/services/todos";
 import { dateToYMD } from "../src/components/WebDateField";
@@ -27,14 +31,18 @@ import {
   OFFICE,
   ALLOWED_RADIUS,
   getCurrentLocation,
-  getDistance } from "../src/utils/location";
+  getDistance,
+} from "../src/utils/location";
 
 import { useTheme } from "../src/theme/ThemeProvider";
 import { User } from "../src/types";
 import {
   BottomTabBar,
-  BOTTOM_BAR_RESERVED_HEIGHT } from "../src/components/BottomTabBar";
+  BOTTOM_BAR_RESERVED_HEIGHT,
+} from "../src/components/BottomTabBar";
 import { notify } from "../src/utils/confirm";
+import { useResponsive, getResponsiveSpacing } from "../src/utils/responsive";
+import { PageHeader } from "../src/components/PageHeader";
 
 // LEAVE and HOLIDAY are intentionally not selectable here: leave days are
 // set automatically when a leave request is approved, and holidays are
@@ -50,8 +58,11 @@ type AttType = (typeof TYPES)[number];
 export default function Attendance() {
   const router = useRouter();
   const { theme } = useTheme();
+  const responsive = useResponsive();
+  const spacing = getResponsiveSpacing(responsive.breakpoint);
+  const isDesktop = responsive.isDesktop;
   const c = theme.colors;
-  const styles = useMemo(() => makeStyles(c), [c]);
+  const styles = useMemo(() => makeStyles(c, isDesktop), [c, isDesktop]);
 
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -273,13 +284,19 @@ export default function Attendance() {
 
   const typeIconBg: Record<AttType, string> = {
     OFFICE: c.pastelLavender,
-    WFH: c.pastelMint };
+    WFH: c.pastelMint,
+  };
   const typeIconFg: Record<AttType, string> = {
     OFFICE: "#6d28d9",
-    WFH: "#15803d" };
+    WFH: "#15803d",
+  };
   const typeIconName: Record<AttType, keyof typeof Ionicons.glyphMap> = {
     OFFICE: "business-outline",
-    WFH: "home-outline" };
+    WFH: "home-outline",
+  };
+
+  // Desktop shows sidebar, so we don't need bottom bar padding
+  const bottomPadding = responsive.showSidebar ? 40 : BOTTOM_BAR_RESERVED_HEIGHT + 24;
 
   return (
     <SafeAreaView style={[styles.safe, { backgroundColor: c.bg }]}>
@@ -287,8 +304,14 @@ export default function Attendance() {
         bottomOffset={24}
         keyboardShouldPersistTaps="handled"
         contentContainerStyle={{
-          padding: 20,
-          paddingBottom: BOTTOM_BAR_RESERVED_HEIGHT + 24 }}
+          padding: spacing.padding,
+          paddingBottom: bottomPadding,
+          ...(isDesktop && {
+            maxWidth: 800,
+            alignSelf: "center" as const,
+            width: "100%",
+          }),
+        }}
         refreshControl={
           <RefreshControl
             refreshing={refreshing}
@@ -302,31 +325,47 @@ export default function Attendance() {
         }
         showsVerticalScrollIndicator={false}
       >
-        {/* HEADER */}
-        <View style={styles.headerRow}>
-          <TouchableOpacity
-            onPress={() =>
-              router.canGoBack() ? router.back() : router.replace("/")
-            }
-            style={[
-              styles.iconBtn,
-              { backgroundColor: c.surface, borderColor: c.surfaceBorder },
+        {/* HEADER - Desktop uses PageHeader with breadcrumbs */}
+        {isDesktop ? (
+          <PageHeader
+            title="Attendance"
+            subtitle={new Date().toLocaleDateString(undefined, {
+              weekday: "long",
+              month: "long",
+              day: "numeric",
+            })}
+            breadcrumbs={[
+              { label: "Home", href: "/" },
+              { label: "Attendance" },
             ]}
-          >
-            <Ionicons name="chevron-back" size={22} color={c.text} />
-          </TouchableOpacity>
-          <View style={{ flex: 1, marginLeft: 12 }}>
-            <Text style={[styles.title, { color: c.text }]}>
-              Attendance
-            </Text>
-            <Text style={[styles.subtitle, { color: c.textMuted }]}>
-              {new Date().toLocaleDateString(undefined, {
-                weekday: "long",
-                month: "long",
-                day: "numeric" })}
-            </Text>
+          />
+        ) : (
+          <View style={styles.headerRow}>
+            <TouchableOpacity
+              onPress={() =>
+                router.canGoBack() ? router.back() : router.replace("/")
+              }
+              style={[
+                styles.iconBtn,
+                { backgroundColor: c.surface, borderColor: c.surfaceBorder },
+              ]}
+            >
+              <Ionicons name="chevron-back" size={22} color={c.text} />
+            </TouchableOpacity>
+            <View style={{ flex: 1, marginLeft: 12 }}>
+              <Text style={[styles.title, { color: c.text }]}>
+                Attendance
+              </Text>
+              <Text style={[styles.subtitle, { color: c.textMuted }]}>
+                {new Date().toLocaleDateString(undefined, {
+                  weekday: "long",
+                  month: "long",
+                  day: "numeric",
+                })}
+              </Text>
+            </View>
           </View>
-        </View>
+        )}
 
         {/* STATUS CARD */}
         <View
@@ -381,18 +420,23 @@ export default function Attendance() {
               {TYPES.map((t) => {
                 const active = attType === t;
                 return (
-                  <TouchableOpacity
+                  <Pressable
                     key={t}
                     onPress={() => !checkedIn && setAttType(t)}
-                    activeOpacity={0.85}
                     disabled={checkedIn}
-                    style={[
+                    style={({ hovered, pressed }: any) => [
                       styles.typeCard,
                       {
                         backgroundColor: c.surface,
                         borderColor: active ? c.accent : c.surfaceBorder,
                         shadowColor: c.shadow,
-                        opacity: checkedIn && !active ? 0.4 : 1 },
+                        opacity: checkedIn && !active ? 0.4 : 1,
+                      },
+                      Platform.OS === "web" && hovered && !active && !checkedIn && {
+                        borderColor: c.accent,
+                        transform: [{ scale: 1.02 }],
+                      },
+                      pressed && { opacity: 0.85 },
                     ]}
                   >
                     <View
@@ -410,7 +454,7 @@ export default function Attendance() {
                     <Text style={[styles.typeLabel, { color: c.text }]}>
                       {t}
                     </Text>
-                  </TouchableOpacity>
+                  </Pressable>
                 );
               })}
             </View>
@@ -549,15 +593,20 @@ export default function Attendance() {
         )}
 
         {/* QUICK LINK to history */}
-        <TouchableOpacity
+        <Pressable
           onPress={() => router.push("/history")}
-          activeOpacity={0.85}
-          style={[
+          style={({ hovered, pressed }: any) => [
             styles.historyLink,
             {
               backgroundColor: c.surface,
               borderColor: c.surfaceBorder,
-              shadowColor: c.shadow },
+              shadowColor: c.shadow,
+            },
+            Platform.OS === "web" && hovered && {
+              borderColor: c.accent,
+              transform: [{ scale: 1.01 }],
+            },
+            pressed && { opacity: 0.85 },
           ]}
         >
           <View style={{ flex: 1 }}>
@@ -573,18 +622,23 @@ export default function Attendance() {
             size={20}
             color={c.textMuted}
           />
-        </TouchableOpacity>
+        </Pressable>
 
         {/* QUICK LINK to leaves */}
-        <TouchableOpacity
+        <Pressable
           onPress={() => router.push("/leaves")}
-          activeOpacity={0.85}
-          style={[
+          style={({ hovered, pressed }: any) => [
             styles.historyLink,
             {
               backgroundColor: c.surface,
               borderColor: c.surfaceBorder,
-              shadowColor: c.shadow },
+              shadowColor: c.shadow,
+            },
+            Platform.OS === "web" && hovered && {
+              borderColor: c.accent,
+              transform: [{ scale: 1.01 }],
+            },
+            pressed && { opacity: 0.85 },
           ]}
         >
           <View
@@ -608,7 +662,7 @@ export default function Attendance() {
             size={20}
             color={c.textMuted}
           />
-        </TouchableOpacity>
+        </Pressable>
       </KeyboardAwareScrollView>
 
       <BottomTabBar user={me} />
@@ -628,154 +682,193 @@ const formatTime = (iso?: string | null): string => {
   }
 };
 
-const makeStyles = (c: any) => StyleSheet.create({
-  safe: { flex: 1 },
-  loader: { flex: 1, alignItems: "center", justifyContent: "center" },
-  headerRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    marginBottom: 18,
-    gap: 8 },
-  iconBtn: {
-    width: 42,
-    height: 42,
-    borderRadius: 14,
-    borderWidth: 1,
-    alignItems: "center",
-    justifyContent: "center" },
-  title: { fontSize: 26, fontWeight: "800" },
-  subtitle: { fontSize: 13, marginTop: 2 },
+const makeStyles = (c: any, isDesktop: boolean) =>
+  StyleSheet.create({
+    safe: { flex: 1 },
+    loader: { flex: 1, alignItems: "center", justifyContent: "center" },
+    headerRow: {
+      flexDirection: "row",
+      alignItems: "center",
+      marginBottom: isDesktop ? 24 : 18,
+      gap: 8,
+    },
+    iconBtn: {
+      width: 42,
+      height: 42,
+      borderRadius: 14,
+      borderWidth: 1,
+      alignItems: "center",
+      justifyContent: "center",
+    },
+    title: { fontSize: isDesktop ? 28 : 26, fontWeight: "800" },
+    subtitle: { fontSize: isDesktop ? 14 : 13, marginTop: 2 },
 
-  statusCard: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 14,
-    padding: 18,
-    borderRadius: 20,
-    borderWidth: 1,
-    shadowOpacity: 1,
-    shadowRadius: 16,
-    shadowOffset: { width: 0, height: 6 },
-    elevation: 3 },
-  statusDot: {
-    width: 14,
-    height: 14,
-    borderRadius: 7 },
-  statusLabel: {
-    fontSize: 11,
-    fontWeight: "800",
-    letterSpacing: 1.4,
-    marginBottom: 4 },
-  statusValue: { fontSize: 20, fontWeight: "800" },
-  statusMeta: { fontSize: 12, marginTop: 6 },
+    statusCard: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: isDesktop ? 18 : 14,
+      padding: isDesktop ? 24 : 18,
+      borderRadius: 20,
+      borderWidth: 1,
+      shadowOpacity: 1,
+      shadowRadius: 16,
+      shadowOffset: { width: 0, height: 6 },
+      elevation: 3,
+    },
+    statusDot: {
+      width: isDesktop ? 16 : 14,
+      height: isDesktop ? 16 : 14,
+      borderRadius: isDesktop ? 8 : 7,
+    },
+    statusLabel: {
+      fontSize: isDesktop ? 12 : 11,
+      fontWeight: "800",
+      letterSpacing: 1.4,
+      marginBottom: 4,
+    },
+    statusValue: { fontSize: isDesktop ? 22 : 20, fontWeight: "800" },
+    statusMeta: { fontSize: isDesktop ? 13 : 12, marginTop: 6 },
 
-  section: {
-    fontSize: 11,
-    fontWeight: "800",
-    letterSpacing: 1.4,
-    marginTop: 22,
-    marginBottom: 10,
-    marginLeft: 4 },
+    section: {
+      fontSize: isDesktop ? 12 : 11,
+      fontWeight: "800",
+      letterSpacing: 1.4,
+      marginTop: isDesktop ? 28 : 22,
+      marginBottom: isDesktop ? 14 : 10,
+      marginLeft: 4,
+    },
 
-  typeGrid: { flexDirection: "row", flexWrap: "wrap", gap: 10 },
-  typeCard: {
-    width: "47%",
-    flexGrow: 1,
-    padding: 16,
-    borderRadius: 18,
-    borderWidth: 2,
-    alignItems: "center",
-    shadowOpacity: 1,
-    shadowRadius: 10,
-    shadowOffset: { width: 0, height: 4 },
-    elevation: 2 },
-  typeIcon: {
-    width: 48,
-    height: 48,
-    borderRadius: 16,
-    alignItems: "center",
-    justifyContent: "center",
-    marginBottom: 10 },
-  typeLabel: { fontSize: 13, fontWeight: "800", letterSpacing: 0.5 },
+    typeGrid: {
+      flexDirection: "row",
+      flexWrap: "wrap",
+      gap: isDesktop ? 16 : 10,
+    },
+    typeCard: {
+      width: isDesktop ? "48%" : "47%",
+      flexGrow: 1,
+      padding: isDesktop ? 24 : 16,
+      borderRadius: 18,
+      borderWidth: 2,
+      alignItems: "center",
+      shadowOpacity: 1,
+      shadowRadius: 10,
+      shadowOffset: { width: 0, height: 4 },
+      elevation: 2,
+      ...(Platform.OS === "web" && {
+        cursor: "pointer" as any,
+        transition: "all 0.15s ease" as any,
+      }),
+    },
+    typeIcon: {
+      width: isDesktop ? 56 : 48,
+      height: isDesktop ? 56 : 48,
+      borderRadius: 16,
+      alignItems: "center",
+      justifyContent: "center",
+      marginBottom: isDesktop ? 14 : 10,
+    },
+    typeLabel: { fontSize: isDesktop ? 14 : 13, fontWeight: "800", letterSpacing: 0.5 },
 
-  notesHeader: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    marginRight: 4 },
-  pullActions: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 8 },
-  textArea: {
-    minHeight: 110,
-    padding: 14,
-    borderRadius: 16,
-    borderWidth: 1,
-    fontSize: 14,
-    lineHeight: 20 },
+    notesHeader: {
+      flexDirection: "row",
+      alignItems: "center",
+      justifyContent: "space-between",
+      marginRight: 4,
+    },
+    pullActions: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: isDesktop ? 12 : 8,
+    },
+    textArea: {
+      minHeight: isDesktop ? 140 : 110,
+      padding: isDesktop ? 18 : 14,
+      borderRadius: 16,
+      borderWidth: 1,
+      fontSize: 14,
+      lineHeight: 20,
+      ...(Platform.OS === "web" && {
+        outlineStyle: "none" as any,
+      }),
+    },
 
-  cta: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: 8,
-    paddingVertical: 18,
-    borderRadius: 18,
-    marginTop: 22,
-    shadowOpacity: 0.25,
-    shadowRadius: 16,
-    shadowOffset: { width: 0, height: 8 },
-    elevation: 5 },
-  ctaText: {
-    color: c.text,
-    fontSize: 16,
-    fontWeight: "800",
-    letterSpacing: 0.5 },
+    cta: {
+      flexDirection: "row",
+      alignItems: "center",
+      justifyContent: "center",
+      gap: 8,
+      paddingVertical: isDesktop ? 20 : 18,
+      borderRadius: 18,
+      marginTop: isDesktop ? 28 : 22,
+      shadowOpacity: 0.25,
+      shadowRadius: 16,
+      shadowOffset: { width: 0, height: 8 },
+      elevation: 5,
+      ...(Platform.OS === "web" && {
+        cursor: "pointer" as any,
+        transition: "all 0.15s ease" as any,
+      }),
+    },
+    ctaText: {
+      color: "#fff",
+      fontSize: isDesktop ? 17 : 16,
+      fontWeight: "800",
+      letterSpacing: 0.5,
+    },
 
-  completedCard: {
-    alignItems: "center",
-    padding: 28,
-    borderRadius: 20,
-    borderWidth: 1,
-    marginTop: 16,
-    shadowOpacity: 1,
-    shadowRadius: 16,
-    shadowOffset: { width: 0, height: 6 },
-    elevation: 3 },
-  completedIcon: {
-    width: 64,
-    height: 64,
-    borderRadius: 32,
-    alignItems: "center",
-    justifyContent: "center",
-    marginBottom: 14 },
-  completedTitle: { fontSize: 18, fontWeight: "800" },
-  completedSub: { fontSize: 13, marginTop: 4 },
-  completedNotes: {
-    fontSize: 13,
-    marginTop: 14,
-    fontStyle: "italic",
-    textAlign: "center",
-    lineHeight: 19 },
+    completedCard: {
+      alignItems: "center",
+      padding: isDesktop ? 36 : 28,
+      borderRadius: 20,
+      borderWidth: 1,
+      marginTop: 16,
+      shadowOpacity: 1,
+      shadowRadius: 16,
+      shadowOffset: { width: 0, height: 6 },
+      elevation: 3,
+    },
+    completedIcon: {
+      width: isDesktop ? 72 : 64,
+      height: isDesktop ? 72 : 64,
+      borderRadius: isDesktop ? 36 : 32,
+      alignItems: "center",
+      justifyContent: "center",
+      marginBottom: isDesktop ? 18 : 14,
+    },
+    completedTitle: { fontSize: isDesktop ? 20 : 18, fontWeight: "800" },
+    completedSub: { fontSize: isDesktop ? 14 : 13, marginTop: 4 },
+    completedNotes: {
+      fontSize: isDesktop ? 14 : 13,
+      marginTop: isDesktop ? 18 : 14,
+      fontStyle: "italic",
+      textAlign: "center",
+      lineHeight: 20,
+    },
 
-  historyLink: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 12,
-    padding: 14,
-    borderRadius: 18,
-    borderWidth: 1,
-    marginTop: 16,
-    shadowOpacity: 1,
-    shadowRadius: 12,
-    shadowOffset: { width: 0, height: 4 },
-    elevation: 2 },
-  historyTitle: { fontSize: 15, fontWeight: "800" },
-  historySub: { fontSize: 12, marginTop: 2 },
-  leavesIcon: {
-    width: 40,
-    height: 40,
-    borderRadius: 14,
-    alignItems: "center",
-    justifyContent: "center" } });
+    historyLink: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: isDesktop ? 16 : 12,
+      padding: isDesktop ? 18 : 14,
+      borderRadius: 18,
+      borderWidth: 1,
+      marginTop: 16,
+      shadowOpacity: 1,
+      shadowRadius: 12,
+      shadowOffset: { width: 0, height: 4 },
+      elevation: 2,
+      ...(Platform.OS === "web" && {
+        cursor: "pointer" as any,
+        transition: "all 0.15s ease" as any,
+      }),
+    },
+    historyTitle: { fontSize: isDesktop ? 16 : 15, fontWeight: "800" },
+    historySub: { fontSize: isDesktop ? 13 : 12, marginTop: 2 },
+    leavesIcon: {
+      width: isDesktop ? 44 : 40,
+      height: isDesktop ? 44 : 40,
+      borderRadius: 14,
+      alignItems: "center",
+      justifyContent: "center",
+    },
+  });

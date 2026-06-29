@@ -8,13 +8,11 @@ import {
   TouchableOpacity,
   ActivityIndicator,
   RefreshControl,
-  Modal,
   TextInput,
   Alert,
-  ScrollView,
   Platform } from "react-native";
-import { KeyboardAvoidingView } from "react-native-keyboard-controller";
 import { SafeAreaView } from "react-native-safe-area-context";
+import { WebModal, ModalActions } from "../src/components/WebModal";
 
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useRouter } from "expo-router";
@@ -256,25 +254,32 @@ export default function HrInterviews() {
       )}
 
       {/* CREATE */}
-      <Modal
+      <WebModal
         visible={showForm}
-        animationType="slide"
-        transparent
-        onRequestClose={() => setShowForm(false)}
+        onClose={() => setShowForm(false)}
+        title="Schedule interview"
+        size="md"
+        footer={
+          <ModalActions align="spread">
+            <TouchableOpacity
+              style={[styles.btn, styles.btnGhost]}
+              onPress={() => setShowForm(false)}
+              disabled={saving}
+            >
+              <Text style={styles.btnGhostText}>Cancel</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[styles.btn, styles.btnPrimary]}
+              onPress={onSave}
+              disabled={saving}
+            >
+              <Text style={styles.btnPrimaryText}>
+                {saving ? "..." : "Schedule"}
+              </Text>
+            </TouchableOpacity>
+          </ModalActions>
+        }
       >
-        <KeyboardAvoidingView
-          behavior="padding"
-          style={styles.modalWrap}
-        >
-          <View style={styles.modal}>
-            <View style={styles.modalHeader}>
-              <Text style={styles.modalTitle}>Schedule interview</Text>
-              <TouchableOpacity onPress={() => setShowForm(false)}>
-                <Ionicons name="close" size={24} color={c.textMuted} />
-              </TouchableOpacity>
-            </View>
-
-            <ScrollView style={{ maxHeight: 540 }}>
               <Text style={styles.label}>Candidate *</Text>
               <View style={styles.chipRow}>
                 {candidates.length === 0 ? (
@@ -398,49 +403,16 @@ export default function HrInterviews() {
                 placeholderTextColor={c.textFaint}
               />
               <View style={{ height: 12 }} />
-            </ScrollView>
-
-            <View style={styles.actions}>
-              <TouchableOpacity
-                style={[styles.btn, styles.btnGhost]}
-                onPress={() => setShowForm(false)}
-                disabled={saving}
-              >
-                <Text style={styles.btnGhostText}>Cancel</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={[styles.btn, styles.btnPrimary]}
-                onPress={onSave}
-                disabled={saving}
-              >
-                <Text style={styles.btnPrimaryText}>
-                  {saving ? "..." : "Schedule"}
-                </Text>
-              </TouchableOpacity>
-            </View>
-          </View>
-        </KeyboardAvoidingView>
-      </Modal>
+      </WebModal>
 
       {/* INTERVIEWER PICKER */}
-      <Modal
+      <WebModal
         visible={showPicker}
-        animationType="slide"
-        transparent
-        onRequestClose={() => setShowPicker(false)}
+        onClose={() => setShowPicker(false)}
+        title="Choose interviewers"
+        size="md"
+        scrollable={false}
       >
-        <View style={styles.modalWrap}>
-          <View style={styles.pickerModal}>
-            <View style={styles.modalHeader}>
-              <Text style={styles.modalTitle}>Choose interviewers</Text>
-              <TouchableOpacity onPress={() => setShowPicker(false)}>
-                <Ionicons
-                  name="checkmark-done"
-                  size={24}
-                  color={c.accent}
-                />
-              </TouchableOpacity>
-            </View>
             <View style={styles.searchBox}>
               <Ionicons name="search" size={16} color={c.textMuted} />
               <TextInput
@@ -476,27 +448,17 @@ export default function HrInterviews() {
                 );
               }}
             />
-          </View>
-        </View>
-      </Modal>
+      </WebModal>
 
       {/* DETAIL */}
-      <Modal
+      <WebModal
         visible={!!selected}
-        animationType="slide"
-        transparent
-        onRequestClose={() => setSelected(null)}
+        onClose={() => setSelected(null)}
+        title="Interview detail"
+        size="lg"
       >
-        <View style={styles.modalWrap}>
-          <View style={styles.modal}>
-            <View style={styles.modalHeader}>
-              <Text style={styles.modalTitle}>Interview detail</Text>
-              <TouchableOpacity onPress={() => setSelected(null)}>
-                <Ionicons name="close" size={24} color={c.textMuted} />
-              </TouchableOpacity>
-            </View>
             {selected && (
-              <ScrollView style={{ maxHeight: 520 }}>
+              <>
                 <Text style={styles.detailLabel}>Candidate</Text>
                 <Text style={styles.detailBody}>
                   {candidates.find(
@@ -565,11 +527,9 @@ export default function HrInterviews() {
                     </View>
                   ))
                 )}
-              </ScrollView>
+              </>
             )}
-          </View>
-        </View>
-      </Modal>
+      </WebModal>
     </SafeAreaView>
   );
 }

@@ -9,9 +9,7 @@ import {
   ScrollView,
   TouchableOpacity,
   TextInput,
-  ActivityIndicator,
-  Modal } from "react-native";
-import { KeyboardAvoidingView } from "react-native-keyboard-controller";
+  ActivityIndicator } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 
 import AsyncStorage from "@react-native-async-storage/async-storage";
@@ -27,6 +25,7 @@ import {
 import { Asset, AssetReportType } from "../src/types";
 
 import { useTheme } from "../src/theme/ThemeProvider";
+import { WebModal, ModalActions } from "../src/components/WebModal";
 const REPORT_TYPES: { value: AssetReportType; label: string }[] = [
   { value: "DAMAGE", label: "Damaged" },
   { value: "LOSS", label: "Lost" },
@@ -226,84 +225,76 @@ export default function MyAssets() {
       </ScrollView>
 
       {/* REPORT MODAL */}
-      <Modal
+      <WebModal
         visible={modalVisible}
-        transparent
-        animationType="slide"
-        onRequestClose={() => setModalVisible(false)}
+        onClose={() => setModalVisible(false)}
+        title="Report Issue"
+        size="md"
+        footer={
+          <ModalActions align="spread">
+            <TouchableOpacity
+              style={styles.cancelBtn}
+              onPress={() => setModalVisible(false)}
+            >
+              <Text style={styles.modalBtnText}>Cancel</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={[
+                styles.saveBtn,
+                saving && { opacity: 0.7 },
+              ]}
+              onPress={submit}
+              disabled={saving}
+            >
+              {saving ? (
+                <ActivityIndicator color="#fff" />
+              ) : (
+                <Text style={[styles.modalBtnText, { color: "#fff" }]}>Submit</Text>
+              )}
+            </TouchableOpacity>
+          </ModalActions>
+        }
       >
-        <KeyboardAvoidingView behavior="padding" style={{ flex: 1 }}>
-        <View style={styles.modalOverlay}>
-          <View style={styles.modalCard}>
+        <Text style={styles.hint}>
+          {target?.name}
+          {target?.code ? `  ·  ${target.code}` : ""}
+        </Text>
 
-            <Text style={styles.modalTitle}>Report Issue</Text>
-            <Text style={styles.hint}>
-              {target?.name}
-              {target?.code ? `  ·  ${target.code}` : ""}
-            </Text>
-
-            <Text style={styles.label}>Type</Text>
-            <View style={styles.chipPicker}>
-              {REPORT_TYPES.map((t) => (
-                <TouchableOpacity
-                  key={t.value}
-                  style={[
-                    styles.pickBtn,
-                    reportType === t.value && styles.pickActive,
-                  ]}
-                  onPress={() => setReportType(t.value)}
-                >
-                  <Text
-                    style={[
-                      styles.pickText,
-                      reportType === t.value && {
-                        color: "#fff" },
-                    ]}
-                  >
-                    {t.label}
-                  </Text>
-                </TouchableOpacity>
-              ))}
-            </View>
-
-            <Text style={styles.label}>Description</Text>
-            <TextInput
-              style={[styles.input, styles.multiline]}
-              value={description}
-              onChangeText={setDescription}
-              placeholder="What happened?"
-              placeholderTextColor={c.textFaint}
-              multiline
-            />
-
-            <View style={styles.modalActions}>
-              <TouchableOpacity
-                style={styles.cancelBtn}
-                onPress={() => setModalVisible(false)}
-              >
-                <Text style={styles.modalBtnText}>Cancel</Text>
-              </TouchableOpacity>
-
-              <TouchableOpacity
+        <Text style={styles.label}>Type</Text>
+        <View style={styles.chipPicker}>
+          {REPORT_TYPES.map((t) => (
+            <TouchableOpacity
+              key={t.value}
+              style={[
+                styles.pickBtn,
+                reportType === t.value && styles.pickActive,
+              ]}
+              onPress={() => setReportType(t.value)}
+            >
+              <Text
                 style={[
-                  styles.saveBtn,
-                  saving && { opacity: 0.7 },
+                  styles.pickText,
+                  reportType === t.value && {
+                    color: "#fff" },
                 ]}
-                onPress={submit}
-                disabled={saving}
               >
-                {saving ? (
-                  <ActivityIndicator color="#fff" />
-                ) : (
-                  <Text style={[styles.modalBtnText, { color: "#fff" }]}>Submit</Text>
-                )}
-              </TouchableOpacity>
-            </View>
-
-          </View>
+                {t.label}
+              </Text>
+            </TouchableOpacity>
+          ))}
         </View>
-        </KeyboardAvoidingView>
-      </Modal>
+
+        <Text style={styles.label}>Description</Text>
+        <TextInput
+          style={[styles.input, styles.multiline]}
+          value={description}
+          onChangeText={setDescription}
+          placeholder="What happened?"
+          placeholderTextColor={c.textFaint}
+          multiline
+        />
+      </WebModal>
 
     </SafeAreaView>
   );

@@ -10,12 +10,12 @@ import {
   StyleSheet,
   TouchableOpacity,
   ActivityIndicator,
-  Modal,
   TextInput,
   ScrollView,
   Platform,
 } from "react-native";
-import { KeyboardAwareScrollView } from "react-native-keyboard-controller";
+
+import { WebModal, ModalActions } from "../src/components/WebModal";
 
 import AsyncStorage from "@react-native-async-storage/async-storage";
 
@@ -40,6 +40,7 @@ import {
 
 import {
   requestCorrection,
+  requestCorrectionForDate,
   listMyCorrections,
 } from "../src/services/corrections";
 
@@ -277,9 +278,18 @@ export default function History() {
     return { kind: "none", color: null };
   };
 
-  // Open the existing Manual Attendance flow pre-filled with the tapped day.
-  const goRequestAttendance = (ymd: string) => {
-    router.push({ pathname: "/manual-request", params: { date: ymd } } as any);
+  // Missed day (no attendance record): open the same Correction modal, but
+  // with no underlying record. submitCorrection() handles this case via the
+  // date-based correction endpoint (which creates the row on approval).
+  const openCorrectionForDate = (ymd: string) => {
+    setCorrItem(null);
+    setCorrDate(ymd);
+    setCorrCheckIn(null);
+    setCorrCheckOut(null);
+    setCorrType("OFFICE");
+    setCorrNotes("");
+    setCorrReason("");
+    setCorrVisible(true);
   };
 
   const hoursBetween = (
@@ -451,10 +461,58 @@ export default function History() {
 
   const submitCorrection = async () => {
 
-    if (corrSaving || !corrItem) return;
+    if (corrSaving) return;
 
     if (!corrReason.trim()) {
       showError({ message: "Please give a reason" });
+      return;
+    }
+
+    // ===== MISSED DAY (no existing record) =====
+    // All fields come from the form (nothing to diff against). Requires
+    // both times, and submits via the date-based correction endpoint.
+    if (!corrItem) {
+      const baseDateStr = (corrDate || "").trim();
+      if (!baseDateStr) {
+        showError({ message: "Pick a date" });
+        return;
+      }
+      if (!corrCheckIn || !corrCheckOut) {
+        showError({ message: "Set both check-in and check-out times." });
+        return;
+      }
+      const inMins = corrCheckIn.getHours() * 60 + corrCheckIn.getMinutes();
+      const outMins = corrCheckOut.getHours() * 60 + corrCheckOut.getMinutes();
+      if (outMins <= inMins) {
+        showError({ message: "Check-out must be after check-in." });
+        return;
+      }
+      try {
+        setCorrSaving(true);
+        const token = await AsyncStorage.getItem("token");
+        if (!token) return;
+        const baseDate = new Date(`${baseDateStr}T00:00:00`);
+        const combineTime = (t: Date) => {
+          const d = new Date(baseDate);
+          d.setHours(t.getHours(), t.getMinutes(), 0, 0);
+          return d.toISOString();
+        };
+        await requestCorrectionForDate(token, {
+          date: baseDateStr,
+          requestedCheckIn: combineTime(corrCheckIn),
+          requestedCheckOut: combineTime(corrCheckOut),
+          requestedAttendanceType: corrType,
+          requestedWorkNotes: corrNotes.trim() || undefined,
+          reason: corrReason.trim(),
+        });
+        showSuccess("Correction request submitted");
+        setCorrVisible(false);
+        await loadHistory();
+      } catch (err) {
+        showError(err);
+      } finally {
+        setCorrSaving(false);
+      }
       return;
     }
 
@@ -781,7 +839,13 @@ export default function History() {
 
       <ScrollView
         showsVerticalScrollIndicator={false}
-        contentContainerStyle={{ paddingBottom: 40 }}
+        contentContainerStyle={[
+          { paddingBottom: 40 },
+          // On web the screen spans the full browser width, which would
+          // stretch the 7-column calendar into huge cells. Constrain the
+          // content to a centered, calendar-sized column instead.
+          isWeb && styles.webContent,
+        ]}
       >
         {/* MONTH NAV */}
         <View style={styles.monthNav}>
@@ -937,17 +1001,17 @@ export default function History() {
                       (cls.kind === "missed" || cls.kind === "holiday") && (
                         <TouchableOpacity
                           style={styles.requestBtn}
-                          onPress={() => goRequestAttendance(selectedYmd)}
+                          onPress={() => openCorrectionForDate(selectedYmd)}
                         >
                           <Ionicons
-                            name="add-circle-outline"
+                            name="time-outline"
                             size={16}
                             color="#fff"
                           />
                           <Text style={styles.correctionBtnText}>
                             {cls.kind === "holiday"
-                              ? "Worked this day? Request attendance"
-                              : "Request attendance"}
+                              ? "Worked this day? Request correction"
+                              : "Request correction"}
                           </Text>
                         </TouchableOpacity>
                       )}
@@ -1082,25 +1146,49 @@ export default function History() {
       </ScrollView>
 
       {/* EDIT MODAL */}
-      <Modal
+      <WebModal
         visible={editVisible}
-        transparent
-        animationType="slide"
-      >
-
-        <View style={styles.modalOverlay}>
-
-          <View style={styles.modalContent}>
-
-            <KeyboardAwareScrollView
-              showsVerticalScrollIndicator={false}
-              keyboardShouldPersistTaps="handled"
-              bottomOffset={24}
+        onClose={() => setEditVisible(false)}
+        title="Edit Attendance"
+        size="md"
+        footer={
+          <ModalActions align="right">
+            <TouchableOpacity
+              style={styles.cancelBtn}
+              onPress={() =>
+                setEditVisible(
+                  false
+                )
+              }
             >
 
-              <Text style={styles.modalTitle}>
-                Edit Attendance
+              <Text
+                style={
+                  styles.modalBtnText
+                }
+              >
+                Cancel
               </Text>
+
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={styles.saveBtn}
+              onPress={saveEdit}
+            >
+
+              <Text
+                style={
+                  styles.modalBtnText
+                }
+              >
+                Save
+              </Text>
+
+            </TouchableOpacity>
+          </ModalActions>
+        }
+      >
 
               {/* TYPE */}
               <Text style={styles.modalLabel}>
@@ -1375,79 +1463,63 @@ export default function History() {
                 placeholderTextColor={c.textFaint}
               />
 
-              {/* ACTIONS */}
-              <View style={styles.modalActions}>
-
-                <TouchableOpacity
-                  style={styles.cancelBtn}
-                  onPress={() =>
-                    setEditVisible(
-                      false
-                    )
-                  }
-                >
-
-                  <Text
-                    style={
-                      styles.modalBtnText
-                    }
-                  >
-                    Cancel
-                  </Text>
-
-                </TouchableOpacity>
-
-                <TouchableOpacity
-                  style={styles.saveBtn}
-                  onPress={saveEdit}
-                >
-
-                  <Text
-                    style={
-                      styles.modalBtnText
-                    }
-                  >
-                    Save
-                  </Text>
-
-                </TouchableOpacity>
-
-              </View>
-
-            </KeyboardAwareScrollView>
-
-          </View>
-
-        </View>
-
-      </Modal>
+      </WebModal>
 
       {/* CORRECTION MODAL */}
-      <Modal
+      <WebModal
         visible={corrVisible}
-        transparent
-        animationType="slide"
-        onRequestClose={() => setCorrVisible(false)}
-      >
-        <View style={styles.modalOverlay}>
-          <View style={styles.modalContent}>
-            <KeyboardAwareScrollView
-              showsVerticalScrollIndicator={false}
-              keyboardShouldPersistTaps="handled"
-              bottomOffset={24}
+        onClose={() => setCorrVisible(false)}
+        title="Request Correction"
+        size="md"
+        footer={
+          <ModalActions align="right">
+            <TouchableOpacity
+              style={styles.cancelBtn}
+              onPress={() => setCorrVisible(false)}
             >
-
-              <Text style={styles.modalTitle}>
-                Request Correction
+              <Text style={styles.modalBtnText}>
+                Cancel
               </Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={[
+                styles.saveBtn,
+                corrSaving && { opacity: 0.7 },
+              ]}
+              onPress={submitCorrection}
+              disabled={corrSaving}
+            >
+              {corrSaving ? (
+                <ActivityIndicator color="#fff" />
+              ) : (
+                <Text style={[styles.modalBtnText, { color: "#fff" }]}>
+                  Submit
+                </Text>
+              )}
+            </TouchableOpacity>
+          </ModalActions>
+        }
+      >
 
               <Text style={styles.corrHint}>
-                Original: {corrItem?.date}
-                {"  ·  "}
-                {corrItem?.attendanceType || "—"}
-                {"\n"}
-                Change any field below. Manager/HR approves before the
-                change is applied.
+                {corrItem ? (
+                  <>
+                    Original: {corrItem?.date}
+                    {"  ·  "}
+                    {corrItem?.attendanceType || "—"}
+                    {"\n"}
+                    Change any field below. Manager/HR approves before the
+                    change is applied.
+                  </>
+                ) : (
+                  <>
+                    No attendance recorded for {corrDate}.
+                    {"\n"}
+                    Fill in the times below. Manager/HR approves before it&apos;s
+                    added.
+                  </>
+                )}
               </Text>
 
               {/* DATE */}
@@ -1726,38 +1798,7 @@ export default function History() {
                 placeholderTextColor={c.textFaint}
               />
 
-              <View style={styles.modalActions}>
-                <TouchableOpacity
-                  style={styles.cancelBtn}
-                  onPress={() => setCorrVisible(false)}
-                >
-                  <Text style={styles.modalBtnText}>
-                    Cancel
-                  </Text>
-                </TouchableOpacity>
-
-                <TouchableOpacity
-                  style={[
-                    styles.saveBtn,
-                    corrSaving && { opacity: 0.7 },
-                  ]}
-                  onPress={submitCorrection}
-                  disabled={corrSaving}
-                >
-                  {corrSaving ? (
-                    <ActivityIndicator color="#fff" />
-                  ) : (
-                    <Text style={[styles.modalBtnText, { color: "#fff" }]}>
-                      Submit
-                    </Text>
-                  )}
-                </TouchableOpacity>
-              </View>
-
-            </KeyboardAwareScrollView>
-          </View>
-        </View>
-      </Modal>
+      </WebModal>
 
     </View>
   );
@@ -1853,6 +1894,15 @@ const makeStyles = (c: any) => StyleSheet.create({
     fontSize: 14,
     fontWeight: "800",
     letterSpacing: 0.3,
+  },
+
+  // Centered, fixed-width content column for web so the calendar and the
+  // detail panels read like a desktop layout instead of stretching across
+  // the whole viewport.
+  webContent: {
+    width: "100%",
+    maxWidth: 520,
+    alignSelf: "center",
   },
 
   // ===== CALENDAR =====

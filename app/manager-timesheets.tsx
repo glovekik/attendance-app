@@ -8,12 +8,9 @@ import {
   TouchableOpacity,
   ActivityIndicator,
   RefreshControl,
-  Modal,
   TextInput,
   Alert,
-  Platform,
-  ScrollView } from "react-native";
-import { KeyboardAvoidingView } from "react-native-keyboard-controller";
+  Platform } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 
 import AsyncStorage from "@react-native-async-storage/async-storage";
@@ -24,8 +21,9 @@ import {
   listManagerTimesheets,
   decideManagerTimesheet } from "../src/services/manager";
 import { Timesheet, TimesheetEntry } from "../src/types";
-
+
 import { useTheme } from "../src/theme/ThemeProvider";
+import { WebModal, ModalActions } from "../src/components/WebModal";
 export default function ManagerTimesheets() {
   const router = useRouter();
   const { theme } = useTheme();
@@ -179,26 +177,36 @@ export default function ManagerTimesheets() {
         )}
       />
 
-      <Modal
+      <WebModal
         visible={!!selected}
-        animationType="slide"
-        transparent
-        onRequestClose={close}
+        onClose={close}
+        title="Decide timesheet"
+        size="md"
+        footer={
+          <ModalActions align="spread">
+            <TouchableOpacity
+              style={[styles.btn, styles.btnReject]}
+              onPress={() => onDecide("REJECT")}
+              disabled={acting !== null}
+            >
+              <Text style={styles.btnText}>
+                {acting === "REJECT" ? "..." : "Reject"}
+              </Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[styles.btn, styles.btnApprove]}
+              onPress={() => onDecide("APPROVE")}
+              disabled={acting !== null}
+            >
+              <Text style={styles.btnText}>
+                {acting === "APPROVE" ? "..." : "Approve"}
+              </Text>
+            </TouchableOpacity>
+          </ModalActions>
+        }
       >
-        <KeyboardAvoidingView
-          behavior="padding"
-          style={styles.modalWrap}
-        >
-          <View style={styles.modal}>
-            <View style={styles.modalHeader}>
-              <Text style={styles.modalTitle}>Decide timesheet</Text>
-              <TouchableOpacity onPress={close}>
-                <Ionicons name="close" size={24} color={c.textMuted} />
-              </TouchableOpacity>
-            </View>
-
             {selected && (
-              <ScrollView style={{ maxHeight: 380 }}>
+              <>
                 <View style={styles.detailRow}>
                   <Text style={styles.detailLabelInline}>Week of</Text>
                   <Text style={styles.detailValue}>
@@ -239,7 +247,7 @@ export default function ManagerTimesheets() {
                     </View>
                   )
                 )}
-              </ScrollView>
+              </>
             )}
 
             <Text style={styles.detailLabel}>
@@ -253,30 +261,7 @@ export default function ManagerTimesheets() {
               placeholderTextColor={c.textFaint}
               multiline
             />
-
-            <View style={styles.actions}>
-              <TouchableOpacity
-                style={[styles.btn, styles.btnReject]}
-                onPress={() => onDecide("REJECT")}
-                disabled={acting !== null}
-              >
-                <Text style={styles.btnText}>
-                  {acting === "REJECT" ? "..." : "Reject"}
-                </Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={[styles.btn, styles.btnApprove]}
-                onPress={() => onDecide("APPROVE")}
-                disabled={acting !== null}
-              >
-                <Text style={styles.btnText}>
-                  {acting === "APPROVE" ? "..." : "Approve"}
-                </Text>
-              </TouchableOpacity>
-            </View>
-          </View>
-        </KeyboardAvoidingView>
-      </Modal>
+      </WebModal>
     </SafeAreaView>
   );
 }

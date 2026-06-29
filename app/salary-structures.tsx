@@ -9,10 +9,10 @@ import {
   ScrollView,
   TouchableOpacity,
   TextInput,
-  ActivityIndicator,
-  Modal } from "react-native";
-import { KeyboardAwareScrollView } from "react-native-keyboard-controller";
+  ActivityIndicator } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
+
+import { WebModal, ModalActions } from "../src/components/WebModal";
 
 import AsyncStorage from "@react-native-async-storage/async-storage";
 
@@ -301,23 +301,33 @@ export default function SalaryStructures() {
       </ScrollView>
 
       {/* MODAL */}
-      <Modal
+      <WebModal
         visible={modalVisible}
-        transparent
-        animationType="slide"
-        onRequestClose={() => setModalVisible(false)}
-      >
-        <View style={s.modalOverlay}>
-          <View style={s.modalCard}>
-            <KeyboardAwareScrollView
-              showsVerticalScrollIndicator={false}
-              keyboardShouldPersistTaps="handled"
-              bottomOffset={24}
+        onClose={() => setModalVisible(false)}
+        title={target?.name}
+        size="md"
+        footer={
+          <ModalActions align="spread">
+            <TouchableOpacity
+              style={s.cancelBtn}
+              onPress={() => setModalVisible(false)}
             >
-
-              <Text style={s.modalTitle}>
-                {target?.name}
-              </Text>
+              <Text style={s.modalBtnText}>Close</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[s.saveBtn, saving && { opacity: 0.7 }]}
+              onPress={save}
+              disabled={saving}
+            >
+              {saving ? (
+                <ActivityIndicator color="#fff" />
+              ) : (
+                <Text style={[s.modalBtnText, { color: "#fff" }]}>Save</Text>
+              )}
+            </TouchableOpacity>
+          </ModalActions>
+        }
+      >
               <Text style={s.hint}>
                 {current
                   ? "Saving creates a new active version (history kept)."
@@ -457,30 +467,7 @@ export default function SalaryStructures() {
                 <Field label="Bank Name" value={bankName} onChange={setBankName} keyboard="default" styles={s} faintColor={c.textFaint} />
               </View>
 
-              <View style={s.modalActions}>
-                <TouchableOpacity
-                  style={s.cancelBtn}
-                  onPress={() => setModalVisible(false)}
-                >
-                  <Text style={s.modalBtnText}>Close</Text>
-                </TouchableOpacity>
-                <TouchableOpacity
-                  style={[s.saveBtn, saving && { opacity: 0.7 }]}
-                  onPress={save}
-                  disabled={saving}
-                >
-                  {saving ? (
-                    <ActivityIndicator color="#fff" />
-                  ) : (
-                    <Text style={[s.modalBtnText, { color: "#fff" }]}>Save</Text>
-                  )}
-                </TouchableOpacity>
-              </View>
-
-            </KeyboardAwareScrollView>
-          </View>
-        </View>
-      </Modal>
+      </WebModal>
 
     </SafeAreaView>
   );

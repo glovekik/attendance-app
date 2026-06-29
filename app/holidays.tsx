@@ -10,11 +10,11 @@ import {
   TouchableOpacity,
   TextInput,
   ActivityIndicator,
-  Modal,
   Platform,
   Alert } from "react-native";
-import { KeyboardAwareScrollView } from "react-native-keyboard-controller";
 import { SafeAreaView } from "react-native-safe-area-context";
+
+import { WebModal, ModalActions } from "../src/components/WebModal";
 
 import AsyncStorage from "@react-native-async-storage/async-storage";
 
@@ -340,19 +340,35 @@ export default function Holidays() {
 
       </ScrollView>
 
-      <Modal
+      <WebModal
         visible={modalVisible}
-        transparent
-        animationType="slide"
-        onRequestClose={() => setModalVisible(false)}
+        onClose={() => setModalVisible(false)}
+        title={editingId ? "Edit Holiday" : "New Holiday"}
+        size="md"
+        footer={
+          <ModalActions align="spread">
+            <TouchableOpacity
+              style={s.cancelBtn}
+              onPress={() => setModalVisible(false)}
+            >
+              <Text style={s.modalBtnText}>Cancel</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[s.saveBtn, saving && { opacity: 0.7 }]}
+              onPress={submit}
+              disabled={saving}
+            >
+              {saving ? (
+                <ActivityIndicator color="#fff" />
+              ) : (
+                <Text style={s.modalBtnText}>
+                  {editingId ? "Update" : "Add"}
+                </Text>
+              )}
+            </TouchableOpacity>
+          </ModalActions>
+        }
       >
-        <View style={s.modalOverlay}>
-          <View style={s.modalCard}>
-            <KeyboardAwareScrollView bottomOffset={24} keyboardShouldPersistTaps="handled">
-
-              <Text style={s.modalTitle}>
-                {editingId ? "Edit Holiday" : "New Holiday"}
-              </Text>
 
               <Text style={s.label}>Date</Text>
               {isWeb ? (
@@ -422,32 +438,7 @@ export default function Holidays() {
                 multiline
               />
 
-              <View style={s.modalActions}>
-                <TouchableOpacity
-                  style={s.cancelBtn}
-                  onPress={() => setModalVisible(false)}
-                >
-                  <Text style={s.modalBtnText}>Cancel</Text>
-                </TouchableOpacity>
-                <TouchableOpacity
-                  style={[s.saveBtn, saving && { opacity: 0.7 }]}
-                  onPress={submit}
-                  disabled={saving}
-                >
-                  {saving ? (
-                    <ActivityIndicator color="#fff" />
-                  ) : (
-                    <Text style={s.modalBtnText}>
-                      {editingId ? "Update" : "Add"}
-                    </Text>
-                  )}
-                </TouchableOpacity>
-              </View>
-
-            </KeyboardAwareScrollView>
-          </View>
-        </View>
-      </Modal>
+      </WebModal>
 
     </SafeAreaView>
   );

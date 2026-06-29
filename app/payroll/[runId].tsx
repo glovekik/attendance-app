@@ -11,12 +11,12 @@ import {
   ActivityIndicator,
   Platform,
   Alert,
-  Modal,
   TextInput,
 } from "react-native";
-import { KeyboardAvoidingView } from "react-native-keyboard-controller";
 
 import { SafeAreaView } from "react-native-safe-area-context";
+
+import { WebModal, ModalActions } from "../../src/components/WebModal";
 
 import AsyncStorage from "@react-native-async-storage/async-storage";
 
@@ -567,25 +567,45 @@ export default function HRPayrollRun() {
 
       </ScrollView>
 
-      <Modal
+      <WebModal
         visible={!!editPayslip}
-        transparent
-        animationType="slide"
-        onRequestClose={() => setEditPayslip(null)}
+        onClose={() => setEditPayslip(null)}
+        title="Edit working days"
+        subtitle={
+          editPayslip
+            ? `${editPayslip.user?.name ?? ""}${
+                editPayslip.user?.employeeCode
+                  ? `  ·  ${editPayslip.user.employeeCode}`
+                  : ""
+              }`
+            : undefined
+        }
+        size="md"
+        footer={
+          <ModalActions align="spread">
+            <TouchableOpacity
+              style={s.modalCancel}
+              onPress={() => setEditPayslip(null)}
+            >
+              <Text style={s.modalBtnText}>Cancel</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[
+                s.modalSave,
+                savingEdit && { opacity: 0.7 },
+              ]}
+              onPress={saveEditDays}
+              disabled={savingEdit}
+            >
+              {savingEdit ? (
+                <ActivityIndicator color="#fff" />
+              ) : (
+                <Text style={[s.modalBtnText, { color: "#fff" }]}>Save</Text>
+              )}
+            </TouchableOpacity>
+          </ModalActions>
+        }
       >
-        <KeyboardAvoidingView behavior="padding" style={{ flex: 1 }}>
-        <View style={s.modalOverlay}>
-          <View style={s.modalCard}>
-            <Text style={s.modalTitle}>
-              Edit working days
-            </Text>
-            <Text style={s.modalSub}>
-              {editPayslip?.user?.name}
-              {editPayslip?.user?.employeeCode
-                ? `  ·  ${editPayslip.user.employeeCode}`
-                : ""}
-            </Text>
-
             {/* PREVIEW — current computed figures HR is reviewing. They
                 recalculate from the days below when saved. */}
             {editPayslip && (
@@ -643,32 +663,7 @@ export default function HRPayrollRun() {
               The payslip&apos;s gross and LOP deduction are recalculated
               from these numbers when you save.
             </Text>
-            <View style={s.modalActions}>
-              <TouchableOpacity
-                style={s.modalCancel}
-                onPress={() => setEditPayslip(null)}
-              >
-                <Text style={s.modalBtnText}>Cancel</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={[
-                  s.modalSave,
-                  savingEdit && { opacity: 0.7 },
-                ]}
-                onPress={saveEditDays}
-                disabled={savingEdit}
-              >
-                {savingEdit ? (
-                  <ActivityIndicator color="#fff" />
-                ) : (
-                  <Text style={[s.modalBtnText, { color: "#fff" }]}>Save</Text>
-                )}
-              </TouchableOpacity>
-            </View>
-          </View>
-        </View>
-        </KeyboardAvoidingView>
-      </Modal>
+      </WebModal>
 
     </SafeAreaView>
   );

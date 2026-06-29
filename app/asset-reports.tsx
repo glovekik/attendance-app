@@ -9,9 +9,7 @@ import {
   ScrollView,
   TouchableOpacity,
   TextInput,
-  ActivityIndicator,
-  Modal } from "react-native";
-import { KeyboardAwareScrollView } from "react-native-keyboard-controller";
+  ActivityIndicator } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 
 import AsyncStorage from "@react-native-async-storage/async-storage";
@@ -21,6 +19,7 @@ import { useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 
 import { useTheme } from "../src/theme/ThemeProvider";
+import { WebModal, ModalActions } from "../src/components/WebModal";
 import {
   hrListAssetReports,
   hrResolveAssetReport } from "../src/services/assets";
@@ -280,102 +279,90 @@ export default function AssetReports() {
       </ScrollView>
 
       {/* RESOLVE/REJECT MODAL */}
-      <Modal
+      <WebModal
         visible={modalVisible}
-        transparent
-        animationType="slide"
-        onRequestClose={() => setModalVisible(false)}
-      >
-        <View style={styles.modalOverlay}>
-          <View style={styles.modalCard}>
-            <KeyboardAwareScrollView showsVerticalScrollIndicator={false} bottomOffset={24} keyboardShouldPersistTaps="handled">
+        onClose={() => setModalVisible(false)}
+        title={action === "RESOLVE" ? "Resolve Report" : "Reject Report"}
+        size="md"
+        footer={
+          <ModalActions align="spread">
+            <TouchableOpacity
+              style={styles.cancelBtn}
+              onPress={() => setModalVisible(false)}
+            >
+              <Text style={styles.modalBtnText}>Cancel</Text>
+            </TouchableOpacity>
 
-              <Text style={styles.modalTitle}>
-                {action === "RESOLVE"
-                  ? "Resolve Report"
-                  : "Reject Report"}
-              </Text>
-              <Text style={styles.hint}>
-                {target?.asset?.name}{" · "}
-                {target?.asset?.code}
-              </Text>
-
-              {action === "RESOLVE" && (
-                <>
-                  <Text style={styles.label}>
-                    Set asset status to
-                  </Text>
-                  <View style={styles.chipPicker}>
-                    {NEW_STATUSES.map((s) => (
-                      <TouchableOpacity
-                        key={s}
-                        style={[
-                          styles.pickBtn,
-                          newAssetStatus === s &&
-                            styles.pickActive,
-                        ]}
-                        onPress={() => setNewAssetStatus(s)}
-                      >
-                        <Text
-                          style={[
-                            styles.pickText,
-                            newAssetStatus === s && { color: "#fff" },
-                          ]}
-                        >
-                          {s}
-                        </Text>
-                      </TouchableOpacity>
-                    ))}
-                  </View>
-                </>
+            <TouchableOpacity
+              style={[
+                action === "RESOLVE"
+                  ? styles.resolveConfirm
+                  : styles.rejectConfirm,
+                busyId && { opacity: 0.7 },
+              ]}
+              onPress={submit}
+              disabled={!!busyId}
+            >
+              {busyId ? (
+                <ActivityIndicator color="#fff" />
+              ) : (
+                <Text style={[styles.modalBtnText, { color: "#fff" }]}>
+                  {action === "RESOLVE" ? "Resolve" : "Reject"}
+                </Text>
               )}
+            </TouchableOpacity>
+          </ModalActions>
+        }
+      >
+        <Text style={styles.hint}>
+          {target?.asset?.name}{" · "}
+          {target?.asset?.code}
+        </Text>
 
-              <Text style={styles.label}>
-                {action === "RESOLVE"
-                  ? "Resolution note"
-                  : "Reason"}
-              </Text>
-              <TextInput
-                style={[styles.input, styles.multiline]}
-                value={resolution}
-                onChangeText={setResolution}
-                placeholder="Optional"
-                placeholderTextColor={c.textFaint}
-                multiline
-              />
-
-              <View style={styles.modalActions}>
+        {action === "RESOLVE" && (
+          <>
+            <Text style={styles.label}>
+              Set asset status to
+            </Text>
+            <View style={styles.chipPicker}>
+              {NEW_STATUSES.map((s) => (
                 <TouchableOpacity
-                  style={styles.cancelBtn}
-                  onPress={() => setModalVisible(false)}
-                >
-                  <Text style={styles.modalBtnText}>Cancel</Text>
-                </TouchableOpacity>
-
-                <TouchableOpacity
+                  key={s}
                   style={[
-                    action === "RESOLVE"
-                      ? styles.resolveConfirm
-                      : styles.rejectConfirm,
-                    busyId && { opacity: 0.7 },
+                    styles.pickBtn,
+                    newAssetStatus === s &&
+                      styles.pickActive,
                   ]}
-                  onPress={submit}
-                  disabled={!!busyId}
+                  onPress={() => setNewAssetStatus(s)}
                 >
-                  {busyId ? (
-                    <ActivityIndicator color="#fff" />
-                  ) : (
-                    <Text style={[styles.modalBtnText, { color: "#fff" }]}>
-                      {action === "RESOLVE" ? "Resolve" : "Reject"}
-                    </Text>
-                  )}
+                  <Text
+                    style={[
+                      styles.pickText,
+                      newAssetStatus === s && { color: "#fff" },
+                    ]}
+                  >
+                    {s}
+                  </Text>
                 </TouchableOpacity>
-              </View>
+              ))}
+            </View>
+          </>
+        )}
 
-            </KeyboardAwareScrollView>
-          </View>
-        </View>
-      </Modal>
+        <Text style={styles.label}>
+          {action === "RESOLVE"
+            ? "Resolution note"
+            : "Reason"}
+        </Text>
+        <TextInput
+          style={[styles.input, styles.multiline]}
+          value={resolution}
+          onChangeText={setResolution}
+          placeholder="Optional"
+          placeholderTextColor={c.textFaint}
+          multiline
+        />
+      </WebModal>
 
     </SafeAreaView>
   );

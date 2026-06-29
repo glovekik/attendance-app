@@ -9,10 +9,10 @@ import {
   ActivityIndicator,
   RefreshControl,
   TextInput,
-  Modal,
   ScrollView,
   Alert } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
+import { WebModal, ModalActions } from "../src/components/WebModal";
 
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useRouter } from "expo-router";
@@ -292,23 +292,14 @@ export default function HrAuditLogs() {
       )}
 
       {/* DETAIL MODAL */}
-      <Modal
+      <WebModal
         visible={!!selected}
-        animationType="slide"
-        transparent
-        onRequestClose={() => setSelected(null)}
+        onClose={() => setSelected(null)}
+        title="Audit detail"
+        size="lg"
       >
-        <View style={styles.modalWrap}>
-          <View style={styles.modal}>
-            <View style={styles.modalHeader}>
-              <Text style={styles.modalTitle}>Audit detail</Text>
-              <TouchableOpacity onPress={() => setSelected(null)}>
-                <Ionicons name="close" size={24} color={c.textMuted} />
-              </TouchableOpacity>
-            </View>
-
-            {selected && (
-              <ScrollView style={{ maxHeight: 520 }}>
+        {selected && (
+          <>
                 <View style={styles.detailRow}>
                   <Text style={styles.detailLabel}>Action</Text>
                   {(() => {
@@ -377,11 +368,9 @@ export default function HrAuditLogs() {
                   </>
                 )}
                 <View style={{ height: 20 }} />
-              </ScrollView>
-            )}
-          </View>
-        </View>
-      </Modal>
+          </>
+        )}
+      </WebModal>
     </SafeAreaView>
   );
 }

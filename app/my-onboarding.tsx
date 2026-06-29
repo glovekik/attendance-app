@@ -9,9 +9,7 @@ import {
   ScrollView,
   TouchableOpacity,
   TextInput,
-  ActivityIndicator,
-  Modal } from "react-native";
-import { KeyboardAvoidingView } from "react-native-keyboard-controller";
+  ActivityIndicator } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 
 import AsyncStorage from "@react-native-async-storage/async-storage";
@@ -30,6 +28,8 @@ import {
   Onboarding,
   OnboardingDocument,
   OnboardingTask } from "../src/types";
+
+import { WebModal, ModalActions } from "../src/components/WebModal";
 
 export default function MyOnboarding() {
 
@@ -297,54 +297,48 @@ export default function MyOnboarding() {
 
       </ScrollView>
 
-      <Modal
+      <WebModal
         visible={uploadVisible}
-        transparent
-        animationType="slide"
-        onRequestClose={() => setUploadVisible(false)}
+        onClose={() => setUploadVisible(false)}
+        title="Upload"
+        size="md"
+        footer={
+          <ModalActions align="spread">
+            <TouchableOpacity
+              style={s.cancelBtn}
+              onPress={() => setUploadVisible(false)}
+            >
+              <Text style={s.cancelBtnText}>Cancel</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[s.saveBtn, busy && { opacity: 0.7 }]}
+              onPress={submitUpload}
+              disabled={busy}
+            >
+              {busy ? (
+                <ActivityIndicator color="#fff" />
+              ) : (
+                <Text style={s.saveBtnText}>Save</Text>
+              )}
+            </TouchableOpacity>
+          </ModalActions>
+        }
       >
-        <KeyboardAvoidingView behavior="padding" style={{ flex: 1 }}>
-        <View style={s.modalOverlay}>
-          <View style={s.modalCard}>
-            <Text style={s.modalTitle}>Upload</Text>
-            <Text style={s.hint}>{target?.title}</Text>
+        <Text style={s.hint}>{target?.title}</Text>
 
-            <Text style={s.label}>File URL</Text>
-            <TextInput
-              style={s.input}
-              value={fileUrl}
-              onChangeText={setFileUrl}
-              placeholder="https://drive.google.com/…"
-              placeholderTextColor={c.textFaint}
-              autoCapitalize="none"
-            />
-            <Text style={s.fineprint}>
-              Upload your file to a sharable storage (Drive, Dropbox, etc.) and paste the URL here.
-            </Text>
-
-            <View style={s.modalActions}>
-              <TouchableOpacity
-                style={s.cancelBtn}
-                onPress={() => setUploadVisible(false)}
-              >
-                <Text style={s.cancelBtnText}>Cancel</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={[s.saveBtn, busy && { opacity: 0.7 }]}
-                onPress={submitUpload}
-                disabled={busy}
-              >
-                {busy ? (
-                  <ActivityIndicator color="#fff" />
-                ) : (
-                  <Text style={s.saveBtnText}>Save</Text>
-                )}
-              </TouchableOpacity>
-            </View>
-          </View>
-        </View>
-        </KeyboardAvoidingView>
-      </Modal>
+        <Text style={s.label}>File URL</Text>
+        <TextInput
+          style={s.input}
+          value={fileUrl}
+          onChangeText={setFileUrl}
+          placeholder="https://drive.google.com/…"
+          placeholderTextColor={c.textFaint}
+          autoCapitalize="none"
+        />
+        <Text style={s.fineprint}>
+          Upload your file to a sharable storage (Drive, Dropbox, etc.) and paste the URL here.
+        </Text>
+      </WebModal>
 
     </SafeAreaView>
   );

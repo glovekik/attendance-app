@@ -7,13 +7,11 @@ import {
   TouchableOpacity,
   ActivityIndicator,
   RefreshControl,
-  Modal,
   TextInput,
   Alert,
   ScrollView,
   Platform,
   Linking } from "react-native";
-import { KeyboardAvoidingView } from "react-native-keyboard-controller";
 import { SafeAreaView } from "react-native-safe-area-context";
 
 import AsyncStorage from "@react-native-async-storage/async-storage";
@@ -21,6 +19,7 @@ import { useRouter, useLocalSearchParams } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 
 import { FilePickButton } from "../src/components/FilePickButton";
+import { WebModal, ModalActions } from "../src/components/WebModal";
 import {
   listUserDocuments,
   addUserDocument,
@@ -466,87 +465,75 @@ export default function HrUserDocuments() {
         </ScrollView>
       )}
 
-      <Modal
+      <WebModal
         visible={!!noteFor}
-        animationType="fade"
-        transparent
-        onRequestClose={() => setNoteFor(null)}
+        onClose={() => setNoteFor(null)}
+        title={`Note for ${noteFor ?? ""}`}
+        size="sm"
+        footer={
+          <ModalActions align="spread">
+            <TouchableOpacity
+              style={[styles.btn, styles.btnGhost]}
+              onPress={() => setNoteFor(null)}
+            >
+              <Text style={styles.btnGhostText}>Cancel</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[styles.btn, styles.btnPrimary]}
+              onPress={saveNote}
+            >
+              <Text style={styles.btnPrimaryText}>Save</Text>
+            </TouchableOpacity>
+          </ModalActions>
+        }
       >
-        <KeyboardAvoidingView
-          behavior="padding"
-          style={styles.modalWrap}
-        >
-          <View style={styles.smallModal}>
-            <Text style={styles.modalTitle}>Note for {noteFor}</Text>
-            <Text style={styles.modalHint}>
-              Saved with your next upload for this category.
-            </Text>
-            <TextInput
-              style={[styles.input, { minHeight: 80, marginTop: 12 }]}
-              value={noteDraft}
-              onChangeText={setNoteDraft}
-              multiline
-              textAlignVertical="top"
-              placeholder="e.g. verified original on 2026-05-22"
-              placeholderTextColor={c.textFaint}
-            />
-            <View style={styles.modalActions}>
-              <TouchableOpacity
-                style={[styles.btn, styles.btnGhost]}
-                onPress={() => setNoteFor(null)}
-              >
-                <Text style={styles.btnGhostText}>Cancel</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={[styles.btn, styles.btnPrimary]}
-                onPress={saveNote}
-              >
-                <Text style={styles.btnPrimaryText}>Save</Text>
-              </TouchableOpacity>
-            </View>
-          </View>
-        </KeyboardAvoidingView>
-      </Modal>
+        <Text style={styles.modalHint}>
+          Saved with your next upload for this category.
+        </Text>
+        <TextInput
+          style={[styles.input, { minHeight: 80, marginTop: 12 }]}
+          value={noteDraft}
+          onChangeText={setNoteDraft}
+          multiline
+          textAlignVertical="top"
+          placeholder="e.g. verified original on 2026-05-22"
+          placeholderTextColor={c.textFaint}
+        />
+      </WebModal>
 
-      <Modal
+      <WebModal
         visible={showAddCat}
-        animationType="fade"
-        transparent
-        onRequestClose={() => setShowAddCat(false)}
+        onClose={() => setShowAddCat(false)}
+        title="Add a document slot"
+        size="sm"
+        footer={
+          <ModalActions align="spread">
+            <TouchableOpacity
+              style={[styles.btn, styles.btnGhost]}
+              onPress={() => setShowAddCat(false)}
+            >
+              <Text style={styles.btnGhostText}>Cancel</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[styles.btn, styles.btnPrimary]}
+              onPress={addCustomCategory}
+            >
+              <Text style={styles.btnPrimaryText}>Add</Text>
+            </TouchableOpacity>
+          </ModalActions>
+        }
       >
-        <KeyboardAvoidingView
-          behavior="padding"
-          style={styles.modalWrap}
-        >
-          <View style={styles.smallModal}>
-            <Text style={styles.modalTitle}>Add a document slot</Text>
-            <Text style={styles.modalHint}>
-              For categories not in the standard list.
-            </Text>
-            <TextInput
-              style={[styles.input, { marginTop: 12 }]}
-              value={customCat}
-              onChangeText={setCustomCat}
-              placeholder="e.g. Visa, NDA"
-              placeholderTextColor={c.textFaint}
-            />
-            <View style={styles.modalActions}>
-              <TouchableOpacity
-                style={[styles.btn, styles.btnGhost]}
-                onPress={() => setShowAddCat(false)}
-              >
-                <Text style={styles.btnGhostText}>Cancel</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={[styles.btn, styles.btnPrimary]}
-                onPress={addCustomCategory}
-              >
-                <Text style={styles.btnPrimaryText}>Add</Text>
-              </TouchableOpacity>
-            </View>
-          </View>
-        </KeyboardAvoidingView>
-      </Modal>
+        <Text style={styles.modalHint}>
+          For categories not in the standard list.
+        </Text>
+        <TextInput
+          style={[styles.input, { marginTop: 12 }]}
+          value={customCat}
+          onChangeText={setCustomCat}
+          placeholder="e.g. Visa, NDA"
+          placeholderTextColor={c.textFaint}
+        />
+      </WebModal>
     </SafeAreaView>
   );
 }

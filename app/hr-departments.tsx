@@ -8,12 +8,11 @@ import {
   TouchableOpacity,
   ActivityIndicator,
   RefreshControl,
-  Modal,
   TextInput,
   Alert,
   Platform } from "react-native";
-import { KeyboardAvoidingView } from "react-native-keyboard-controller";
 import { SafeAreaView } from "react-native-safe-area-context";
+import { WebModal, ModalActions } from "../src/components/WebModal";
 
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useRouter } from "expo-router";
@@ -26,7 +25,7 @@ import {
   deleteDepartment } from "../src/services/departments";
 import { listUsers } from "../src/services/users";
 import { Department, User } from "../src/types";
-
+
 import { useTheme } from "../src/theme/ThemeProvider";
 export default function HrDepartments() {
   const router = useRouter();
@@ -294,26 +293,32 @@ export default function HrDepartments() {
       />
 
       {/* CREATE / EDIT MODAL */}
-      <Modal
+      <WebModal
         visible={showForm}
-        animationType="slide"
-        transparent
-        onRequestClose={closeForm}
-      >
-        <KeyboardAvoidingView
-          behavior="padding"
-          style={styles.modalWrap}
-        >
-          <View style={styles.modal}>
-            <View style={styles.modalHeader}>
-              <Text style={styles.modalTitle}>
-                {editingId ? "Edit department" : "New department"}
+        onClose={closeForm}
+        title={editingId ? "Edit department" : "New department"}
+        size="md"
+        footer={
+          <ModalActions align="spread">
+            <TouchableOpacity
+              style={[styles.btn, styles.btnGhost]}
+              onPress={closeForm}
+              disabled={saving}
+            >
+              <Text style={styles.btnGhostText}>Cancel</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[styles.btn, styles.btnPrimary]}
+              onPress={onSave}
+              disabled={saving}
+            >
+              <Text style={styles.btnPrimaryText}>
+                {saving ? "..." : editingId ? "Update" : "Create"}
               </Text>
-              <TouchableOpacity onPress={closeForm}>
-                <Ionicons name="close" size={24} color={c.textMuted} />
-              </TouchableOpacity>
-            </View>
-
+            </TouchableOpacity>
+          </ModalActions>
+        }
+      >
             <Text style={styles.label}>Name *</Text>
             <TextInput
               style={styles.input}
@@ -354,44 +359,16 @@ export default function HrDepartments() {
                 <Text style={styles.linkClear}>Clear</Text>
               </TouchableOpacity>
             )}
-
-            <View style={styles.actions}>
-              <TouchableOpacity
-                style={[styles.btn, styles.btnGhost]}
-                onPress={closeForm}
-                disabled={saving}
-              >
-                <Text style={styles.btnGhostText}>Cancel</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={[styles.btn, styles.btnPrimary]}
-                onPress={onSave}
-                disabled={saving}
-              >
-                <Text style={styles.btnPrimaryText}>
-                  {saving ? "..." : editingId ? "Update" : "Create"}
-                </Text>
-              </TouchableOpacity>
-            </View>
-          </View>
-        </KeyboardAvoidingView>
-      </Modal>
+      </WebModal>
 
       {/* HEAD USER PICKER */}
-      <Modal
+      <WebModal
         visible={showHeadPicker}
-        animationType="slide"
-        transparent
-        onRequestClose={() => setShowHeadPicker(false)}
+        onClose={() => setShowHeadPicker(false)}
+        title="Choose head"
+        size="md"
+        scrollable={false}
       >
-        <View style={styles.modalWrap}>
-          <View style={styles.pickerModal}>
-            <View style={styles.modalHeader}>
-              <Text style={styles.modalTitle}>Choose head</Text>
-              <TouchableOpacity onPress={() => setShowHeadPicker(false)}>
-                <Ionicons name="close" size={24} color={c.textMuted} />
-              </TouchableOpacity>
-            </View>
             <View style={styles.searchBox}>
               <Ionicons name="search" size={16} color={c.textMuted} />
               <TextInput
@@ -429,9 +406,7 @@ export default function HrDepartments() {
                 </TouchableOpacity>
               )}
             />
-          </View>
-        </View>
-      </Modal>
+      </WebModal>
     </SafeAreaView>
   );
 }

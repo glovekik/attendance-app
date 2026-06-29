@@ -8,8 +8,7 @@ import {
   StyleSheet,
   ScrollView,
   TouchableOpacity,
-  ActivityIndicator,
-  Modal } from "react-native";
+  ActivityIndicator } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 
 import AsyncStorage from "@react-native-async-storage/async-storage";
@@ -27,6 +26,9 @@ import { listUsers } from "../../src/services/users";
 import { Onboarding, User } from "../../src/types";
 
 import { useTheme } from "../../src/theme/ThemeProvider";
+
+import { WebModal, ModalActions } from "../../src/components/WebModal";
+
 export default function HROnboardings() {
 
   const router = useRouter();
@@ -226,60 +228,51 @@ export default function HROnboardings() {
 
       </ScrollView>
 
-      <Modal
+      <WebModal
         visible={pickerVisible}
-        transparent
-        animationType="slide"
-        onRequestClose={() => setPickerVisible(false)}
-      >
-        <View style={s.modalOverlay}>
-          <View style={s.modalCard}>
-            <Text style={s.modalTitle}>Start Onboarding</Text>
-            <Text style={s.hint}>
-              Pick a user with no active onboarding.
-            </Text>
-
-            <ScrollView
-              style={{ maxHeight: 380, marginTop: 14 }}
-              showsVerticalScrollIndicator={false}
+        onClose={() => setPickerVisible(false)}
+        title="Start Onboarding"
+        size="lg"
+        footer={
+          <ModalActions align="right">
+            <TouchableOpacity
+              style={s.cancelBtn}
+              onPress={() => setPickerVisible(false)}
             >
-              {unboarded.length === 0 ? (
-                <Text style={s.emptySub}>
-                  Everyone already has an onboarding record.
-                </Text>
-              ) : (
-                unboarded.map((u) => (
-                  <TouchableOpacity
-                    key={u.id}
-                    style={s.userRow}
-                    onPress={() => startOnboarding(u.id)}
-                    disabled={saving}
-                  >
-                    <View style={s.avatar}>
-                      <Text style={s.avatarText}>
-                        {u.name.charAt(0).toUpperCase()}
-                      </Text>
-                    </View>
-                    <View style={{ flex: 1 }}>
-                      <Text style={s.cardName}>{u.name}</Text>
-                      <Text style={s.cardMeta}>{u.email}</Text>
-                    </View>
-                  </TouchableOpacity>
-                ))
-              )}
-            </ScrollView>
+              <Text style={s.modalBtnText}>Close</Text>
+            </TouchableOpacity>
+          </ModalActions>
+        }
+      >
+        <Text style={s.hint}>
+          Pick a user with no active onboarding.
+        </Text>
 
-            <View style={s.modalActions}>
-              <TouchableOpacity
-                style={s.cancelBtn}
-                onPress={() => setPickerVisible(false)}
-              >
-                <Text style={s.modalBtnText}>Close</Text>
-              </TouchableOpacity>
-            </View>
-          </View>
-        </View>
-      </Modal>
+        {unboarded.length === 0 ? (
+          <Text style={[s.emptySub, { marginTop: 14 }]}>
+            Everyone already has an onboarding record.
+          </Text>
+        ) : (
+          unboarded.map((u) => (
+            <TouchableOpacity
+              key={u.id}
+              style={s.userRow}
+              onPress={() => startOnboarding(u.id)}
+              disabled={saving}
+            >
+              <View style={s.avatar}>
+                <Text style={s.avatarText}>
+                  {u.name.charAt(0).toUpperCase()}
+                </Text>
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={s.cardName}>{u.name}</Text>
+                <Text style={s.cardMeta}>{u.email}</Text>
+              </View>
+            </TouchableOpacity>
+          ))
+        )}
+      </WebModal>
 
     </SafeAreaView>
   );

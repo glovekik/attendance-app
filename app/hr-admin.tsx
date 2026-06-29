@@ -5,7 +5,9 @@ import {
   Text,
   StyleSheet,
   ScrollView,
-  TouchableOpacity } from "react-native";
+  TouchableOpacity,
+  Pressable,
+  Platform } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 
 import AsyncStorage from "@react-native-async-storage/async-storage";
@@ -19,6 +21,8 @@ import { useTheme } from "../src/theme/ThemeProvider";
 import {
   BottomTabBar,
   BOTTOM_BAR_RESERVED_HEIGHT } from "../src/components/BottomTabBar";
+import { useResponsive, getResponsiveSpacing } from "../src/utils/responsive";
+import { PageHeader } from "../src/components/PageHeader";
 
 const COLLAPSE_KEY = "hrConsoleCollapsed";
 
@@ -30,6 +34,10 @@ const COLLAPSE_KEY = "hrConsoleCollapsed";
 export default function HRAdmin() {
   const router = useRouter();
   const { theme } = useTheme();
+  const responsive = useResponsive();
+  const spacing = getResponsiveSpacing(responsive.breakpoint);
+  const isDesktop = responsive.isDesktop;
+
   const [dash, setDash] = useState<DashboardHR | null>(null);
   const [me, setMe] = useState<User | null>(null);
 
@@ -75,7 +83,13 @@ export default function HRAdmin() {
 
   const c = theme.colors;
 
-  const styles = useMemo(() => makeStyles(c), [c]);
+  const styles = useMemo(
+    () => makeStyles(c, isDesktop, spacing),
+    [c, isDesktop, spacing]
+  );
+
+  // Desktop shows sidebar, so we don't need bottom bar padding
+  const bottomPadding = responsive.showSidebar ? 40 : BOTTOM_BAR_RESERVED_HEIGHT + 24;
 
   // The pending approval queues that drive the "needs attention" strip.
   const pendingQueues = [
@@ -91,12 +105,6 @@ export default function HRAdmin() {
       icon: "alert-circle" as const,
       color: "#a16207",
       route: "/corrections" },
-    {
-      label: "Manual",
-      count: dash?.pendingManualAttendanceApprovals || 0,
-      icon: "document-text" as const,
-      color: "#6d28d9",
-      route: "/hr-manual-requests" },
     {
       label: "Reimburse",
       count: dash?.pendingReimbursementApprovals || 0,
@@ -119,32 +127,50 @@ export default function HRAdmin() {
     <SafeAreaView style={[styles.safe, { backgroundColor: c.bg }]}>
       <ScrollView
         contentContainerStyle={{
-          padding: 20,
-          paddingBottom: BOTTOM_BAR_RESERVED_HEIGHT + 24 }}
+          padding: spacing.padding,
+          paddingBottom: bottomPadding,
+          // Desktop: limit content width for readability
+          ...(isDesktop && {
+            maxWidth: 1200,
+            alignSelf: "center" as const,
+            width: "100%",
+          }),
+        }}
         showsVerticalScrollIndicator={false}
       >
-        {/* HEADER */}
-        <View style={styles.headerRow}>
-          <TouchableOpacity
-            onPress={() =>
-              router.canGoBack() ? router.back() : router.replace("/")
-            }
-            style={[
-              styles.iconBtn,
-              {
-                backgroundColor: c.surface,
-                borderColor: c.surfaceBorder },
+        {/* HEADER - Desktop uses PageHeader with breadcrumbs */}
+        {isDesktop ? (
+          <PageHeader
+            title="HR Admin Console"
+            subtitle="Manage employees, approvals, payroll, and more"
+            breadcrumbs={[
+              { label: "Home", href: "/" },
+              { label: "HR Admin" },
             ]}
-          >
-            <Ionicons name="chevron-back" size={22} color={c.text} />
-          </TouchableOpacity>
-          <View style={{ flex: 1, marginLeft: 12 }}>
-            <Text style={[styles.title, { color: c.text }]}>HR Admin</Text>
-            <Text style={[styles.subtitle, { color: c.textMuted }]}>
-              Everything HR-only, organised
-            </Text>
+          />
+        ) : (
+          <View style={styles.headerRow}>
+            <TouchableOpacity
+              onPress={() =>
+                router.canGoBack() ? router.back() : router.replace("/")
+              }
+              style={[
+                styles.iconBtn,
+                {
+                  backgroundColor: c.surface,
+                  borderColor: c.surfaceBorder },
+              ]}
+            >
+              <Ionicons name="chevron-back" size={22} color={c.text} />
+            </TouchableOpacity>
+            <View style={{ flex: 1, marginLeft: 12 }}>
+              <Text style={[styles.title, { color: c.text }]}>HR Admin</Text>
+              <Text style={[styles.subtitle, { color: c.textMuted }]}>
+                Everything HR-only, organised
+              </Text>
+            </View>
           </View>
-        </View>
+        )}
 
         {/* ===== NEEDS ATTENTION ===== */}
         {totalPending > 0 ? (
@@ -470,15 +496,24 @@ const Tile = ({
   theme: any;
   styles: any;
 }) => (
-  <TouchableOpacity
+  <Pressable
     onPress={onPress}
-    activeOpacity={0.85}
-    style={[
+    style={({ hovered, pressed }: any) => [
       styles.tile,
       {
         backgroundColor: theme.colors.surface,
         borderColor: theme.colors.surfaceBorder,
         shadowColor: theme.colors.shadow },
+      // Web hover effect
+      Platform.OS === "web" && hovered && {
+        transform: [{ scale: 1.03 }],
+        shadowRadius: 18,
+        borderColor: theme.colors.accent,
+      },
+      pressed && {
+        opacity: 0.9,
+        transform: [{ scale: 0.97 }],
+      },
     ]}
   >
     <View style={[styles.tileIcon, { backgroundColor: tint }]}>
@@ -502,15 +537,15 @@ const Tile = ({
         <Text style={styles.badgeText}>{count > 9 ? "9+" : count}</Text>
       </View>
     )}
-  </TouchableOpacity>
+  </Pressable>
 );
 
-const makeStyles = (c: any) => StyleSheet.create({
+const makeStyles = (c: any, isDesktop: boolean, spacing: any) => StyleSheet.create({
   safe: { flex: 1 },
   headerRow: {
     flexDirection: "row",
     alignItems: "center",
-    marginBottom: 18 },
+    marginBottom: isDesktop ? 24 : 18 },
   iconBtn: {
     width: 42,
     height: 42,
@@ -518,34 +553,35 @@ const makeStyles = (c: any) => StyleSheet.create({
     borderWidth: 1,
     alignItems: "center",
     justifyContent: "center" },
-  title: { fontSize: 26, fontWeight: "800" },
-  subtitle: { fontSize: 13, marginTop: 2 },
+  title: { fontSize: isDesktop ? 28 : 26, fontWeight: "800" },
+  subtitle: { fontSize: isDesktop ? 14 : 13, marginTop: 2 },
 
   // ===== NEEDS ATTENTION =====
   attentionCard: {
     borderRadius: 18,
     borderWidth: 1,
-    padding: 14,
+    padding: isDesktop ? 18 : 14,
     marginBottom: 4 },
   attentionHeader: {
     flexDirection: "row",
     alignItems: "center",
     gap: 8,
     marginBottom: 12 },
-  attentionTitle: { fontSize: 14, fontWeight: "800" },
+  attentionTitle: { fontSize: isDesktop ? 15 : 14, fontWeight: "800" },
   pillRow: {
     flexDirection: "row",
     flexWrap: "wrap",
-    gap: 8 },
+    gap: isDesktop ? 12 : 8 },
   pill: {
     flexDirection: "row",
     alignItems: "center",
     gap: 6,
-    paddingHorizontal: 10,
-    paddingVertical: 7,
+    paddingHorizontal: isDesktop ? 14 : 10,
+    paddingVertical: isDesktop ? 9 : 7,
     borderRadius: 999,
-    borderWidth: 1 },
-  pillText: { fontSize: 12, fontWeight: "700" },
+    borderWidth: 1,
+    ...(Platform.OS === "web" && { cursor: "pointer" as any }) },
+  pillText: { fontSize: isDesktop ? 13 : 12, fontWeight: "700" },
   pillCount: {
     minWidth: 18,
     height: 18,
@@ -560,40 +596,38 @@ const makeStyles = (c: any) => StyleSheet.create({
     gap: 8,
     borderRadius: 18,
     borderWidth: 1,
-    paddingHorizontal: 14,
-    paddingVertical: 12,
+    paddingHorizontal: isDesktop ? 18 : 14,
+    paddingVertical: isDesktop ? 14 : 12,
     marginBottom: 4 },
-  caughtUpText: { fontSize: 13, fontWeight: "600" },
+  caughtUpText: { fontSize: isDesktop ? 14 : 13, fontWeight: "600" },
 
   sectionHeader: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    marginTop: 22,
-    marginBottom: 10,
-    paddingRight: 4 },
+    marginTop: isDesktop ? 28 : 22,
+    marginBottom: isDesktop ? 14 : 10,
+    paddingRight: 4,
+    ...(Platform.OS === "web" && { cursor: "pointer" as any }) },
   section: {
-    fontSize: 11,
+    fontSize: isDesktop ? 12 : 11,
     fontWeight: "800",
     letterSpacing: 1.4,
     marginLeft: 4 },
-  // 3-up grid. flexGrow is intentionally 0 so tiles in a partial last
-  // row (e.g. 4 or 5 tiles in a section) don't stretch to fill the
-  // remaining space — that was the misalignment.
+  // Responsive grid: Desktop 5-6 per row, Mobile 3 per row
   grid: {
     flexDirection: "row",
     flexWrap: "wrap",
     justifyContent: "flex-start",
-    columnGap: 10,
-    rowGap: 10 },
+    columnGap: isDesktop ? 16 : 10,
+    rowGap: isDesktop ? 16 : 10 },
   tile: {
-    // < 33% so 3 tiles + 2 column gaps always fit on one row. At
-    // 31.5% the gap math pushed the 3rd tile to wrap on phones.
-    flexBasis: "30%",
+    // Desktop: ~16% (6 per row), Mobile: ~30% (3 per row)
+    flexBasis: isDesktop ? "15%" : "30%",
     flexGrow: 0,
     flexShrink: 0,
     aspectRatio: 1,
-    padding: 12,
+    padding: isDesktop ? 16 : 12,
     borderRadius: 18,
     borderWidth: 1,
     alignItems: "center",
@@ -602,16 +636,17 @@ const makeStyles = (c: any) => StyleSheet.create({
     shadowRadius: 12,
     shadowOffset: { width: 0, height: 4 },
     elevation: 2,
-    position: "relative" },
+    position: "relative",
+    ...(Platform.OS === "web" && { cursor: "pointer" as any }) },
   tileIcon: {
-    width: 46,
-    height: 46,
+    width: isDesktop ? 50 : 46,
+    height: isDesktop ? 50 : 46,
     borderRadius: 16,
     alignItems: "center",
     justifyContent: "center",
-    marginBottom: 8 },
+    marginBottom: isDesktop ? 10 : 8 },
   tileLabel: {
-    fontSize: 12,
+    fontSize: isDesktop ? 13 : 12,
     fontWeight: "700",
     textAlign: "center" },
   badge: {

@@ -1,8 +1,13 @@
 import React from "react";
-import { View, Text, StyleSheet } from "react-native";
+import { View, Text, StyleSheet, Platform, Dimensions } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 
 import type { ToastConfig, ToastConfigParams } from "react-native-toast-message";
+
+// LEARNING POINT: Responsive Toast Positioning
+// Desktop web: Fixed-width toast in top-right corner (like Slack/Discord)
+// Mobile: Centered full-width toast (native feel)
+const isDesktopWeb = Platform.OS === "web" && Dimensions.get("window").width >= 1024;
 
 /**
  * Theme-aware toast UIs registered with <Toast config={toastConfig(colors)} />
@@ -90,7 +95,9 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "flex-start",
     gap: 10,
-    width: "92%",
+    // Desktop web: fixed width, positioned via Toast's position prop
+    // Mobile: percentage-based width for centered appearance
+    width: isDesktopWeb ? 380 : "92%",
     paddingHorizontal: 14,
     paddingVertical: 12,
     borderRadius: 14,
@@ -102,6 +109,10 @@ const styles = StyleSheet.create({
     shadowRadius: 14,
     shadowOffset: { width: 0, height: 6 },
     elevation: 6,
+    ...(isDesktopWeb && {
+      // Web-specific shadow for cleaner appearance
+      boxShadow: "0 4px 12px rgba(0,0,0,0.15)" as any,
+    }),
   },
   iconWrap: {
     width: 32,

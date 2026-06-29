@@ -8,17 +8,16 @@ import {
   TouchableOpacity,
   ActivityIndicator,
   RefreshControl,
-  Modal,
   TextInput,
   Alert,
   Platform } from "react-native";
-import { KeyboardAvoidingView } from "react-native-keyboard-controller";
 import { SafeAreaView } from "react-native-safe-area-context";
 
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 
+import { WebModal, ModalActions } from "../src/components/WebModal";
 import { listMyGoals, addGoalProgress } from "../src/services/goals";
 import { Goal } from "../src/types";
 
@@ -205,78 +204,65 @@ export default function MyGoals() {
         }}
       />
 
-      <Modal
+      <WebModal
         visible={!!target}
-        animationType="slide"
-        transparent
-        onRequestClose={() => setTarget(null)}
+        onClose={() => setTarget(null)}
+        title="Update progress"
+        size="md"
+        footer={
+          <ModalActions align="spread">
+            <TouchableOpacity
+              style={[styles.btn, styles.btnGhost]}
+              onPress={() => setTarget(null)}
+              disabled={submitting}
+            >
+              <Text style={styles.btnGhostText}>Cancel</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[styles.btn, styles.btnPrimary]}
+              onPress={onSubmit}
+              disabled={submitting}
+            >
+              <Text style={styles.btnPrimaryText}>
+                {submitting ? "..." : "Save"}
+              </Text>
+            </TouchableOpacity>
+          </ModalActions>
+        }
       >
-        <KeyboardAvoidingView
-          behavior="padding"
-          style={styles.modalWrap}
-        >
-          <View style={styles.modal}>
-            <View style={styles.modalHeader}>
-              <Text style={styles.modalTitle}>Update progress</Text>
-              <TouchableOpacity onPress={() => setTarget(null)}>
-                <Ionicons name="close" size={24} color={c.textMuted} />
-              </TouchableOpacity>
-            </View>
-
-            {target && (
-              <>
-                <Text style={styles.goalTitle}>{target.title}</Text>
-                {target.targetValue != null && (
-                  <Text style={styles.hint}>
-                    Target: {target.targetValue}
-                    {target.unit ? ` ${target.unit}` : ""}
-                  </Text>
-                )}
-
-                <Text style={styles.label}>Achieved value</Text>
-                <TextInput
-                  style={styles.input}
-                  value={achieved}
-                  onChangeText={setAchieved}
-                  keyboardType="decimal-pad"
-                  placeholder="0"
-                  placeholderTextColor={c.textFaint}
-                />
-
-                <Text style={styles.label}>Note (optional)</Text>
-                <TextInput
-                  style={[styles.input, { minHeight: 70 }]}
-                  value={note}
-                  onChangeText={setNote}
-                  multiline
-                  textAlignVertical="top"
-                  placeholder="Anything to add..."
-                  placeholderTextColor={c.textFaint}
-                />
-
-                <View style={styles.actions}>
-                  <TouchableOpacity
-                    style={[styles.btn, styles.btnGhost]}
-                    onPress={() => setTarget(null)}
-                    disabled={submitting}
-                  >
-                    <Text style={styles.btnGhostText}>Cancel</Text>
-                  </TouchableOpacity>
-                  <TouchableOpacity
-                    style={[styles.btn, styles.btnPrimary]}
-                    onPress={onSubmit}
-                    disabled={submitting}
-                  >
-                    <Text style={styles.btnPrimaryText}>
-                      {submitting ? "..." : "Save"}
-                    </Text>
-                  </TouchableOpacity>
-                </View>
-              </>
+        {target && (
+          <>
+            <Text style={styles.goalTitle}>{target.title}</Text>
+            {target.targetValue != null && (
+              <Text style={styles.hint}>
+                Target: {target.targetValue}
+                {target.unit ? ` ${target.unit}` : ""}
+              </Text>
             )}
-          </View>
-        </KeyboardAvoidingView>
-      </Modal>
+
+            <Text style={styles.label}>Achieved value</Text>
+            <TextInput
+              style={styles.input}
+              value={achieved}
+              onChangeText={setAchieved}
+              keyboardType="decimal-pad"
+              placeholder="0"
+              placeholderTextColor={c.textFaint}
+            />
+
+            <Text style={styles.label}>Note (optional)</Text>
+            <TextInput
+              style={[styles.input, { minHeight: 70 }]}
+              value={note}
+              onChangeText={setNote}
+              multiline
+              textAlignVertical="top"
+              placeholder="Anything to add..."
+              placeholderTextColor={c.textFaint}
+            />
+          </>
+        )}
+      </WebModal>
     </SafeAreaView>
   );
 }

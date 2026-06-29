@@ -10,11 +10,11 @@ import {
   TouchableOpacity,
   TextInput,
   ActivityIndicator,
-  Modal,
   Platform,
   Alert } from "react-native";
-import { KeyboardAwareScrollView } from "react-native-keyboard-controller";
 import { SafeAreaView } from "react-native-safe-area-context";
+
+import { WebModal, ModalActions } from "../src/components/WebModal";
 
 import AsyncStorage from "@react-native-async-storage/async-storage";
 
@@ -542,20 +542,38 @@ export default function HRAssets() {
       </ScrollView>
 
       {/* CREATE/EDIT MODAL */}
-      <Modal
+      <WebModal
         visible={formVisible}
-        transparent
-        animationType="slide"
-        onRequestClose={() => setFormVisible(false)}
+        onClose={() => setFormVisible(false)}
+        title={editingId ? "Edit Asset" : "New Asset"}
+        size="md"
+        footer={
+          <ModalActions align="spread">
+            <TouchableOpacity
+              style={styles.cancelBtn}
+              onPress={() => setFormVisible(false)}
+            >
+              <Text style={styles.modalBtnText}>Cancel</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[
+                styles.saveBtn,
+                saving && { opacity: 0.7 },
+              ]}
+              onPress={submitForm}
+              disabled={saving}
+            >
+              {saving ? (
+                <ActivityIndicator color="#fff" />
+              ) : (
+                <Text style={styles.modalBtnText}>
+                  {editingId ? "Update" : "Create"}
+                </Text>
+              )}
+            </TouchableOpacity>
+          </ModalActions>
+        }
       >
-        <View style={styles.modalOverlay}>
-          <View style={styles.modalCard}>
-            <KeyboardAwareScrollView showsVerticalScrollIndicator={false} bottomOffset={24} keyboardShouldPersistTaps="handled">
-
-              <Text style={styles.modalTitle}>
-                {editingId ? "Edit Asset" : "New Asset"}
-              </Text>
-
               <Text style={styles.label}>Code</Text>
               <TextInput
                 style={[
@@ -605,49 +623,41 @@ export default function HRAssets() {
                 placeholderTextColor={c.textFaint}
                 multiline
               />
-
-              <View style={styles.modalActions}>
-                <TouchableOpacity
-                  style={styles.cancelBtn}
-                  onPress={() => setFormVisible(false)}
-                >
-                  <Text style={styles.modalBtnText}>Cancel</Text>
-                </TouchableOpacity>
-                <TouchableOpacity
-                  style={[
-                    styles.saveBtn,
-                    saving && { opacity: 0.7 },
-                  ]}
-                  onPress={submitForm}
-                  disabled={saving}
-                >
-                  {saving ? (
-                    <ActivityIndicator color="#fff" />
-                  ) : (
-                    <Text style={styles.modalBtnText}>
-                      {editingId ? "Update" : "Create"}
-                    </Text>
-                  )}
-                </TouchableOpacity>
-              </View>
-
-            </KeyboardAwareScrollView>
-          </View>
-        </View>
-      </Modal>
+      </WebModal>
 
       {/* ASSIGN MODAL */}
-      <Modal
+      <WebModal
         visible={assignVisible}
-        transparent
-        animationType="slide"
-        onRequestClose={() => setAssignVisible(false)}
+        onClose={() => setAssignVisible(false)}
+        title="Assign Asset"
+        size="md"
+        footer={
+          <ModalActions align="spread">
+            <TouchableOpacity
+              style={styles.cancelBtn}
+              onPress={() => setAssignVisible(false)}
+            >
+              <Text style={styles.modalBtnText}>Cancel</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[
+                styles.saveBtn,
+                saving && { opacity: 0.7 },
+              ]}
+              onPress={submitAssign}
+              disabled={saving}
+            >
+              {saving ? (
+                <ActivityIndicator color="#fff" />
+              ) : (
+                <Text style={styles.modalBtnText}>
+                  Assign
+                </Text>
+              )}
+            </TouchableOpacity>
+          </ModalActions>
+        }
       >
-        <View style={styles.modalOverlay}>
-          <View style={styles.modalCard}>
-            <KeyboardAwareScrollView showsVerticalScrollIndicator={false} bottomOffset={24} keyboardShouldPersistTaps="handled">
-
-              <Text style={styles.modalTitle}>Assign Asset</Text>
               <Text style={styles.hint}>
                 {assignTarget?.name}{" · "}
                 {assignTarget?.code}
@@ -692,49 +702,39 @@ export default function HRAssets() {
                 placeholderTextColor={c.textFaint}
                 multiline
               />
-
-              <View style={styles.modalActions}>
-                <TouchableOpacity
-                  style={styles.cancelBtn}
-                  onPress={() => setAssignVisible(false)}
-                >
-                  <Text style={styles.modalBtnText}>Cancel</Text>
-                </TouchableOpacity>
-                <TouchableOpacity
-                  style={[
-                    styles.saveBtn,
-                    saving && { opacity: 0.7 },
-                  ]}
-                  onPress={submitAssign}
-                  disabled={saving}
-                >
-                  {saving ? (
-                    <ActivityIndicator color="#fff" />
-                  ) : (
-                    <Text style={styles.modalBtnText}>
-                      Assign
-                    </Text>
-                  )}
-                </TouchableOpacity>
-              </View>
-
-            </KeyboardAwareScrollView>
-          </View>
-        </View>
-      </Modal>
+      </WebModal>
 
       {/* RETURN MODAL */}
-      <Modal
+      <WebModal
         visible={returnVisible}
-        transparent
-        animationType="slide"
-        onRequestClose={() => setReturnVisible(false)}
+        onClose={() => setReturnVisible(false)}
+        title="Return Asset"
+        size="md"
+        footer={
+          <ModalActions align="spread">
+            <TouchableOpacity
+              style={styles.cancelBtn}
+              onPress={() => setReturnVisible(false)}
+            >
+              <Text style={styles.modalBtnText}>Cancel</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[
+                styles.saveBtn,
+                saving && { opacity: 0.7 },
+              ]}
+              onPress={submitReturn}
+              disabled={saving}
+            >
+              {saving ? (
+                <ActivityIndicator color="#fff" />
+              ) : (
+                <Text style={styles.modalBtnText}>Return</Text>
+              )}
+            </TouchableOpacity>
+          </ModalActions>
+        }
       >
-        <View style={styles.modalOverlay}>
-          <View style={styles.modalCard}>
-            <KeyboardAwareScrollView showsVerticalScrollIndicator={false} bottomOffset={24} keyboardShouldPersistTaps="handled">
-
-              <Text style={styles.modalTitle}>Return Asset</Text>
               <Text style={styles.hint}>
                 {returnTarget?.name}{" · "}
                 from{" "}
@@ -775,34 +775,7 @@ export default function HRAssets() {
                 placeholderTextColor={c.textFaint}
                 multiline
               />
-
-              <View style={styles.modalActions}>
-                <TouchableOpacity
-                  style={styles.cancelBtn}
-                  onPress={() => setReturnVisible(false)}
-                >
-                  <Text style={styles.modalBtnText}>Cancel</Text>
-                </TouchableOpacity>
-                <TouchableOpacity
-                  style={[
-                    styles.saveBtn,
-                    saving && { opacity: 0.7 },
-                  ]}
-                  onPress={submitReturn}
-                  disabled={saving}
-                >
-                  {saving ? (
-                    <ActivityIndicator color="#fff" />
-                  ) : (
-                    <Text style={styles.modalBtnText}>Return</Text>
-                  )}
-                </TouchableOpacity>
-              </View>
-
-            </KeyboardAwareScrollView>
-          </View>
-        </View>
-      </Modal>
+      </WebModal>
 
     </SafeAreaView>
   );

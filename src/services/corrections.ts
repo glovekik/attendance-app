@@ -38,6 +38,23 @@ export const requestCorrection = (
     { method: "POST", body: data, token }
   );
 
+// Correction request for a day that has NO attendance record yet (a missed
+// day). The backend creates a placeholder ABSENT attendance row for `date`
+// and attaches this correction to it, so the normal approve flow can stamp
+// it. Replaces the old "manual attendance request" path.
+export interface CorrectionForDateBody extends CorrectionRequestBody {
+  date: string; // YYYY-MM-DD — the missed day with no existing record
+}
+
+export const requestCorrectionForDate = (
+  token: string,
+  data: CorrectionForDateBody
+) =>
+  apiCall<AttendanceCorrection>(
+    `/attendance/correction-requests/for-date`,
+    { method: "POST", body: data, token }
+  );
+
 export const listMyCorrections = (
   token: string,
   status?: CorrectionStatus
@@ -75,4 +92,25 @@ export const decideCorrection = (
   apiCall<{ message: string }>(
     `/hr/correction-requests/${id}/decide`,
     { method: "POST", body: data, token }
+  );
+
+export interface BulkDecideResult {
+  message: string;
+  total: number;
+  succeeded: number;
+  failed: number;
+  results: { id: string; ok: boolean; error?: string }[];
+}
+
+// Approve/reject many corrections in ONE atomic-per-item request.
+// Used for "Approve all" / "Approve selected".
+export const bulkDecideCorrections = (
+  token: string,
+  ids: string[],
+  action: "APPROVE" | "REJECT" = "APPROVE",
+  note?: string
+) =>
+  apiCall<BulkDecideResult>(
+    `/hr/correction-requests/bulk-decide`,
+    { method: "POST", body: { ids, action, note }, token }
   );

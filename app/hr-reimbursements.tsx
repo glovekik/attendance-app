@@ -8,13 +8,12 @@ import {
   TouchableOpacity,
   ActivityIndicator,
   RefreshControl,
-  Modal,
   TextInput,
   Alert,
-  Platform,
-  ScrollView } from "react-native";
-import { KeyboardAvoidingView } from "react-native-keyboard-controller";
+  Platform } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
+
+import { WebModal, ModalActions } from "../src/components/WebModal";
 
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useRouter } from "expo-router";
@@ -254,26 +253,36 @@ export default function HrReimbursements() {
         />
       )}
 
-      <Modal
+      <WebModal
         visible={!!selected}
-        animationType="slide"
-        transparent
-        onRequestClose={close}
+        onClose={close}
+        title="Final approval"
+        size="md"
+        footer={
+          <ModalActions align="spread">
+            <TouchableOpacity
+              style={[styles.btn, styles.btnReject]}
+              onPress={() => onDecide("REJECT")}
+              disabled={acting !== null}
+            >
+              <Text style={styles.btnText}>
+                {acting === "REJECT" ? "..." : "Reject"}
+              </Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[styles.btn, styles.btnApprove]}
+              onPress={() => onDecide("APPROVE")}
+              disabled={acting !== null}
+            >
+              <Text style={styles.btnText}>
+                {acting === "APPROVE" ? "..." : "Approve"}
+              </Text>
+            </TouchableOpacity>
+          </ModalActions>
+        }
       >
-        <KeyboardAvoidingView
-          behavior="padding"
-          style={styles.modalWrap}
-        >
-          <View style={styles.modal}>
-            <View style={styles.modalHeader}>
-              <Text style={styles.modalTitle}>Final approval</Text>
-              <TouchableOpacity onPress={close}>
-                <Ionicons name="close" size={24} color={c.textMuted} />
-              </TouchableOpacity>
-            </View>
-
             {selected && (
-              <ScrollView style={{ maxHeight: 400 }}>
+              <>
                 <View style={styles.banner}>
                   <Ionicons
                     name="checkmark-circle"
@@ -367,7 +376,7 @@ export default function HrReimbursements() {
                     ))}
                   </>
                 )}
-              </ScrollView>
+              </>
             )}
 
             <Text style={styles.labelTop}>Note (required to reject)</Text>
@@ -379,30 +388,7 @@ export default function HrReimbursements() {
               placeholderTextColor={c.textFaint}
               multiline
             />
-
-            <View style={styles.actions}>
-              <TouchableOpacity
-                style={[styles.btn, styles.btnReject]}
-                onPress={() => onDecide("REJECT")}
-                disabled={acting !== null}
-              >
-                <Text style={styles.btnText}>
-                  {acting === "REJECT" ? "..." : "Reject"}
-                </Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={[styles.btn, styles.btnApprove]}
-                onPress={() => onDecide("APPROVE")}
-                disabled={acting !== null}
-              >
-                <Text style={styles.btnText}>
-                  {acting === "APPROVE" ? "..." : "Approve"}
-                </Text>
-              </TouchableOpacity>
-            </View>
-          </View>
-        </KeyboardAvoidingView>
-      </Modal>
+      </WebModal>
     </SafeAreaView>
   );
 }

@@ -8,12 +8,9 @@ import {
   TouchableOpacity,
   ActivityIndicator,
   RefreshControl,
-  Modal,
   TextInput,
   Alert,
-  Platform,
-  ScrollView } from "react-native";
-import { KeyboardAvoidingView } from "react-native-keyboard-controller";
+  Platform } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 
 import AsyncStorage from "@react-native-async-storage/async-storage";
@@ -27,6 +24,7 @@ import {
 import { TASK_PRIORITIES, TaskPriority } from "../src/types";
 import { DatePickerField } from "../src/components/DatePickerField";
 import { useTheme } from "../src/theme/ThemeProvider";
+import { WebModal, ModalActions } from "../src/components/WebModal";
 
 export default function ManagerTeam() {
   const router = useRouter();
@@ -187,27 +185,32 @@ export default function ManagerTeam() {
         )}
       />
 
-      <Modal
+      <WebModal
         visible={!!assignTo}
-        animationType="slide"
-        transparent
-        onRequestClose={closeAssign}
+        onClose={closeAssign}
+        title={`Assign task to ${assignTo?.name ?? ""}`}
+        size="md"
+        footer={
+          <ModalActions align="spread">
+            <TouchableOpacity
+              style={[styles.btn, styles.btnGhost]}
+              onPress={closeAssign}
+              disabled={saving}
+            >
+              <Text style={styles.btnGhostText}>Cancel</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[styles.btn, styles.btnPrimary]}
+              onPress={onAssign}
+              disabled={saving}
+            >
+              <Text style={styles.btnPrimaryText}>
+                {saving ? "…" : "Assign"}
+              </Text>
+            </TouchableOpacity>
+          </ModalActions>
+        }
       >
-        <KeyboardAvoidingView
-          behavior="padding"
-          style={styles.modalWrap}
-        >
-          <View style={styles.modal}>
-            <ScrollView keyboardShouldPersistTaps="handled">
-              <View style={styles.modalHeader}>
-                <Text style={styles.modalTitle}>
-                  Assign task to {assignTo?.name}
-                </Text>
-                <TouchableOpacity onPress={closeAssign}>
-                  <Ionicons name="close" size={24} color={c.textMuted} />
-                </TouchableOpacity>
-              </View>
-
               <Text style={styles.label}>Title *</Text>
               <TextInput
                 style={styles.input}
@@ -257,29 +260,7 @@ export default function ManagerTeam() {
                 onChange={setDueDate}
                 placeholder="Optional — tap to pick"
               />
-
-              <View style={styles.actions}>
-                <TouchableOpacity
-                  style={[styles.btn, styles.btnGhost]}
-                  onPress={closeAssign}
-                  disabled={saving}
-                >
-                  <Text style={styles.btnGhostText}>Cancel</Text>
-                </TouchableOpacity>
-                <TouchableOpacity
-                  style={[styles.btn, styles.btnPrimary]}
-                  onPress={onAssign}
-                  disabled={saving}
-                >
-                  <Text style={styles.btnPrimaryText}>
-                    {saving ? "…" : "Assign"}
-                  </Text>
-                </TouchableOpacity>
-              </View>
-            </ScrollView>
-          </View>
-        </KeyboardAvoidingView>
-      </Modal>
+      </WebModal>
     </SafeAreaView>
   );
 }

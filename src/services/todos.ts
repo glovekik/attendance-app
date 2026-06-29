@@ -6,7 +6,8 @@ export interface TodoPayload {
   description?: string;
   dueDate?: string;
   priority?: TodoPriority;
-  reminderAt?: string;
+  // ISO timestamp. Pass null to clear an existing reminder on update.
+  reminderAt?: string | null;
 }
 
 export const listTodos = (

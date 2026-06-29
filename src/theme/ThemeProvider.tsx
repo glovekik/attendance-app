@@ -6,10 +6,10 @@ import React, {
   useMemo,
   useState,
 } from "react";
-import { Appearance } from "react-native";
+import { Appearance, Platform, Dimensions } from "react-native";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 
-import { Theme, buildTheme } from "./tokens";
+import { Theme, buildTheme, webThemeOverrides } from "./tokens";
 
 const STORAGE_KEY = "@app/theme-pref";
 
@@ -76,7 +76,23 @@ export const ThemeProvider = ({
   const theme = useMemo(() => {
     const effective =
       preference === "system" ? systemScheme : preference;
-    return buildTheme(effective);
+    const baseTheme = buildTheme(effective);
+
+    // Apply Keka-style overrides only on desktop web
+    const isDesktopWeb =
+      Platform.OS === "web" && Dimensions.get("window").width >= 1024;
+
+    if (isDesktopWeb) {
+      return {
+        ...baseTheme,
+        colors: {
+          ...baseTheme.colors,
+          ...webThemeOverrides.colors,
+        },
+      };
+    }
+
+    return baseTheme;
   }, [preference, systemScheme]);
 
   const value = useMemo<ThemeContextValue>(

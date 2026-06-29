@@ -8,13 +8,11 @@ import {
   TouchableOpacity,
   ActivityIndicator,
   RefreshControl,
-  Modal,
   TextInput,
   Alert,
-  ScrollView,
   Platform } from "react-native";
-import { KeyboardAvoidingView } from "react-native-keyboard-controller";
 import { SafeAreaView } from "react-native-safe-area-context";
+import { WebModal, ModalActions } from "../src/components/WebModal";
 
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useRouter } from "expo-router";
@@ -319,25 +317,32 @@ export default function HrOffers() {
       )}
 
       {/* CREATE */}
-      <Modal
+      <WebModal
         visible={showForm}
-        animationType="slide"
-        transparent
-        onRequestClose={() => setShowForm(false)}
+        onClose={() => setShowForm(false)}
+        title="New offer"
+        size="md"
+        footer={
+          <ModalActions align="spread">
+            <TouchableOpacity
+              style={[styles.btn, styles.btnGhostFull]}
+              onPress={() => setShowForm(false)}
+              disabled={saving}
+            >
+              <Text style={styles.btnGhostText}>Cancel</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[styles.btn, styles.btnPrimaryFull]}
+              onPress={onSave}
+              disabled={saving}
+            >
+              <Text style={styles.btnPrimaryText}>
+                {saving ? "..." : "Create draft"}
+              </Text>
+            </TouchableOpacity>
+          </ModalActions>
+        }
       >
-        <KeyboardAvoidingView
-          behavior="padding"
-          style={styles.modalWrap}
-        >
-          <View style={styles.modal}>
-            <View style={styles.modalHeader}>
-              <Text style={styles.modalTitle}>New offer</Text>
-              <TouchableOpacity onPress={() => setShowForm(false)}>
-                <Ionicons name="close" size={24} color={c.textMuted} />
-              </TouchableOpacity>
-            </View>
-
-            <ScrollView style={{ maxHeight: 520 }}>
               <Text style={styles.label}>Candidate *</Text>
               <View style={styles.chipRow}>
                 {candidates.length === 0 ? (
@@ -412,51 +417,40 @@ export default function HrOffers() {
                 textAlignVertical="top"
               />
               <View style={{ height: 12 }} />
-            </ScrollView>
-
-            <View style={styles.actionsFooter}>
-              <TouchableOpacity
-                style={[styles.btn, styles.btnGhostFull]}
-                onPress={() => setShowForm(false)}
-                disabled={saving}
-              >
-                <Text style={styles.btnGhostText}>Cancel</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={[styles.btn, styles.btnPrimaryFull]}
-                onPress={onSave}
-                disabled={saving}
-              >
-                <Text style={styles.btnPrimaryText}>
-                  {saving ? "..." : "Create draft"}
-                </Text>
-              </TouchableOpacity>
-            </View>
-          </View>
-        </KeyboardAvoidingView>
-      </Modal>
+      </WebModal>
 
       {/* DECISION */}
-      <Modal
+      <WebModal
         visible={!!decisionTarget}
-        animationType="slide"
-        transparent
-        onRequestClose={() => setDecisionTarget(null)}
-      >
-        <KeyboardAvoidingView
-          behavior="padding"
-          style={styles.modalWrap}
-        >
-          <View style={styles.modal}>
-            <View style={styles.modalHeader}>
-              <Text style={styles.modalTitle}>
-                Record {decisionAction.toLowerCase()}
+        onClose={() => setDecisionTarget(null)}
+        title={`Record ${decisionAction.toLowerCase()}`}
+        size="md"
+        footer={
+          <ModalActions align="spread">
+            <TouchableOpacity
+              style={[styles.btn, styles.btnGhostFull]}
+              onPress={() => setDecisionTarget(null)}
+              disabled={deciding}
+            >
+              <Text style={styles.btnGhostText}>Cancel</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[
+                styles.btn,
+                decisionAction === "ACCEPTED"
+                  ? styles.btnPrimaryFull
+                  : styles.btnRejectFull,
+              ]}
+              onPress={onSubmitDecision}
+              disabled={deciding}
+            >
+              <Text style={styles.btnPrimaryText}>
+                {deciding ? "..." : `Mark ${decisionAction}`}
               </Text>
-              <TouchableOpacity onPress={() => setDecisionTarget(null)}>
-                <Ionicons name="close" size={24} color={c.textMuted} />
-              </TouchableOpacity>
-            </View>
-
+            </TouchableOpacity>
+          </ModalActions>
+        }
+      >
             {decisionTarget && (
               <>
                 <Text style={styles.hint}>
@@ -471,35 +465,9 @@ export default function HrOffers() {
                   textAlignVertical="top"
                   placeholderTextColor={c.textFaint}
                 />
-
-                <View style={styles.actionsFooter}>
-                  <TouchableOpacity
-                    style={[styles.btn, styles.btnGhostFull]}
-                    onPress={() => setDecisionTarget(null)}
-                    disabled={deciding}
-                  >
-                    <Text style={styles.btnGhostText}>Cancel</Text>
-                  </TouchableOpacity>
-                  <TouchableOpacity
-                    style={[
-                      styles.btn,
-                      decisionAction === "ACCEPTED"
-                        ? styles.btnPrimaryFull
-                        : styles.btnRejectFull,
-                    ]}
-                    onPress={onSubmitDecision}
-                    disabled={deciding}
-                  >
-                    <Text style={styles.btnPrimaryText}>
-                      {deciding ? "..." : `Mark ${decisionAction}`}
-                    </Text>
-                  </TouchableOpacity>
-                </View>
               </>
             )}
-          </View>
-        </KeyboardAvoidingView>
-      </Modal>
+      </WebModal>
     </SafeAreaView>
   );
 }

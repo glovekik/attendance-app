@@ -1,6 +1,6 @@
 import React, { useMemo } from "react";
 
-import { View, Text, StyleSheet } from "react-native";
+import { View, Text, StyleSheet, Pressable, Platform } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 
 import { useTheme } from "../theme/ThemeProvider";
@@ -38,6 +38,9 @@ export interface KpiCardProps {
   // Manual override of computed numeric value used for threshold comparison.
   // Useful when `value` is a string like "12 / 18".
   numericForThreshold?: number;
+  // When provided, the card becomes tappable (drill into a detail screen)
+  // and shows a chevron affordance.
+  onPress?: () => void;
 }
 
 const TONES = {
@@ -97,13 +100,8 @@ export const KpiCard = (props: KpiCardProps) => {
         ? formatNumber(props.value)
         : "—"
       : props.value;
-  return (
-    <View
-      style={[
-        styles.card,
-        { backgroundColor: colors.bg, borderColor: colors.border },
-      ]}
-    >
+  const body = (
+    <>
       <View style={styles.headerRow}>
         {props.icon && (
           <Ionicons name={props.icon} size={14} color={colors.accent} />
@@ -111,6 +109,9 @@ export const KpiCard = (props: KpiCardProps) => {
         <Text style={styles.label} numberOfLines={1}>
           {props.label}
         </Text>
+        {!!props.onPress && (
+          <Ionicons name="chevron-forward" size={14} color={colors.accent} />
+        )}
       </View>
       <View style={styles.valueRow}>
         <Text style={[styles.value, { color: colors.accent }]}>
@@ -125,6 +126,33 @@ export const KpiCard = (props: KpiCardProps) => {
       {!!props.subLabel && (
         <Text style={styles.sub}>{props.subLabel}</Text>
       )}
+    </>
+  );
+
+  if (props.onPress) {
+    return (
+      <Pressable
+        onPress={props.onPress}
+        style={({ hovered, pressed }: any) => [
+          styles.card,
+          { backgroundColor: colors.bg, borderColor: colors.border },
+          Platform.OS === "web" && hovered && { borderColor: colors.accent },
+          pressed && { opacity: 0.85 },
+        ]}
+      >
+        {body}
+      </Pressable>
+    );
+  }
+
+  return (
+    <View
+      style={[
+        styles.card,
+        { backgroundColor: colors.bg, borderColor: colors.border },
+      ]}
+    >
+      {body}
     </View>
   );
 };

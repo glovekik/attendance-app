@@ -130,12 +130,6 @@ export default function CEOConsole() {
       color: "#a16207",
       route: "/corrections" },
     {
-      label: "Manual",
-      count: dash?.pendingManualAttendanceApprovals || 0,
-      icon: "document-text" as const,
-      color: "#6d28d9",
-      route: "/hr-manual-requests" },
-    {
       label: "Reimburse",
       count: dash?.pendingReimbursementApprovals || 0,
       icon: "card" as const,
@@ -220,26 +214,42 @@ export default function CEOConsole() {
         {/* TODAY */}
         <Section {...sectionProps("TODAY")}>
         <View style={styles.kpiGrid}>
-          <View style={styles.kpi}>
+          <TouchableOpacity
+            style={styles.kpi}
+            onPress={() => router.push("/hr-attendance" as any)}
+            activeOpacity={0.7}
+          >
             <Text style={[styles.kpiValue, { color: "#16a34a" }]}>
               {present}
             </Text>
             <Text style={styles.kpiLabel}>Present</Text>
             <Text style={styles.kpiSub}>{presencePct}% of org</Text>
-          </View>
-          <View style={styles.kpi}>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={styles.kpi}
+            onPress={() => router.push("/hr-attendance" as any)}
+            activeOpacity={0.7}
+          >
             <Text style={[styles.kpiValue, { color: "#0d9488" }]}>
               {onLeave}
             </Text>
             <Text style={styles.kpiLabel}>On leave</Text>
-          </View>
-          <View style={styles.kpi}>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={styles.kpi}
+            onPress={() => router.push("/hr-attendance" as any)}
+            activeOpacity={0.7}
+          >
             <Text style={[styles.kpiValue, { color: "#dc2626" }]}>
               {absent}
             </Text>
             <Text style={styles.kpiLabel}>Absent</Text>
-          </View>
-          <View style={styles.kpi}>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={styles.kpi}
+            onPress={() => router.push("/leave-requests" as any)}
+            activeOpacity={0.7}
+          >
             <Text style={[styles.kpiValue, { color: "#f59e0b" }]}>
               {pendingLeaves + pendingCorrections}
             </Text>
@@ -247,7 +257,7 @@ export default function CEOConsole() {
             <Text style={styles.kpiSub}>
               {pendingLeaves} leaves · {pendingCorrections} corr.
             </Text>
-          </View>
+          </TouchableOpacity>
         </View>
         </Section>
 
@@ -261,6 +271,7 @@ export default function CEOConsole() {
                 subLabel={`${dash.officeToday ?? 0} in office`}
                 icon="home-outline"
                 tone="none"
+                onPress={() => router.push("/hr-attendance" as any)}
               />
               <KpiCard
                 label="Pending Approvals"
@@ -270,6 +281,7 @@ export default function CEOConsole() {
                 greenAt={0}
                 amberAt={10}
                 higherIsBetter={false}
+                onPress={() => router.push("/leave-requests" as any)}
               />
               <KpiCard
                 label="Pay-cycle Accuracy"
@@ -281,6 +293,7 @@ export default function CEOConsole() {
                 amberAt={80}
                 higherIsBetter
                 numericForThreshold={dash.payCycleAccuracyPct ?? undefined}
+                onPress={() => router.push("/payroll" as any)}
               />
               <KpiCard
                 label="Holidays Set"
@@ -290,6 +303,7 @@ export default function CEOConsole() {
                 greenAt={8}
                 amberAt={4}
                 higherIsBetter
+                onPress={() => router.push("/holidays" as any)}
               />
               <KpiCard
                 label="Late Arrivals"
@@ -301,6 +315,7 @@ export default function CEOConsole() {
                 amberAt={25}
                 higherIsBetter={false}
                 numericForThreshold={dash.lateArrivalRatePct ?? undefined}
+                onPress={() => router.push("/hr-attendance" as any)}
               />
             </View>
           </Section>

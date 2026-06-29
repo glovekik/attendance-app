@@ -1,11 +1,12 @@
-import React, { useEffect } from "react";
+import React, { useEffect, useState, useCallback } from "react";
 
-import { Stack, useRouter } from "expo-router";
+import { Stack, useRouter, useFocusEffect, usePathname } from "expo-router";
 
 import { StatusBar } from "expo-status-bar";
 
-import { AppState, Platform } from "react-native";
+import * as SplashScreen from "expo-splash-screen";
 
+import { AppState, Platform, View } from "react-native";
 import {
   SafeAreaProvider,
   initialWindowMetrics,
@@ -17,45 +18,154 @@ import * as Notifications from "expo-notifications";
 
 import { ErrorBoundary } from "../src/components/ErrorBoundary";
 import { ThemeProvider, useTheme } from "../src/theme/ThemeProvider";
+import { AnimatedSplash } from "../src/components/AnimatedSplash";
 import { toastConfig } from "../src/components/toast";
 import { checkForOtaUpdate } from "../src/utils/otaUpdates";
 import { ensureFreshToken } from "../src/services/session";
+import AsyncStorage from "@react-native-async-storage/async-storage";
+import { getMe } from "../src/services/api";
+import { SidebarNav } from "../src/components/SidebarNav";
+import { useResponsive, SIDEBAR_WIDTH } from "../src/utils/responsive";
+import { User } from "../src/types";
+import { CommandPalette } from "../src/components/CommandPalette";
+import { useKeyboardShortcuts } from "../src/hooks/useKeyboardShortcuts";
 // Side-effect import — patches Alert.alert so all the existing
 // `Alert.alert("Failed", err.message)` calls in 56 screens render as
 // our themed toast instead of the dated Material dialog. Destructive
 // confirms (with Cancel/Delete buttons) are left on the native dialog.
 import "../src/utils/alertPatch";
 
-const handleNotificationData = (
+// Hold the native splash until our animated splash takes over (hidden in
+// ThemedStack once mounted) so the branded intro is seamless on cold start.
+SplashScreen.preventAutoHideAsync().catch(() => {});
+
+// Route a tapped notification to the right screen.
+//
+// Two classes of notification need different destinations:
+//   • "decision/outcome" alerts go to the affected employee → their own
+//     screen (e.g. /leaves, /reimbursements).
+//   • "new request/submission" alerts fan out to approvers (the reporting
+//     manager + every HR user via notify_approvers) → their approval queue,
+//     which differs by role: managers use /manager-*, HR uses the HR screen.
+// So for the approver types we resolve the current user's role first. The
+// backend authorises HR on the /manager-* endpoints too, so those are the
+// safe fallback when the role can't be read.
+//
+// NOTE: the `type` strings here must match exactly what the backend emits
+// (see utils/notify.py callers) — e.g. "leave_decision" / "task_complete",
+// NOT "leave_decided" / "task_completed".
+const handleNotificationData = async (
   data: any,
   router: ReturnType<typeof useRouter>
 ) => {
   if (!data || typeof data !== "object") return;
+  const type: string = data.type || "";
 
-  switch (data.type) {
-    case "task_assigned":
-    case "task_completed":
-      if (data.taskId) {
-        router.push(`/tasks/${data.taskId}`);
-      } else {
-        router.push("/tasks");
+  // Lazily resolved role — only fetched for approver/role-split types.
+  let role: string | null = null;
+  const isHr = async (): Promise<boolean> => {
+    if (role === null) {
+      try {
+        const token = await AsyncStorage.getItem("token");
+        const me = token ? await getMe(token) : null;
+        role = (me?.role as string) || "USER";
+      } catch {
+        role = "USER";
       }
-      break;
+    }
+    return role === "HR" || role === "CEO";
+  };
+
+  switch (type) {
+    // ===== Employee-facing outcomes (recipient = the affected employee) =====
+    case "task_assigned":
+    case "task_complete":
+    case "task_completed":
+      router.push(data.taskId ? `/tasks/${data.taskId}` : "/tasks");
+      return;
+    case "leave_decision":
     case "leave_decided":
       router.push("/leaves");
-      break;
+      return;
+    case "reimbursement_decision":
+      router.push("/reimbursements");
+      return;
+    case "correction_decision":
+      router.push("/corrections");
+      return;
+    case "manual_attendance_decision":
+      router.push("/manual-request");
+      return;
+    case "timesheet_decision":
+      router.push("/my-timesheet");
+      return;
+    case "resignation_decision":
+      router.push("/exit");
+      return;
+    case "goal_assigned":
+      router.push("/my-goals");
+      return;
+    case "review_submitted":
+      router.push("/my-reviews");
+      return;
     case "payslip_ready":
       router.push("/my-payroll");
-      break;
+      return;
     case "asset_assigned":
       router.push("/assets");
-      break;
+      return;
     case "checkout_reminder":
       router.push("/attendance");
-      break;
+      return;
+    case "todo_reminder":
+      router.push("/todos");
+      return;
+
+    // ===== Approver-facing (recipient = manager + HR) — role-split =====
+    case "leave_requests":
+      router.push((await isHr()) ? "/leave-requests" : "/manager-leaves");
+      return;
+    case "reimbursement_requests":
+      router.push(
+        (await isHr()) ? "/hr-reimbursements" : "/manager-reimbursements"
+      );
+      return;
+    case "manual_requests":
+    case "manual_attendance_requests":
+      router.push(
+        (await isHr()) ? "/hr-manual-requests" : "/manager-manual-requests"
+      );
+      return;
+    case "timesheet_submitted":
+      router.push((await isHr()) ? "/hr-timesheets" : "/manager-timesheets");
+      return;
+    case "correction_requests":
+      // No dedicated HR corrections screen — the manager queue serves both
+      // (the backend authorises HR there too).
+      router.push("/manager-corrections");
+      return;
+    case "review_self_eval_submitted":
+      router.push("/manager-reviews");
+      return;
+    case "onboarding_completed":
+      router.push((await isHr()) ? "/onboardings" : "/my-onboarding");
+      return;
+    case "resignation_submitted":
+      router.push("/exits");
+      return;
+
+    // ===== HR-owned events =====
+    case "asset_issue_reported":
+      router.push("/asset-reports");
+      return;
+    case "interview_feedback_submitted":
+      router.push("/hr-interviews");
+      return;
+
     default:
-      // No specific route — leave the user wherever they are.
-      break;
+      // Unknown type — leave the user wherever they are. The bell list still
+      // shows the notification.
+      return;
   }
 };
 
@@ -139,18 +249,162 @@ export default function RootLayout() {
 // the active theme. Light mode → dark text on light bg; dark mode → light text.
 const ThemedStack = () => {
   const { theme } = useTheme();
+  const router = useRouter();
+  const pathname = usePathname();
+  const [splashDone, setSplashDone] = useState(false);
+  const { showSidebar, sidebarCollapsed } = useResponsive();
+
+  // Routes shown BEFORE authentication — the sidebar must never appear on
+  // these (the bug: on web the sidebar rendered on the login page because
+  // visibility was width-only). Gate it on not being on an auth screen.
+  const AUTH_ROUTES = ["/login", "/forgot-password", "/reset-password"];
+  const onAuthScreen = AUTH_ROUTES.some(
+    (r) => pathname === r || (pathname?.startsWith(r + "/") ?? false)
+  );
+  const sidebarVisible = showSidebar && !onAuthScreen;
+
+  // Fetch user for sidebar navigation (web only)
+  const [user, setUser] = useState<User | null>(null);
+
+  // Command palette state (web only)
+  const [showCommandPalette, setShowCommandPalette] = useState(false);
+
+  // LEARNING POINT: Keyboard Shortcuts for Web
+  // Enable Cmd+K to open command palette on desktop web
+  useKeyboardShortcuts({
+    onCommandPalette: () => setShowCommandPalette(true),
+    onEscape: () => {
+      if (showCommandPalette) {
+        setShowCommandPalette(false);
+      } else {
+        router.back();
+      }
+    },
+  });
+
+  const fetchUser = useCallback(async () => {
+    // Only fetch user on web where sidebar is shown
+    if (Platform.OS !== "web") return;
+    try {
+      const token = await AsyncStorage.getItem("token");
+      if (token) {
+        const me = await getMe(token);
+        setUser(me);
+      } else {
+        // No session — clear any stale user so the sidebar/command
+        // palette don't show authenticated state on the login page.
+        setUser(null);
+      }
+    } catch {
+      // User not logged in or token invalid - sidebar will show default tabs
+    }
+  }, []);
+
+  useEffect(() => {
+    // Re-runs on navigation (pathname change) so the sidebar picks up the
+    // freshly-authenticated user right after login (web SPA navigation
+    // doesn't fire an AppState change).
+    fetchUser();
+  }, [fetchUser, pathname]);
+
+  useEffect(() => {
+    // Re-fetch when app becomes active (e.g., returning from background)
+    const sub = AppState.addEventListener("change", (state) => {
+      if (state === "active") fetchUser();
+    });
+    return () => sub.remove();
+  }, [fetchUser]);
+
+  useEffect(() => {
+    SplashScreen.hideAsync().catch(() => {});
+  }, []);
+
+  // Calculate sidebar width for content offset
+  const sidebarWidth = sidebarVisible
+    ? sidebarCollapsed
+      ? SIDEBAR_WIDTH.collapsed
+      : SIDEBAR_WIDTH.expanded
+    : 0;
+
   return (
     <>
       <StatusBar style={theme.mode === "dark" ? "light" : "dark"} />
-      <Stack
-        screenOptions={{
-          headerShown: false,
-          contentStyle: { backgroundColor: theme.colors.bg },
+
+      <View
+        style={{
+          flex: 1,
+          flexDirection: "row",
+          backgroundColor: theme.colors.bg,
         }}
+      >
+        {/* LEARNING POINT: Desktop Sidebar Navigation
+            On web with sufficient screen width, we show a sidebar instead of
+            bottom tabs. The sidebar is fixed on the left side. */}
+        {sidebarVisible && (
+          <View
+            style={{
+              position: Platform.OS === "web" ? ("fixed" as any) : "absolute",
+              left: 0,
+              top: 0,
+              bottom: 0,
+              zIndex: 100,
+            }}
+          >
+            <SidebarNav user={user} collapsed={sidebarCollapsed} />
+          </View>
+        )}
+
+        {/* Main Content Area */}
+        <View
+          style={{
+            flex: 1,
+            marginLeft: sidebarWidth,
+            alignItems: "center",
+          }}
+        >
+          <View
+            style={{
+              flex: 1,
+              width: "100%",
+              maxWidth: sidebarVisible ? undefined : 1400,
+            }}
+          >
+            <Stack
+              screenOptions={{
+                headerShown: false,
+                contentStyle: {
+                  backgroundColor: theme.colors.bg,
+                },
+              }}
+            />
+          </View>
+        </View>
+      </View>
+
+      {/* LEARNING POINT: Desktop-optimized Toast Positioning
+          On desktop web, toasts appear in the top-right corner (like Slack).
+          On mobile, they stay centered at the top. The toast card width is
+          responsive via the toastConfig styles. */}
+      <Toast
+        config={toastConfig(theme.colors)}
+        position="top"
+        topOffset={sidebarVisible ? 20 : 60}
       />
-      {/* Toast host — themed slide-in notifications, replaces the
-          dated Material Alert dialog for informational messages. */}
-      <Toast config={toastConfig(theme.colors)} topOffset={60} />
+
+      {!splashDone && (
+        <AnimatedSplash onFinish={() => setSplashDone(true)} />
+      )}
+
+      {/* LEARNING POINT: Command Palette (Cmd+K)
+          A quick navigation modal for desktop web users.
+          Press Cmd+K (Mac) or Ctrl+K (Windows) to open. */}
+      {Platform.OS === "web" && !onAuthScreen && (
+        <CommandPalette
+          visible={showCommandPalette}
+          onClose={() => setShowCommandPalette(false)}
+          user={user}
+        />
+      )}
     </>
   );
 };

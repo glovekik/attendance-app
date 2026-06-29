@@ -8,18 +8,16 @@ import {
   TouchableOpacity,
   ActivityIndicator,
   RefreshControl,
-  Modal,
   TextInput,
   Alert,
-  ScrollView,
   Platform } from "react-native";
-import { KeyboardAvoidingView } from "react-native-keyboard-controller";
 import { SafeAreaView } from "react-native-safe-area-context";
 
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 
+import { WebModal, ModalActions } from "../src/components/WebModal";
 import {
   listMyReviews,
   submitSelfEval,
@@ -196,211 +194,201 @@ export default function MyReviews() {
         }}
       />
 
-      <Modal
+      <WebModal
         visible={!!selected}
-        animationType="slide"
-        transparent
-        onRequestClose={() => setSelected(null)}
+        onClose={() => setSelected(null)}
+        title={selected ? `${selected.type} review` : undefined}
+        size="lg"
+        footer={
+          selected &&
+          (selected.status === "SELF_EVAL" ||
+            selected.status === "SUBMITTED") ? (
+            <ModalActions align="right">
+              {selected.status === "SELF_EVAL" && (
+                <TouchableOpacity
+                  style={[styles.bigBtn, styles.bigPrimary]}
+                  onPress={onSubmitSelfEval}
+                  disabled={submitting}
+                >
+                  <Text style={styles.bigBtnText}>
+                    {submitting ? "..." : "Submit self-eval"}
+                  </Text>
+                </TouchableOpacity>
+              )}
+              {selected.status === "SUBMITTED" && (
+                <TouchableOpacity
+                  style={[styles.bigBtn, styles.bigPrimary]}
+                  onPress={onAcknowledge}
+                  disabled={submitting}
+                >
+                  <Text style={styles.bigBtnText}>
+                    {submitting ? "..." : "Acknowledge"}
+                  </Text>
+                </TouchableOpacity>
+              )}
+            </ModalActions>
+          ) : undefined
+        }
       >
-        <KeyboardAvoidingView
-          behavior="padding"
-          style={styles.modalWrap}
-        >
-          <View style={styles.modal}>
-            <View style={styles.modalHeader}>
-              <Text style={styles.modalTitle}>
-                {selected?.type} review
-              </Text>
-              <TouchableOpacity onPress={() => setSelected(null)}>
-                <Ionicons name="close" size={24} color={c.textMuted} />
-              </TouchableOpacity>
-            </View>
+        {selected && (
+          <>
+            <Text style={styles.hint}>
+              {selected.periodStart} → {selected.periodEnd}
+            </Text>
 
-            {selected && (
-              <ScrollView style={{ maxHeight: 540 }}>
-                <Text style={styles.hint}>
-                  {selected.periodStart} → {selected.periodEnd}
-                </Text>
+            {selected.status === "SELF_EVAL" && (
+              <>
+                <Text style={styles.section}>SELF EVALUATION</Text>
 
-                {selected.status === "SELF_EVAL" && (
-                  <>
-                    <Text style={styles.section}>SELF EVALUATION</Text>
+                <Text style={styles.label}>Accomplishments</Text>
+                <TextInput
+                  style={[styles.input, { minHeight: 70 }]}
+                  value={accomplishments}
+                  onChangeText={setAccomplishments}
+                  multiline
+                  textAlignVertical="top"
+                  placeholderTextColor={c.textFaint}
+                  placeholder="What did you do well..."
+                />
 
-                    <Text style={styles.label}>Accomplishments</Text>
-                    <TextInput
-                      style={[styles.input, { minHeight: 70 }]}
-                      value={accomplishments}
-                      onChangeText={setAccomplishments}
-                      multiline
-                      textAlignVertical="top"
-                      placeholderTextColor={c.textFaint}
-                      placeholder="What did you do well..."
-                    />
+                <Text style={styles.label}>Challenges</Text>
+                <TextInput
+                  style={[styles.input, { minHeight: 70 }]}
+                  value={challenges}
+                  onChangeText={setChallenges}
+                  multiline
+                  textAlignVertical="top"
+                  placeholderTextColor={c.textFaint}
+                  placeholder="What was hard..."
+                />
 
-                    <Text style={styles.label}>Challenges</Text>
-                    <TextInput
-                      style={[styles.input, { minHeight: 70 }]}
-                      value={challenges}
-                      onChangeText={setChallenges}
-                      multiline
-                      textAlignVertical="top"
-                      placeholderTextColor={c.textFaint}
-                      placeholder="What was hard..."
-                    />
-
-                    {dimRatings.map((d, i) => (
-                      <View key={d.dimension} style={styles.dimBox}>
-                        <Text style={styles.dimName}>{d.dimension}</Text>
-                        <View style={styles.starsRow}>
-                          {[1, 2, 3, 4, 5].map((n) => (
-                            <TouchableOpacity
-                              key={n}
-                              onPress={() => {
-                                const copy = [...dimRatings];
-                                copy[i] = { ...copy[i], rating: n };
-                                setDimRatings(copy);
-                              }}
-                            >
-                              <Ionicons
-                                name={
-                                  n <= d.rating ? "star" : "star-outline"
-                                }
-                                size={22}
-                                color="#f59e0b"
-                              />
-                            </TouchableOpacity>
-                          ))}
-                        </View>
-                        <TextInput
-                          style={styles.dimComment}
-                          value={d.comment || ""}
-                          onChangeText={(v) => {
-                            const copy = [...dimRatings];
-                            copy[i] = { ...copy[i], comment: v };
-                            setDimRatings(copy);
-                          }}
-                          placeholder="Comment (optional)"
-                          placeholderTextColor={c.textFaint}
-                        />
-                      </View>
-                    ))}
-
-                    <Text style={styles.label}>Overall self-rating</Text>
+                {dimRatings.map((d, i) => (
+                  <View key={d.dimension} style={styles.dimBox}>
+                    <Text style={styles.dimName}>{d.dimension}</Text>
                     <View style={styles.starsRow}>
                       {[1, 2, 3, 4, 5].map((n) => (
                         <TouchableOpacity
                           key={n}
-                          onPress={() => setOverallSelfRating(n)}
+                          onPress={() => {
+                            const copy = [...dimRatings];
+                            copy[i] = { ...copy[i], rating: n };
+                            setDimRatings(copy);
+                          }}
                         >
                           <Ionicons
                             name={
-                              n <= overallSelfRating
-                                ? "star"
-                                : "star-outline"
+                              n <= d.rating ? "star" : "star-outline"
                             }
-                            size={30}
+                            size={22}
                             color="#f59e0b"
                           />
                         </TouchableOpacity>
                       ))}
                     </View>
+                    <TextInput
+                      style={styles.dimComment}
+                      value={d.comment || ""}
+                      onChangeText={(v) => {
+                        const copy = [...dimRatings];
+                        copy[i] = { ...copy[i], comment: v };
+                        setDimRatings(copy);
+                      }}
+                      placeholder="Comment (optional)"
+                      placeholderTextColor={c.textFaint}
+                    />
+                  </View>
+                ))}
 
+                <Text style={styles.label}>Overall self-rating</Text>
+                <View style={styles.starsRow}>
+                  {[1, 2, 3, 4, 5].map((n) => (
                     <TouchableOpacity
-                      style={[styles.bigBtn, styles.bigPrimary]}
-                      onPress={onSubmitSelfEval}
-                      disabled={submitting}
+                      key={n}
+                      onPress={() => setOverallSelfRating(n)}
                     >
-                      <Text style={styles.bigBtnText}>
-                        {submitting ? "..." : "Submit self-eval"}
-                      </Text>
+                      <Ionicons
+                        name={
+                          n <= overallSelfRating
+                            ? "star"
+                            : "star-outline"
+                        }
+                        size={30}
+                        color="#f59e0b"
+                      />
                     </TouchableOpacity>
-                  </>
-                )}
+                  ))}
+                </View>
+              </>
+            )}
 
-                {selected.status === "MANAGER_EVAL" && (
+            {selected.status === "MANAGER_EVAL" && (
+              <>
+                <Text style={styles.section}>SELF-EVAL SUBMITTED</Text>
+                <Text style={styles.body}>
+                  Manager is evaluating. You&apos;ll be notified when
+                  ready.
+                </Text>
+              </>
+            )}
+
+            {(selected.status === "SUBMITTED" ||
+              selected.status === "ACKNOWLEDGED") && (
+              <>
+                <Text style={styles.section}>MANAGER EVALUATION</Text>
+                {!!selected.managerEval?.strengths && (
                   <>
-                    <Text style={styles.section}>SELF-EVAL SUBMITTED</Text>
+                    <Text style={styles.label}>Strengths</Text>
                     <Text style={styles.body}>
-                      Manager is evaluating. You&apos;ll be notified when
-                      ready.
+                      {selected.managerEval.strengths}
                     </Text>
                   </>
                 )}
-
-                {(selected.status === "SUBMITTED" ||
-                  selected.status === "ACKNOWLEDGED") && (
+                {!!selected.managerEval?.areasToImprove && (
                   <>
-                    <Text style={styles.section}>MANAGER EVALUATION</Text>
-                    {!!selected.managerEval?.strengths && (
-                      <>
-                        <Text style={styles.label}>Strengths</Text>
-                        <Text style={styles.body}>
-                          {selected.managerEval.strengths}
-                        </Text>
-                      </>
-                    )}
-                    {!!selected.managerEval?.areasToImprove && (
-                      <>
-                        <Text style={styles.label}>Areas to improve</Text>
-                        <Text style={styles.body}>
-                          {selected.managerEval.areasToImprove}
-                        </Text>
-                      </>
-                    )}
-                    {!!selected.managerEval?.ratings?.length && (
-                      <>
-                        <Text style={styles.label}>Ratings</Text>
-                        {selected.managerEval.ratings.map((r, i) => (
-                          <View key={i} style={styles.dimBoxRead}>
-                            <Text style={styles.dimName}>
-                              {r.dimension}: {r.rating}/5
-                            </Text>
-                            {!!r.comment && (
-                              <Text style={styles.dimCommentRead}>
-                                {r.comment}
-                              </Text>
-                            )}
-                          </View>
-                        ))}
-                      </>
-                    )}
-                    {!!selected.managerEval?.overallRating && (
-                      <Text style={styles.body}>
-                        Overall: {selected.managerEval.overallRating}/5
-                        {selected.managerEval.promotionRecommendation
-                          ? "  ·  Promotion recommended ⭐"
-                          : ""}
-                      </Text>
-                    )}
-                    {!!selected.managerEval?.nextSteps && (
-                      <>
-                        <Text style={styles.label}>Next steps</Text>
-                        <Text style={styles.body}>
-                          {selected.managerEval.nextSteps}
-                        </Text>
-                      </>
-                    )}
-
-                    {selected.status === "SUBMITTED" && (
-                      <TouchableOpacity
-                        style={[styles.bigBtn, styles.bigPrimary]}
-                        onPress={onAcknowledge}
-                        disabled={submitting}
-                      >
-                        <Text style={styles.bigBtnText}>
-                          {submitting ? "..." : "Acknowledge"}
-                        </Text>
-                      </TouchableOpacity>
-                    )}
+                    <Text style={styles.label}>Areas to improve</Text>
+                    <Text style={styles.body}>
+                      {selected.managerEval.areasToImprove}
+                    </Text>
                   </>
                 )}
-
-                <View style={{ height: 18 }} />
-              </ScrollView>
+                {!!selected.managerEval?.ratings?.length && (
+                  <>
+                    <Text style={styles.label}>Ratings</Text>
+                    {selected.managerEval.ratings.map((r, i) => (
+                      <View key={i} style={styles.dimBoxRead}>
+                        <Text style={styles.dimName}>
+                          {r.dimension}: {r.rating}/5
+                        </Text>
+                        {!!r.comment && (
+                          <Text style={styles.dimCommentRead}>
+                            {r.comment}
+                          </Text>
+                        )}
+                      </View>
+                    ))}
+                  </>
+                )}
+                {!!selected.managerEval?.overallRating && (
+                  <Text style={styles.body}>
+                    Overall: {selected.managerEval.overallRating}/5
+                    {selected.managerEval.promotionRecommendation
+                      ? "  ·  Promotion recommended ⭐"
+                      : ""}
+                  </Text>
+                )}
+                {!!selected.managerEval?.nextSteps && (
+                  <>
+                    <Text style={styles.label}>Next steps</Text>
+                    <Text style={styles.body}>
+                      {selected.managerEval.nextSteps}
+                    </Text>
+                  </>
+                )}
+              </>
             )}
-          </View>
-        </KeyboardAvoidingView>
-      </Modal>
+          </>
+        )}
+      </WebModal>
     </SafeAreaView>
   );
 }

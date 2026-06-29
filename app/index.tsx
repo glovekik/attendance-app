@@ -6,8 +6,10 @@ import {
   StyleSheet,
   ScrollView,
   TouchableOpacity,
+  Pressable,
   ActivityIndicator,
   Image,
+  Platform,
   RefreshControl } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 
@@ -16,6 +18,8 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useRouter, useFocusEffect } from "expo-router";
 
 import { Ionicons } from "@expo/vector-icons";
+
+import { useResponsive, getResponsiveSpacing } from "../src/utils/responsive";
 
 import { getMe, getToday } from "../src/services/api";
 import { getDashboardMe } from "../src/services/dashboard";
@@ -47,6 +51,8 @@ import {
 export default function Home() {
   const router = useRouter();
   const { theme } = useTheme();
+  const responsive = useResponsive();
+  const spacing = getResponsiveSpacing(responsive.breakpoint);
 
   const [user, setUser] = useState<User | null>(null);
   const [today, setToday] = useState<any>(null);
@@ -61,8 +67,12 @@ export default function Home() {
   const [chatUnread, setChatUnread] = useState(0);
 
   const c = theme.colors;
+  const isDesktop = responsive.isDesktop;
 
-  const styles = useMemo(() => makeStyles(c), [c]);
+  const styles = useMemo(
+    () => makeStyles(c, isDesktop, spacing),
+    [c, isDesktop, spacing]
+  );
 
   const loadEverything = async (showSpinner = true) => {
     try {
@@ -326,12 +336,22 @@ export default function Home() {
     return "Good evening";
   })();
 
+  // Desktop shows sidebar, so we don't need bottom bar padding
+  const bottomPadding = responsive.showSidebar ? 40 : BOTTOM_BAR_RESERVED_HEIGHT + 24;
+
   return (
     <SafeAreaView style={[styles.safe, { backgroundColor: c.bg }]}>
       <ScrollView
         contentContainerStyle={{
-          padding: 20,
-          paddingBottom: BOTTOM_BAR_RESERVED_HEIGHT + 24 }}
+          padding: spacing.padding,
+          paddingBottom: bottomPadding,
+          // On desktop, limit content width for readability
+          ...(isDesktop && {
+            maxWidth: 1200,
+            alignSelf: "center" as const,
+            width: "100%",
+          }),
+        }}
         showsVerticalScrollIndicator={false}
         refreshControl={
           <RefreshControl
@@ -515,6 +535,7 @@ export default function Home() {
                 icon="time-outline"
                 tint={c.pastelMint}
                 iconColor="#15803d"
+                onPress={() => router.push("/history")}
                 theme={theme}
             styles={styles}
               />
@@ -525,6 +546,7 @@ export default function Home() {
                 icon="stopwatch-outline"
                 tint={c.pastelPeach}
                 iconColor="#c2410c"
+                onPress={() => router.push("/history")}
                 theme={theme}
             styles={styles}
               />
@@ -535,6 +557,7 @@ export default function Home() {
                 icon="checkmark-done-outline"
                 tint={c.pastelPink}
                 iconColor="#be185d"
+                onPress={() => router.push("/tasks")}
                 theme={theme}
             styles={styles}
               />
@@ -780,15 +803,23 @@ const RoleCallout = ({
   theme: any;
   styles: any;
 }) => (
-  <TouchableOpacity
+  <Pressable
     onPress={onPress}
-    activeOpacity={0.85}
-    style={[
+    style={({ hovered, pressed }: any) => [
       styles.roleCallout,
       {
         backgroundColor: theme.colors.surface,
         borderColor: theme.colors.surfaceBorder,
         shadowColor: theme.colors.shadow },
+      // Web hover effect
+      Platform.OS === "web" && hovered && {
+        transform: [{ scale: 1.01 }],
+        shadowRadius: 20,
+        borderColor: theme.colors.accent,
+      },
+      pressed && {
+        opacity: 0.9,
+      },
     ]}
   >
     <View
@@ -813,7 +844,7 @@ const RoleCallout = ({
       size={20}
       color={theme.colors.textMuted}
     />
-  </TouchableOpacity>
+  </Pressable>
 );
 
 const SimpleKpi = ({
@@ -852,21 +883,32 @@ const SimpleKpi = ({
       </Text>
     </>
   );
-  const cellStyle = [
-    styles.kpiCell,
-    {
-      backgroundColor: theme.colors.surface,
-      borderColor: theme.colors.surfaceBorder,
-      shadowColor: theme.colors.shadow },
-  ];
+  const cellBaseStyle = {
+    backgroundColor: theme.colors.surface,
+    borderColor: theme.colors.surfaceBorder,
+    shadowColor: theme.colors.shadow,
+  };
+
   if (onPress) {
     return (
-      <TouchableOpacity style={cellStyle} onPress={onPress} activeOpacity={0.85}>
+      <Pressable
+        style={({ hovered, pressed }: any) => [
+          styles.kpiCell,
+          cellBaseStyle,
+          Platform.OS === "web" && hovered && {
+            transform: [{ scale: 1.02 }],
+            shadowRadius: 18,
+            borderColor: theme.colors.accent,
+          },
+          pressed && { opacity: 0.9 },
+        ]}
+        onPress={onPress}
+      >
         {body}
-      </TouchableOpacity>
+      </Pressable>
     );
   }
-  return <View style={cellStyle}>{body}</View>;
+  return <View style={[styles.kpiCell, cellBaseStyle]}>{body}</View>;
 };
 
 const CategoryTile = ({
@@ -887,15 +929,25 @@ const CategoryTile = ({
   theme: any;
   styles: any;
 }) => (
-  <TouchableOpacity
+  <Pressable
     onPress={onPress}
-    activeOpacity={0.85}
-    style={[
+    style={({ hovered, pressed }: any) => [
       styles.tile,
       {
         backgroundColor: theme.colors.surface,
         borderColor: theme.colors.surfaceBorder,
         shadowColor: theme.colors.shadow },
+      // LEARNING POINT: Web hover states
+      // Pressable supports hovered state on web for desktop interactions
+      Platform.OS === "web" && hovered && {
+        transform: [{ scale: 1.03 }],
+        shadowRadius: 18,
+        borderColor: theme.colors.accent,
+      },
+      pressed && {
+        opacity: 0.9,
+        transform: [{ scale: 0.97 }],
+      },
     ]}
   >
     <View style={[styles.tileIcon, { backgroundColor: tint }]}>
@@ -919,29 +971,29 @@ const CategoryTile = ({
         <Text style={styles.tileCountText}>{count > 9 ? "9+" : count}</Text>
       </View>
     )}
-  </TouchableOpacity>
+  </Pressable>
 );
 
 // =============================================================
 // Styles
 // =============================================================
 
-const makeStyles = (c: any) => StyleSheet.create({
+const makeStyles = (c: any, isDesktop: boolean, spacing: any) => StyleSheet.create({
   safe: { flex: 1 },
   loader: { flex: 1, alignItems: "center", justifyContent: "center" },
 
   brandLogo: {
-    width: 140,
-    height: 38,
-    marginBottom: 16,
+    width: isDesktop ? 160 : 140,
+    height: isDesktop ? 44 : 38,
+    marginBottom: isDesktop ? 24 : 16,
     alignSelf: "flex-start" },
 
   helloRow: {
     flexDirection: "row",
     alignItems: "center",
-    marginBottom: 18 },
-  helloLabel: { fontSize: 13, marginBottom: 2 },
-  helloName: { fontSize: 28, fontWeight: "800" },
+    marginBottom: isDesktop ? 28 : 18 },
+  helloLabel: { fontSize: isDesktop ? 14 : 13, marginBottom: 2 },
+  helloName: { fontSize: isDesktop ? 32 : 28, fontWeight: "800" },
 
   bell: {
     width: 42,
@@ -1033,17 +1085,20 @@ const makeStyles = (c: any) => StyleSheet.create({
   kpiGrid: {
     flexDirection: "row",
     flexWrap: "wrap",
-    gap: 10 },
+    gap: isDesktop ? 16 : 10 },
   kpiCell: {
-    width: "47%",
+    // Desktop: 4 columns, Mobile: 2 columns
+    width: isDesktop ? "23%" : "47%",
     flexGrow: 1,
-    padding: 14,
+    padding: isDesktop ? 18 : 14,
     borderRadius: 18,
     borderWidth: 1,
     shadowOpacity: 1,
     shadowRadius: 12,
     shadowOffset: { width: 0, height: 4 },
-    elevation: 2 },
+    elevation: 2,
+    // Web hover cursor
+    ...(Platform.OS === "web" && { cursor: "pointer" as any }) },
   kpiIcon: {
     width: 30,
     height: 30,
@@ -1055,25 +1110,20 @@ const makeStyles = (c: any) => StyleSheet.create({
   kpiLabel: { fontSize: 13, fontWeight: "700" },
   kpiSub: { fontSize: 11, marginTop: 2 },
 
-  // 3-up grid. flexGrow stays 0 so tiles in a partial last row (e.g. 5
-  // items in a section) don't stretch to fill the leftover space — that
-  // was the "large button in between" problem.
+  // Responsive grid: Desktop shows 5-6 per row, mobile shows 3
   tilesGrid: {
     flexDirection: "row",
     flexWrap: "wrap",
     justifyContent: "flex-start",
-    columnGap: 10,
-    rowGap: 10 },
-  // flexBasis is intentionally below 33% so 3 tiles plus the two
-  // column gaps always fit within 100% of the row. 31.5% was so tight
-  // that the gap math pushed the 3rd tile to wrap on phones, giving a
-  // 2-per-row layout.
+    columnGap: isDesktop ? 16 : 10,
+    rowGap: isDesktop ? 16 : 10 },
+  // Desktop: ~16% width (6 per row), Mobile: ~30% (3 per row)
   tile: {
-    flexBasis: "30%",
+    flexBasis: isDesktop ? "15%" : "30%",
     flexGrow: 0,
     flexShrink: 0,
     aspectRatio: 1,
-    padding: 12,
+    padding: isDesktop ? 16 : 12,
     borderRadius: 18,
     borderWidth: 1,
     alignItems: "center",
@@ -1082,7 +1132,9 @@ const makeStyles = (c: any) => StyleSheet.create({
     shadowRadius: 12,
     shadowOffset: { width: 0, height: 4 },
     elevation: 2,
-    position: "relative" },
+    position: "relative",
+    // Web hover cursor
+    ...(Platform.OS === "web" && { cursor: "pointer" as any }) },
   tileIcon: {
     width: 48,
     height: 48,
