@@ -805,18 +805,12 @@ const RoleCallout = ({
 }) => (
   <Pressable
     onPress={onPress}
-    style={({ hovered, pressed }: any) => [
+    style={({ pressed }: any) => [
       styles.roleCallout,
       {
         backgroundColor: theme.colors.surface,
         borderColor: theme.colors.surfaceBorder,
         shadowColor: theme.colors.shadow },
-      // Web hover effect
-      Platform.OS === "web" && hovered && {
-        transform: [{ scale: 1.01 }],
-        shadowRadius: 20,
-        borderColor: theme.colors.accent,
-      },
       pressed && {
         opacity: 0.9,
       },
@@ -892,14 +886,9 @@ const SimpleKpi = ({
   if (onPress) {
     return (
       <Pressable
-        style={({ hovered, pressed }: any) => [
+        style={({ pressed }: any) => [
           styles.kpiCell,
           cellBaseStyle,
-          Platform.OS === "web" && hovered && {
-            transform: [{ scale: 1.02 }],
-            shadowRadius: 18,
-            borderColor: theme.colors.accent,
-          },
           pressed && { opacity: 0.9 },
         ]}
         onPress={onPress}
@@ -931,22 +920,14 @@ const CategoryTile = ({
 }) => (
   <Pressable
     onPress={onPress}
-    style={({ hovered, pressed }: any) => [
+    style={({ pressed }: any) => [
       styles.tile,
       {
         backgroundColor: theme.colors.surface,
         borderColor: theme.colors.surfaceBorder,
         shadowColor: theme.colors.shadow },
-      // LEARNING POINT: Web hover states
-      // Pressable supports hovered state on web for desktop interactions
-      Platform.OS === "web" && hovered && {
-        transform: [{ scale: 1.03 }],
-        shadowRadius: 18,
-        borderColor: theme.colors.accent,
-      },
       pressed && {
         opacity: 0.9,
-        transform: [{ scale: 0.97 }],
       },
     ]}
   >

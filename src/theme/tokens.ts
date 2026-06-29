@@ -190,10 +190,10 @@ export const shadows = {
  */
 export const webThemeOverrides = {
   colors: {
-    // Keka-inspired orange accent for web
-    accent: "#f97316",
-    accentSoft: "#fff7ed",
-    accentText: "#ea580c",
+    // Professional indigo accent for web (matches the brand / app accent).
+    accent: "#6366f1",
+    accentSoft: "#eef0ff",
+    accentText: "#4f46e5",
     // Cleaner borders for web
     surfaceBorder: "#e2e8f0",
   },

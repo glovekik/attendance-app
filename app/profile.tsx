@@ -890,6 +890,9 @@ export default function Profile() {
         </View>
 
         {/* ===== APPEARANCE ===== */}
+        {/* Hidden on web — desktop is light-only (dark mode disabled). */}
+        {Platform.OS !== "web" && (
+        <>
         <Text style={[styles.section, { color: c.textMuted }]}>
           APPEARANCE
         </Text>
@@ -953,6 +956,8 @@ export default function Profile() {
             })}
           </View>
         </View>
+        </>
+        )}
 
         {/* ===== LOGOUT ===== */}
         <TouchableOpacity

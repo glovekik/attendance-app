@@ -56,3 +56,5 @@ app-example
 *service-account*.json
 *firebase-adminsdk*.json
 fcm-*.json
+
+.vercel

@@ -74,8 +74,14 @@ export const ThemeProvider = ({
   }, []);
 
   const theme = useMemo(() => {
+    // Web (desktop) is light-only — dark mode is disabled there regardless
+    // of the saved preference or the OS color scheme.
     const effective =
-      preference === "system" ? systemScheme : preference;
+      Platform.OS === "web"
+        ? "light"
+        : preference === "system"
+        ? systemScheme
+        : preference;
     const baseTheme = buildTheme(effective);
 
     // Apply Keka-style overrides only on desktop web

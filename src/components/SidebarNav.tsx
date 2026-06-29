@@ -559,16 +559,14 @@ export const SidebarNav = ({
       {/* Logo / Brand - Clean Keka-style header */}
       <View style={styles.header}>
         <View style={styles.logoContainer}>
-          <View style={styles.logoIcon}>
-            <Ionicons
-              name="shield-checkmark"
-              size={collapsed ? 24 : 22}
-              color="#fff"
-            />
-          </View>
+          <Image
+            source={require("../../assets/images/logo.jpg")}
+            style={styles.logoImg}
+            resizeMode="contain"
+          />
           {!collapsed && (
             <View>
-              <Text style={styles.brandText}>ForeSentry</Text>
+              <Text style={styles.brandText}>4SightHub</Text>
               <Text style={styles.brandSubtext}>HR Platform</Text>
             </View>
           )}
@@ -662,6 +660,11 @@ const makeStyles = (colors: any, collapsed: boolean) =>
       backgroundColor: colors.accent,
       alignItems: "center",
       justifyContent: "center",
+    },
+    logoImg: {
+      width: 40,
+      height: 40,
+      borderRadius: 8,
     },
     brandText: {
       fontSize: 17,
