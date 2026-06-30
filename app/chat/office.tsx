@@ -23,6 +23,7 @@ import {
   sendOfficeMessage,
   deleteOfficeMessage,
   markChatRead } from "../../src/services/chat";
+import { chatUnreadStore } from "../../src/services/chatUnread";
 
 import { getMe } from "../../src/services/api";
 
@@ -75,6 +76,8 @@ export default function OfficeChat() {
       // Stamp chatLastReadAt so the dashboard Chat-tile badge clears
       // when the user lands here. Same treatment team chat already gets.
       markChatRead(token).catch(() => {});
+      // Clear the badge everywhere immediately — viewing the chat reads it.
+      chatUnreadStore.set(0);
       try {
         const [user, directory] = await Promise.all([
           getMe(token),

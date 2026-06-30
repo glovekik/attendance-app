@@ -29,6 +29,7 @@ import {
   deleteTeamMessage,
   markChatRead,
 } from "../../../src/services/chat";
+import { chatUnreadStore } from "../../../src/services/chatUnread";
 
 import {
   getTeam,
@@ -69,6 +70,7 @@ export default function TeamChat() {
       }
       // Opening a team chat clears the dashboard unread badge.
       markChatRead(token).catch(() => {});
+      chatUnreadStore.set(0);
       try {
         const user = await getMe(token);
         setMe(user);

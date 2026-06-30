@@ -45,6 +45,7 @@ import { useTheme } from "../../src/theme/ThemeProvider";
 import {
   scheduleTaskReminder,
   cancelTaskReminder,
+  reminderLabel,
 } from "../../src/services/reminders";
 
 import {
@@ -358,6 +359,19 @@ export default function TaskDetail() {
             ) : null}
 
             <View style={styles.metaRow}>
+              {task.createdByUser?.name ? (
+                <View style={styles.metaChip}>
+                  <Ionicons
+                    name="person-outline"
+                    size={11}
+                    color={c.textMuted}
+                  />
+                  <Text style={styles.metaText}>
+                    By {task.createdByUser.name}
+                  </Text>
+                </View>
+              ) : null}
+
               {task.dueDate ? (
                 <View style={styles.metaChip}>
                   <Ionicons
@@ -384,7 +398,7 @@ export default function TaskDetail() {
                       { color: "#fbbf24" },
                     ]}
                   >
-                    every {task.reminderIntervalMinutes}m
+                    {reminderLabel(task.reminderIntervalMinutes)}
                   </Text>
                 </View>
               ) : null}

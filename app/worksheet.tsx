@@ -13,7 +13,7 @@ import {
   ActivityIndicator,
   Alert,
 } from "react-native";
-import { KeyboardAwareScrollView } from "react-native-keyboard-controller";
+import { KbAwareScroll } from "../src/components/KbAwareScroll";
 
 import AsyncStorage from "@react-native-async-storage/async-storage";
 
@@ -200,7 +200,7 @@ export default function Worksheet() {
   }
 
   return (
-    <KeyboardAwareScrollView
+    <KbAwareScroll
       style={styles.container}
       contentContainerStyle={styles.content}
       showsVerticalScrollIndicator={false}
@@ -381,7 +381,7 @@ export default function Worksheet() {
         </View>
       )}
 
-    </KeyboardAwareScrollView>
+    </KbAwareScroll>
   );
 }
 

@@ -7,6 +7,28 @@ import { Task } from "../types";
 const STORAGE_KEY = "task_reminder_ids";
 const isWeb = Platform.OS === "web";
 
+// Reminder cadence presets surfaced in the task create/edit UI. Stored as
+// `reminderIntervalMinutes` so the existing repeating-notification scheduler
+// keeps working unchanged: Daily = once/day, Weekly = once/week.
+export const DAILY_MINUTES = 1440;
+export const WEEKLY_MINUTES = 10080;
+
+export const REMINDER_PRESETS: { label: string; minutes: number }[] = [
+  { label: "Off", minutes: 0 },
+  { label: "Daily", minutes: DAILY_MINUTES },
+  { label: "Weekly", minutes: WEEKLY_MINUTES },
+];
+
+// Human label for a stored interval — used on task cards / detail.
+export const reminderLabel = (minutes?: number | null): string => {
+  if (!minutes || minutes <= 0) return "Off";
+  if (minutes === DAILY_MINUTES) return "Daily";
+  if (minutes === WEEKLY_MINUTES) return "Weekly";
+  if (minutes % DAILY_MINUTES === 0) return `Every ${minutes / DAILY_MINUTES}d`;
+  if (minutes % 60 === 0) return `Every ${minutes / 60}h`;
+  return `Every ${minutes}m`;
+};
+
 type StoredMap = Record<string, string>;
 
 const loadStored = async (): Promise<StoredMap> => {

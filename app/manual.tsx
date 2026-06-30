@@ -8,7 +8,7 @@ import {
   TextInput,
   ActivityIndicator,
   Platform } from "react-native";
-import { KeyboardAwareScrollView } from "react-native-keyboard-controller";
+import { KbAwareScroll } from "../src/components/KbAwareScroll";
 import { SafeAreaView } from "react-native-safe-area-context";
 
 import AsyncStorage from "@react-native-async-storage/async-storage";
@@ -240,7 +240,7 @@ export default function Manual() {
         </View>
       )}
 
-      <KeyboardAwareScrollView
+      <KbAwareScroll
         style={styles.container}
         contentContainerStyle={styles.content}
         showsVerticalScrollIndicator={false}
@@ -628,7 +628,7 @@ export default function Manual() {
 
         </TouchableOpacity>
 
-      </KeyboardAwareScrollView>
+      </KbAwareScroll>
 
     </SafeAreaView>
   );

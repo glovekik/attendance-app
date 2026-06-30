@@ -11,7 +11,7 @@ import {
   ActivityIndicator,
   Platform,
 } from "react-native";
-import { KeyboardAwareScrollView } from "react-native-keyboard-controller";
+import { KbAwareScroll } from "../../src/components/KbAwareScroll";
 
 import { WebModal, ModalActions } from "../../src/components/WebModal";
 
@@ -316,7 +316,7 @@ export default function HRExitDetail() {
         </View>
       )}
 
-      <KeyboardAwareScrollView
+      <KbAwareScroll
         style={s.container}
         contentContainerStyle={s.content}
         bottomOffset={24}
@@ -578,7 +578,7 @@ export default function HRExitDetail() {
           </>
         )}
 
-      </KeyboardAwareScrollView>
+      </KbAwareScroll>
 
       {/* DECIDE MODAL */}
       <WebModal

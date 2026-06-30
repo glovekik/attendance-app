@@ -594,6 +594,9 @@ export interface Task {
   completedAt?: string | null;
   teamName?: string;
   assigneeName?: string;
+  // Enriched by the backend list/detail endpoints.
+  assignee?: { id: string; name?: string; email?: string } | null;
+  createdByUser?: { id: string; name?: string; email?: string } | null;
 }
 
 export const hasRole = (

@@ -8,7 +8,7 @@ import {
   ActivityIndicator,
   TextInput,
   Alert } from "react-native";
-import { KeyboardAwareScrollView } from "react-native-keyboard-controller";
+import { KbAwareScroll } from "../src/components/KbAwareScroll";
 import { SafeAreaView } from "react-native-safe-area-context";
 
 import AsyncStorage from "@react-native-async-storage/async-storage";
@@ -174,7 +174,7 @@ export default function HrUserLeaveBalance() {
         </View>
       </View>
 
-      <KeyboardAwareScrollView
+      <KbAwareScroll
         contentContainerStyle={styles.content}
         bottomOffset={24}
         keyboardShouldPersistTaps="handled"
@@ -283,7 +283,7 @@ export default function HrUserLeaveBalance() {
           taken. Pending = currently-awaiting-approval. Remaining is
           computed from the three.
         </Text>
-      </KeyboardAwareScrollView>
+      </KbAwareScroll>
     </SafeAreaView>
   );
 }

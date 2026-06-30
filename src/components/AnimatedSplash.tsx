@@ -4,134 +4,30 @@ import { Animated, Easing, Image, StyleSheet, View } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
 
 /**
- * Corporate-grade animated splash that plays over the native splash:
- *  - a deep navy -> indigo -> violet gradient that slowly drifts,
- *  - faint particles rising for subtle depth,
- *  - a soft glow that breathes behind the logo,
- *  - the logo badge fades + scales + lifts into place,
- *  - a thin gradient "loading" accent line sweeps in beneath it,
+ * Clean light splash that plays over the native splash:
+ *  - a soft light backdrop (matches the login screen),
+ *  - the logo fades + scales + lifts into place,
+ *  - a thin gradient accent line sweeps in beneath it,
  *  - the company name fades in,
- *  - then the whole layer fades + eases up to reveal the app.
+ *  - then the whole layer fades up to reveal the app.
  *
- * Built on RN's Animated (native driver) + expo-linear-gradient — no
- * Reanimated/worklets setup needed.
+ * Built on RN's Animated (native driver) + expo-linear-gradient.
  */
 
 const COMPANY = "ForesightAI Technologies";
-
-const PARTICLES = [
-  { left: "16%", size: 6, delay: 0, duration: 5200 },
-  { left: "80%", size: 4, delay: 900, duration: 6000 },
-  { left: "34%", size: 5, delay: 1700, duration: 4800 },
-  { left: "66%", size: 7, delay: 400, duration: 6400 },
-  { left: "50%", size: 3, delay: 2300, duration: 5600 },
-  { left: "26%", size: 4, delay: 1200, duration: 5000 },
-  { left: "72%", size: 5, delay: 2000, duration: 5400 },
-];
-
-function Particle({
-  left,
-  size,
-  delay,
-  duration,
-}: {
-  left: string;
-  size: number;
-  delay: number;
-  duration: number;
-}) {
-  const t = useRef(new Animated.Value(0)).current;
-  useEffect(() => {
-    const loop = Animated.loop(
-      Animated.sequence([
-        Animated.delay(delay),
-        Animated.timing(t, {
-          toValue: 1,
-          duration,
-          easing: Easing.linear,
-          useNativeDriver: true,
-        }),
-      ])
-    );
-    loop.start();
-    return () => loop.stop();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  const translateY = t.interpolate({ inputRange: [0, 1], outputRange: [0, -170] });
-  const opacity = t.interpolate({
-    inputRange: [0, 0.15, 0.85, 1],
-    outputRange: [0, 0.5, 0.5, 0],
-  });
-
-  return (
-    <Animated.View
-      style={{
-        position: "absolute",
-        bottom: 140,
-        left: left as any,
-        width: size,
-        height: size,
-        borderRadius: size / 2,
-        backgroundColor: "rgba(255,255,255,0.65)",
-        opacity,
-        transform: [{ translateY }],
-      }}
-    />
-  );
-}
 
 export function AnimatedSplash({ onFinish }: { onFinish: () => void }) {
   const layerOpacity = useRef(new Animated.Value(1)).current;
   const layerScale = useRef(new Animated.Value(1)).current;
 
   const logoOpacity = useRef(new Animated.Value(0)).current;
-  const logoScale = useRef(new Animated.Value(0.9)).current;
-  const logoY = useRef(new Animated.Value(16)).current;
+  const logoScale = useRef(new Animated.Value(0.92)).current;
+  const logoY = useRef(new Animated.Value(14)).current;
 
   const lineScale = useRef(new Animated.Value(0)).current;
   const footerOpacity = useRef(new Animated.Value(0)).current;
 
-  const glow = useRef(new Animated.Value(0)).current;
-  const drift = useRef(new Animated.Value(0)).current;
-
   useEffect(() => {
-    // Background slow drift.
-    Animated.loop(
-      Animated.sequence([
-        Animated.timing(drift, {
-          toValue: 1,
-          duration: 6000,
-          easing: Easing.inOut(Easing.quad),
-          useNativeDriver: true,
-        }),
-        Animated.timing(drift, {
-          toValue: 0,
-          duration: 6000,
-          easing: Easing.inOut(Easing.quad),
-          useNativeDriver: true,
-        }),
-      ])
-    ).start();
-
-    // Glow breathing.
-    Animated.loop(
-      Animated.sequence([
-        Animated.timing(glow, {
-          toValue: 1,
-          duration: 1600,
-          easing: Easing.inOut(Easing.quad),
-          useNativeDriver: true,
-        }),
-        Animated.timing(glow, {
-          toValue: 0,
-          duration: 1600,
-          easing: Easing.inOut(Easing.quad),
-          useNativeDriver: true,
-        }),
-      ])
-    ).start();
-
     // Staggered entrance: logo → accent line → company name.
     Animated.sequence([
       Animated.parallel([
@@ -173,29 +69,24 @@ export function AnimatedSplash({ onFinish }: { onFinish: () => void }) {
       Animated.parallel([
         Animated.timing(layerOpacity, {
           toValue: 0,
-          duration: 550,
+          duration: 500,
           easing: Easing.in(Easing.quad),
           useNativeDriver: true,
         }),
         Animated.timing(layerScale, {
-          toValue: 1.05,
-          duration: 550,
+          toValue: 1.04,
+          duration: 500,
           easing: Easing.in(Easing.quad),
           useNativeDriver: true,
         }),
       ]).start(({ finished }) => {
         if (finished) onFinish();
       });
-    }, 2300);
+    }, 2100);
 
     return () => clearTimeout(t);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
-
-  const driftX = drift.interpolate({ inputRange: [0, 1], outputRange: [-30, 30] });
-  const driftY = drift.interpolate({ inputRange: [0, 1], outputRange: [-20, 20] });
-  const glowOpacity = glow.interpolate({ inputRange: [0, 1], outputRange: [0.16, 0.4] });
-  const glowScale = glow.interpolate({ inputRange: [0, 1], outputRange: [0.9, 1.15] });
 
   return (
     <Animated.View
@@ -205,43 +96,16 @@ export function AnimatedSplash({ onFinish }: { onFinish: () => void }) {
       ]}
       pointerEvents="none"
     >
-      {/* Base gradient. */}
+      {/* Soft light backdrop — matches the login screen. */}
       <LinearGradient
-        colors={["#070B1F", "#15205C", "#3B1E78"]}
+        colors={["#EAF0FF", "#F5F8FF", "#FFFFFF"]}
         start={{ x: 0, y: 0 }}
-        end={{ x: 1, y: 1 }}
+        end={{ x: 0, y: 1 }}
         style={StyleSheet.absoluteFill}
       />
-      {/* Drifting accent gradient — oversized so the motion never reveals an edge. */}
-      <Animated.View
-        style={[
-          styles.driftLayer,
-          { transform: [{ translateX: driftX }, { translateY: driftY }] },
-        ]}
-      >
-        <LinearGradient
-          colors={["#3B1E78", "#6D28D9", "#1D4ED8"]}
-          start={{ x: 0, y: 1 }}
-          end={{ x: 1, y: 0 }}
-          style={[StyleSheet.absoluteFill, { opacity: 0.45 }]}
-        />
-      </Animated.View>
-
-      {/* Floating particles. */}
-      {PARTICLES.map((p, i) => (
-        <Particle key={i} {...p} />
-      ))}
 
       <View style={styles.center}>
-        {/* Soft glow halo. */}
-        <Animated.View
-          style={[
-            styles.glow,
-            { opacity: glowOpacity, transform: [{ scale: glowScale }] },
-          ]}
-        />
-
-        {/* Logo badge. */}
+        {/* Logo. */}
         <Animated.View
           style={[
             styles.logoCard,
@@ -264,7 +128,7 @@ export function AnimatedSplash({ onFinish }: { onFinish: () => void }) {
             style={[styles.lineFill, { transform: [{ scaleX: lineScale }] }]}
           >
             <LinearGradient
-              colors={["#2563EB", "#7C3AED", "#DB2777"]}
+              colors={["#2563EB", "#4F46E5"]}
               start={{ x: 0, y: 0 }}
               end={{ x: 1, y: 0 }}
               style={StyleSheet.absoluteFill}
@@ -282,25 +146,10 @@ export function AnimatedSplash({ onFinish }: { onFinish: () => void }) {
 }
 
 const styles = StyleSheet.create({
-  driftLayer: {
-    position: "absolute",
-    top: -60,
-    left: -60,
-    right: -60,
-    bottom: -60,
-  },
   center: {
     ...StyleSheet.absoluteFillObject,
     alignItems: "center",
     justifyContent: "center",
-  },
-  glow: {
-    position: "absolute",
-    top: "32%",
-    width: 320,
-    height: 320,
-    borderRadius: 160,
-    backgroundColor: "#7C3AED",
   },
   logoCard: {
     backgroundColor: "#fff",
@@ -308,12 +157,12 @@ const styles = StyleSheet.create({
     paddingVertical: 24,
     borderRadius: 22,
     borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.6)",
-    shadowColor: "#000",
-    shadowOpacity: 0.3,
+    borderColor: "#EEF2F7",
+    shadowColor: "#1E293B",
+    shadowOpacity: 0.12,
     shadowRadius: 24,
     shadowOffset: { width: 0, height: 12 },
-    elevation: 12,
+    elevation: 8,
   },
   logo: {
     width: 230,
@@ -324,7 +173,7 @@ const styles = StyleSheet.create({
     height: 3,
     borderRadius: 2,
     marginTop: 30,
-    backgroundColor: "rgba(255,255,255,0.18)",
+    backgroundColor: "rgba(37,99,235,0.14)",
     overflow: "hidden",
   },
   lineFill: {
@@ -333,7 +182,7 @@ const styles = StyleSheet.create({
   },
   footer: {
     marginTop: 18,
-    color: "rgba(255,255,255,0.72)",
+    color: "#64748B",
     fontSize: 12,
     letterSpacing: 1.5,
     fontWeight: "600",

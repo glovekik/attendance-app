@@ -29,7 +29,8 @@ import {
 
 import {
   syncRemindersToTasks,
-  cancelTaskReminder } from "../../src/services/reminders";
+  cancelTaskReminder,
+  reminderLabel } from "../../src/services/reminders";
 
 import { requestNotificationPermission } from "../../src/services/notifications";
 
@@ -457,6 +458,19 @@ const TaskRow = ({ task, busy, onCheck, onStart, onOpen, styles, c }: RowProps) 
 
         <View style={styles.metaRow}>
 
+          {task.createdByUser?.name ? (
+            <View style={styles.metaChip}>
+              <Ionicons
+                name="person-outline"
+                size={11}
+                color={c.textMuted}
+              />
+              <Text style={styles.metaText}>
+                By {task.createdByUser.name}
+              </Text>
+            </View>
+          ) : null}
+
           {task.teamName ? (
             <View style={styles.metaChip}>
               <Ionicons
@@ -488,7 +502,7 @@ const TaskRow = ({ task, busy, onCheck, onStart, onOpen, styles, c }: RowProps) 
                   { color: "#fbbf24" },
                 ]}
               >
-                every {task.reminderIntervalMinutes}m
+                {reminderLabel(task.reminderIntervalMinutes)}
               </Text>
             </View>
           ) : null}

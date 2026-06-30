@@ -11,7 +11,7 @@ import {
   ActivityIndicator,
   Switch,
   Platform } from "react-native";
-import { KeyboardAwareScrollView } from "react-native-keyboard-controller";
+import { KbAwareScroll } from "../../src/components/KbAwareScroll";
 import { SafeAreaView } from "react-native-safe-area-context";
 
 import AsyncStorage from "@react-native-async-storage/async-storage";
@@ -36,7 +36,11 @@ import {
 import { listUsers } from "../../src/services/users";
 import { getMe } from "../../src/services/api";
 import { createTask, getMyTasks } from "../../src/services/tasks";
-import { scheduleTaskReminder } from "../../src/services/reminders";
+import {
+  scheduleTaskReminder,
+  DAILY_MINUTES,
+  WEEKLY_MINUTES,
+} from "../../src/services/reminders";
 import { requestNotificationPermission } from "../../src/services/notifications";
 
 import { useTheme } from "../../src/theme/ThemeProvider";
@@ -74,7 +78,18 @@ export default function NewTask() {
   const [showDuePicker, setShowDuePicker] = useState(false);
 
   const [reminderEnabled, setReminderEnabled] = useState(false);
+  // Cadence preset; "custom" falls back to the minute interval below.
+  const [cadence, setCadence] =
+    useState<"daily" | "weekly" | "custom">("daily");
   const [interval, setInterval] = useState(15);
+
+  // Stored interval (minutes) derived from the chosen cadence.
+  const reminderMinutes =
+    cadence === "daily"
+      ? DAILY_MINUTES
+      : cadence === "weekly"
+      ? WEEKLY_MINUTES
+      : interval;
 
   const [saving, setSaving] = useState(false);
 
@@ -183,7 +198,7 @@ export default function NewTask() {
         assigneeId,
         dueDate: hasDueDate ? dateToYMD(dueDate) : undefined,
         reminderIntervalMinutes: reminderEnabled
-          ? interval
+          ? reminderMinutes
           : undefined };
 
       const res = await createTask(token, teamId, payload);
@@ -242,7 +257,7 @@ export default function NewTask() {
         </View>
       )}
 
-      <KeyboardAwareScrollView
+      <KbAwareScroll
         style={styles.container}
         contentContainerStyle={styles.content}
         keyboardShouldPersistTaps="handled"
@@ -400,33 +415,66 @@ export default function NewTask() {
 
         {reminderEnabled && (
           <>
-            <Text style={styles.miniLabel}>
-              Notify the assignee every
-            </Text>
+            <Text style={styles.miniLabel}>How often to remind</Text>
             <View style={styles.intervalRow}>
-              {INTERVALS.map((m) => (
+              {([
+                { key: "daily", label: "Daily" },
+                { key: "weekly", label: "Weekly" },
+                { key: "custom", label: "Custom" },
+              ] as const).map((opt) => (
                 <TouchableOpacity
-                  key={m}
+                  key={opt.key}
                   style={[
                     styles.intervalBtn,
-                    interval === m && styles.intervalActive,
+                    cadence === opt.key && styles.intervalActive,
                   ]}
-                  onPress={() => setInterval(m)}
+                  onPress={() => setCadence(opt.key)}
                 >
                   <Text
                     style={[
                       styles.intervalText,
-                      interval === m && { color: "#fff" },
+                      cadence === opt.key && { color: "#fff" },
                     ]}
                   >
-                    {m}m
+                    {opt.label}
                   </Text>
                 </TouchableOpacity>
               ))}
             </View>
+
+            {cadence === "custom" && (
+              <>
+                <Text style={styles.miniLabel}>Every</Text>
+                <View style={styles.intervalRow}>
+                  {INTERVALS.map((m) => (
+                    <TouchableOpacity
+                      key={m}
+                      style={[
+                        styles.intervalBtn,
+                        interval === m && styles.intervalActive,
+                      ]}
+                      onPress={() => setInterval(m)}
+                    >
+                      <Text
+                        style={[
+                          styles.intervalText,
+                          interval === m && { color: "#fff" },
+                        ]}
+                      >
+                        {m}m
+                      </Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+              </>
+            )}
+
             <Text style={styles.hint}>
-              Reminders fire on the assignee&apos;s device after they open
-              the app. They stop once the task is marked done.
+              {cadence === "daily"
+                ? "Reminds the assignee once a day until the task is marked done."
+                : cadence === "weekly"
+                ? "Reminds the assignee once a week until the task is marked done."
+                : "Reminders fire on the assignee's device after they open the app. They stop once the task is marked done."}
             </Text>
           </>
         )}
@@ -451,7 +499,7 @@ export default function NewTask() {
           )}
         </TouchableOpacity>
 
-      </KeyboardAwareScrollView>
+      </KbAwareScroll>
 
     </SafeAreaView>
   );

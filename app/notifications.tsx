@@ -19,8 +19,10 @@ import {
   listNotifications,
   markRead,
   markAllRead } from "../src/services/inbox";
+import { getMe } from "../src/services/api";
 import { openNotificationStream } from "../src/services/sse";
 import { NotificationItem } from "../src/types";
+import { resolveNotificationRoute } from "../src/utils/notificationRoute";
 import { useTheme } from "../src/theme/ThemeProvider";
 
 const iconForType = (
@@ -77,6 +79,9 @@ export default function NotificationsScreen() {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [marking, setMarking] = useState(false);
+  // Recipient role — gates which notifications can deep-link (so a tap never
+  // lands the user on a page their role can't open).
+  const [role, setRole] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     try {
@@ -101,6 +106,35 @@ export default function NotificationsScreen() {
   useEffect(() => {
     load();
   }, [load]);
+
+  // Fetch the current role once so taps can be gated to accessible pages.
+  useEffect(() => {
+    (async () => {
+      try {
+        const token = await AsyncStorage.getItem("token");
+        if (!token) return;
+        const me = await getMe(token);
+        setRole((me?.role as string) || "USER");
+      } catch {
+        setRole("USER");
+      }
+    })();
+  }, []);
+
+  // Tap a notification → mark it read, then deep-link if the role allows.
+  const openNotification = useCallback(
+    (n: NotificationItem) => {
+      markOne(n);
+      const route = resolveNotificationRoute(
+        { ...(n.data || {}), type: n.type },
+        role
+      );
+      if (route) router.push(route as any);
+    },
+    // markOne is stable enough (defined below, recreated each render but only
+    // closes over setItems); role/router are the meaningful deps.
+    [role, router] // eslint-disable-line react-hooks/exhaustive-deps
+  );
 
   // Re-render relative timestamps every minute so "just now" / "3m ago"
   // don't get stuck while the screen is open.
@@ -231,7 +265,9 @@ export default function NotificationsScreen() {
           </View>
         }
         renderItem={({ item }) => (
-          <View
+          <TouchableOpacity
+            activeOpacity={0.7}
+            onPress={() => openNotification(item)}
             style={[
               styles.row,
               !item.read && styles.rowUnread,
@@ -280,7 +316,7 @@ export default function NotificationsScreen() {
                 color={c.textFaint}
               />
             )}
-          </View>
+          </TouchableOpacity>
         )}
       />
     </SafeAreaView>

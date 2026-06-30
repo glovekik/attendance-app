@@ -164,7 +164,11 @@ export const WebModal = ({
       statusBarTranslucent
     >
       <KeyboardAvoidingView
-        behavior={Platform.OS === "ios" ? "padding" : undefined}
+        // iOS lifts with "padding"; Android needs "height" (was previously
+        // undefined, so Android forms got covered by the keyboard). Web has
+        // no soft keyboard, so this is a no-op there.
+        behavior={Platform.OS === "ios" ? "padding" : "height"}
+        keyboardVerticalOffset={Platform.OS === "ios" ? 0 : 0}
         style={{ flex: 1 }}
       >
         {/* Backdrop */}
@@ -222,6 +226,11 @@ export const WebModal = ({
               style={styles.content}
               contentContainerStyle={scrollable ? styles.contentInner : undefined}
               showsVerticalScrollIndicator={false}
+              // Let buttons/inputs receive the tap on the first touch while
+              // the keyboard is open, instead of just dismissing it.
+              {...(scrollable
+                ? { keyboardShouldPersistTaps: "handled" as const }
+                : {})}
             >
               {children}
             </ContentWrapper>

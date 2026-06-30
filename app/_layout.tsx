@@ -29,6 +29,7 @@ import { useResponsive, SIDEBAR_WIDTH } from "../src/utils/responsive";
 import { User } from "../src/types";
 import { CommandPalette } from "../src/components/CommandPalette";
 import { useKeyboardShortcuts } from "../src/hooks/useKeyboardShortcuts";
+import { resolveNotificationRoute } from "../src/utils/notificationRoute";
 // Side-effect import — patches Alert.alert so all the existing
 // `Alert.alert("Failed", err.message)` calls in 56 screens render as
 // our themed toast instead of the dated Material dialog. Destructive
@@ -59,114 +60,21 @@ const handleNotificationData = async (
   router: ReturnType<typeof useRouter>
 ) => {
   if (!data || typeof data !== "object") return;
-  const type: string = data.type || "";
 
-  // Lazily resolved role — only fetched for approver/role-split types.
+  // Resolve the recipient's role, then route through the shared, role-gated
+  // resolver (same logic the in-app bell uses). If the role can't access the
+  // target page, resolveNotificationRoute returns null and we don't redirect.
   let role: string | null = null;
-  const isHr = async (): Promise<boolean> => {
-    if (role === null) {
-      try {
-        const token = await AsyncStorage.getItem("token");
-        const me = token ? await getMe(token) : null;
-        role = (me?.role as string) || "USER";
-      } catch {
-        role = "USER";
-      }
-    }
-    return role === "HR" || role === "CEO";
-  };
-
-  switch (type) {
-    // ===== Employee-facing outcomes (recipient = the affected employee) =====
-    case "task_assigned":
-    case "task_complete":
-    case "task_completed":
-      router.push(data.taskId ? `/tasks/${data.taskId}` : "/tasks");
-      return;
-    case "leave_decision":
-    case "leave_decided":
-      router.push("/leaves");
-      return;
-    case "reimbursement_decision":
-      router.push("/reimbursements");
-      return;
-    case "correction_decision":
-      router.push("/corrections");
-      return;
-    case "manual_attendance_decision":
-      router.push("/manual-request");
-      return;
-    case "timesheet_decision":
-      router.push("/my-timesheet");
-      return;
-    case "resignation_decision":
-      router.push("/exit");
-      return;
-    case "goal_assigned":
-      router.push("/my-goals");
-      return;
-    case "review_submitted":
-      router.push("/my-reviews");
-      return;
-    case "payslip_ready":
-      router.push("/my-payroll");
-      return;
-    case "asset_assigned":
-      router.push("/assets");
-      return;
-    case "checkout_reminder":
-      router.push("/attendance");
-      return;
-    case "todo_reminder":
-      router.push("/todos");
-      return;
-
-    // ===== Approver-facing (recipient = manager + HR) — role-split =====
-    case "leave_requests":
-      router.push((await isHr()) ? "/leave-requests" : "/manager-leaves");
-      return;
-    case "reimbursement_requests":
-      router.push(
-        (await isHr()) ? "/hr-reimbursements" : "/manager-reimbursements"
-      );
-      return;
-    case "manual_requests":
-    case "manual_attendance_requests":
-      router.push(
-        (await isHr()) ? "/hr-manual-requests" : "/manager-manual-requests"
-      );
-      return;
-    case "timesheet_submitted":
-      router.push((await isHr()) ? "/hr-timesheets" : "/manager-timesheets");
-      return;
-    case "correction_requests":
-      // No dedicated HR corrections screen — the manager queue serves both
-      // (the backend authorises HR there too).
-      router.push("/manager-corrections");
-      return;
-    case "review_self_eval_submitted":
-      router.push("/manager-reviews");
-      return;
-    case "onboarding_completed":
-      router.push((await isHr()) ? "/onboardings" : "/my-onboarding");
-      return;
-    case "resignation_submitted":
-      router.push("/exits");
-      return;
-
-    // ===== HR-owned events =====
-    case "asset_issue_reported":
-      router.push("/asset-reports");
-      return;
-    case "interview_feedback_submitted":
-      router.push("/hr-interviews");
-      return;
-
-    default:
-      // Unknown type — leave the user wherever they are. The bell list still
-      // shows the notification.
-      return;
+  try {
+    const token = await AsyncStorage.getItem("token");
+    const me = token ? await getMe(token) : null;
+    role = (me?.role as string) || "USER";
+  } catch {
+    role = "USER";
   }
+
+  const route = resolveNotificationRoute(data, role);
+  if (route) router.push(route as any);
 };
 
 export default function RootLayout() {

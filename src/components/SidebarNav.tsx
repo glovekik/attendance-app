@@ -13,7 +13,7 @@
  * Mobile uses BottomTabBar instead (see BottomTabBar.tsx).
  */
 
-import React, { useCallback, useState, useMemo } from "react";
+import React, { useCallback, useState, useMemo, useEffect } from "react";
 import {
   View,
   Text,
@@ -28,7 +28,7 @@ import { Ionicons } from "@expo/vector-icons";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 
 import { useTheme } from "../theme/ThemeProvider";
-import { getChatUnreadCount } from "../services/chat";
+import { chatUnreadStore, useChatUnreadBadge } from "../services/chatUnread";
 import {
   getUpcomingEvents,
   UpcomingEvents,
@@ -265,29 +265,17 @@ export const SidebarNav = ({
 
   const showsChatTab = tabs.some((t) => t.key === "chat");
 
-  // Fetch unread count for chat badge
-  const [fetchedUnread, setFetchedUnread] = useState(0);
-  useFocusEffect(
-    useCallback(() => {
-      if (chatUnread !== undefined || !showsChatTab) return;
-      let active = true;
-      (async () => {
-        try {
-          const token = await AsyncStorage.getItem("token");
-          if (!token) return;
-          const { count } = await getChatUnreadCount(token);
-          if (active) setFetchedUnread(count || 0);
-        } catch {
-          /* non-fatal */
-        }
-      })();
-      return () => {
-        active = false;
-      };
-    }, [chatUnread, showsChatTab])
-  );
-
-  const unreadForChat = chatUnread ?? fetchedUnread;
+  // Badge reads from the shared store (cleared instantly when a chat opens)
+  // and refreshes from the server on navigation. The sidebar is mounted
+  // persistently, so a pathname effect — not useFocusEffect — is what
+  // reliably re-fires here.
+  const unreadForChat = useChatUnreadBadge();
+  useEffect(() => {
+    if (chatUnread !== undefined) chatUnreadStore.set(chatUnread);
+  }, [chatUnread]);
+  useEffect(() => {
+    if (showsChatTab) chatUnreadStore.refresh();
+  }, [pathname, showsChatTab]);
 
   // Upcoming holidays + birthdays widget. Only fetched when the sidebar is
   // expanded (the widget is hidden when collapsed, so skip the call).

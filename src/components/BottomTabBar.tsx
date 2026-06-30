@@ -1,4 +1,4 @@
-import React, { useCallback, useState } from "react";
+import React, { useEffect } from "react";
 
 import {
   View,
@@ -8,13 +8,12 @@ import {
   Platform,
 } from "react-native";
 
-import { useRouter, usePathname, useFocusEffect } from "expo-router";
+import { useRouter, usePathname } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import AsyncStorage from "@react-native-async-storage/async-storage";
 
 import { useTheme } from "../theme/ThemeProvider";
-import { getChatUnreadCount } from "../services/chat";
+import { chatUnreadStore, useChatUnreadBadge } from "../services/chatUnread";
 import { User, hasRole, isManager, isCEO } from "../types";
 import { useResponsive } from "../utils/responsive";
 
@@ -32,8 +31,8 @@ import { useResponsive } from "../utils/responsive";
  *
  * Role-aware:
  *   Employee:  Home / Attendance / Office Chat / Tasks / Profile
- *   Manager:   Home / Team / Approvals / Tasks / Profile
- *   HR:        Home / Employees / HR Admin / Reports / Profile
+ *   Manager:   Home / Team / Approvals / Tasks / Office Chat / Profile
+ *   HR:        Home / Employees / HR Admin / Reports / Office Chat / Profile
  *   CEO:       Home / Console / Employees / Reports / Profile
  *
  * Layout contract: any screen that renders <BottomTabBar /> must leave
@@ -134,7 +133,8 @@ const managerTabs: TabDef[] = [
     route: "/manager-tasks",
     matchPrefixes: ["/manager-tasks"],
   },
-  employeeTabs[4],
+  employeeTabs[2], // Office Chat
+  employeeTabs[4], // Profile
 ];
 
 const hrTabs: TabDef[] = [
@@ -174,7 +174,8 @@ const hrTabs: TabDef[] = [
     route: "/hr-reports",
     matchPrefixes: ["/hr-reports", "/hr-audit-logs", "/payroll"],
   },
-  employeeTabs[4],
+  employeeTabs[2], // Office Chat
+  employeeTabs[4], // Profile
 ];
 
 const ceoTabs: TabDef[] = [
@@ -231,30 +232,20 @@ export const BottomTabBar = ({ user, chatUnread, badges }: Props) => {
   const tabs = pickTabs(user);
   const showsChatTab = tabs.some((t) => t.key === "chat");
 
-  // Self-fetch the unread count when the parent doesn't supply one, so the
-  // Office Chat badge stays accurate on every screen that renders the bar.
-  const [fetchedUnread, setFetchedUnread] = useState(0);
-  useFocusEffect(
-    useCallback(() => {
-      if (chatUnread !== undefined || !showsChatTab) return;
-      let active = true;
-      (async () => {
-        try {
-          const token = await AsyncStorage.getItem("token");
-          if (!token) return;
-          const { count } = await getChatUnreadCount(token);
-          if (active) setFetchedUnread(count || 0);
-        } catch {
-          /* badge just won't update — non-fatal */
-        }
-      })();
-      return () => {
-        active = false;
-      };
-    }, [chatUnread, showsChatTab])
-  );
+  // The badge reads from a shared store so it clears the moment the user
+  // opens a chat (which sets the store to 0) and stays in sync everywhere.
+  const unreadForChat = useChatUnreadBadge();
 
-  const unreadForChat = chatUnread ?? fetchedUnread;
+  // Feed any parent-provided live count (dashboard SSE) into the store.
+  useEffect(() => {
+    if (chatUnread !== undefined) chatUnreadStore.set(chatUnread);
+  }, [chatUnread]);
+
+  // Re-pull the authoritative count from the server on every navigation, so
+  // leaving a chat reflects the just-read state.
+  useEffect(() => {
+    if (showsChatTab) chatUnreadStore.refresh();
+  }, [pathname, showsChatTab]);
 
   const isActive = (t: TabDef): boolean => {
     if (t.key === "home") {

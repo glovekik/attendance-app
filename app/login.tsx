@@ -13,7 +13,6 @@ import {
   Easing,
   Image,
   Platform,
-  Pressable,
   DimensionValue,
 } from "react-native";
 import { KeyboardAvoidingView } from "react-native-keyboard-controller";
@@ -38,10 +37,11 @@ import { registerPushToken } from "../src/services/notifications";
 import { setSession } from "../src/services/session";
 
 /**
- * Login screen — dark "liquid glass" treatment (scoped to this page): a
- * branded gradient backdrop with soft colour orbs, a frosted dark-glass
- * card with a slow glass-shine sweep, subtle translucent input fields, and
- * a gradient CTA. The OTP step is inlined (no modal) so users keep context.
+ * Login screen — clean light theme. A soft light backdrop with two faint
+ * pastel orbs gives the frosted-glass card something to sit on; the card
+ * itself is a light "glass" panel (translucent white + blur) with dark
+ * text and simple inputs. The OTP step is inlined (no modal) so users keep
+ * context.
  */
 export default function Login() {
   const router = useRouter();
@@ -65,40 +65,26 @@ export default function Login() {
   const [otpVerifying, setOtpVerifying] = useState(false);
   const [otpResending, setOtpResending] = useState(false);
 
-  // ── Animations: card entrance + repeating glass-shine sweep ──
+  // Card entrance: fade + gentle rise.
   const cardOpacity = useRef(new Animated.Value(0)).current;
-  const cardY = useRef(new Animated.Value(26)).current;
-  const shine = useRef(new Animated.Value(0)).current;
+  const cardY = useRef(new Animated.Value(22)).current;
 
   useEffect(() => {
     Animated.parallel([
       Animated.timing(cardOpacity, {
         toValue: 1,
-        duration: 600,
+        duration: 550,
         easing: Easing.out(Easing.cubic),
         useNativeDriver: true,
       }),
       Animated.timing(cardY, {
         toValue: 0,
-        duration: 600,
+        duration: 550,
         easing: Easing.out(Easing.cubic),
         useNativeDriver: true,
       }),
     ]).start();
-
-    Animated.loop(
-      Animated.sequence([
-        Animated.delay(1400),
-        Animated.timing(shine, {
-          toValue: 1,
-          duration: 1500,
-          easing: Easing.inOut(Easing.quad),
-          useNativeDriver: true,
-        }),
-        Animated.timing(shine, { toValue: 0, duration: 0, useNativeDriver: true }),
-      ])
-    ).start();
-  }, [cardOpacity, cardY, shine]);
+  }, [cardOpacity, cardY]);
 
   // Redirect if a token already exists.
   useEffect(() => {
@@ -197,21 +183,18 @@ export default function Login() {
     }
   };
 
-  const shineX = shine.interpolate({ inputRange: [0, 1], outputRange: [-160, 380] });
-
   return (
     <View style={styles.root}>
-      {/* Branded gradient backdrop. */}
+      {/* Soft light backdrop. */}
       <LinearGradient
-        colors={["#070B1F", "#1B1466", "#3B1E78"]}
+        colors={["#EAF0FF", "#F5F8FF", "#FFFFFF"]}
         start={{ x: 0, y: 0 }}
-        end={{ x: 1, y: 1 }}
+        end={{ x: 0, y: 1 }}
         style={StyleSheet.absoluteFill}
       />
-      {/* Soft colour orbs for vibrancy behind the glass. */}
+      {/* Two faint pastel orbs so the frosted glass has something to blur. */}
       <View style={[styles.orb, styles.orbA]} />
       <View style={[styles.orb, styles.orbB]} />
-      <View style={[styles.orb, styles.orbC]} />
 
       <SafeAreaView style={styles.safe}>
         <KeyboardAvoidingView behavior="padding" style={{ flex: 1 }}>
@@ -225,38 +208,12 @@ export default function Login() {
               style={{ opacity: cardOpacity, transform: [{ translateY: cardY }] }}
             >
               <BlurView
-                intensity={45}
-                tint="dark"
+                intensity={Platform.OS === "android" ? 20 : 30}
+                tint="light"
                 experimentalBlurMethod="dimezisBlurView"
                 style={styles.card}
               >
-                {/* Top edge highlight — sells the glass rim. */}
-                <LinearGradient
-                  colors={["rgba(255,255,255,0.35)", "rgba(255,255,255,0)"]}
-                  style={styles.topHighlight}
-                  pointerEvents="none"
-                />
-                {/* Glass shine sweep. */}
-                <Animated.View
-                  pointerEvents="none"
-                  style={[
-                    styles.shine,
-                    { transform: [{ translateX: shineX }, { rotate: "20deg" }] },
-                  ]}
-                >
-                  <LinearGradient
-                    colors={[
-                      "rgba(255,255,255,0)",
-                      "rgba(255,255,255,0.16)",
-                      "rgba(255,255,255,0)",
-                    ]}
-                    start={{ x: 0, y: 0 }}
-                    end={{ x: 1, y: 0 }}
-                    style={StyleSheet.absoluteFill}
-                  />
-                </Animated.View>
-
-                {/* Logo badge. */}
+                {/* Logo. */}
                 <View style={styles.logoBadge}>
                   <Image
                     source={require("../assets/images/logo.jpg")}
@@ -284,13 +241,13 @@ export default function Login() {
                           !!emailError && styles.inputErr,
                         ]}
                       >
-                        <Ionicons name="mail-outline" size={18} color="#A9B2D0" />
+                        <Ionicons name="mail-outline" size={18} color="#94A3B8" />
                         <TextInput
                           style={styles.input}
                           value={email}
                           onChangeText={setEmail}
                           placeholder="name@company.com"
-                          placeholderTextColor="rgba(255,255,255,0.4)"
+                          placeholderTextColor="#9AA3B2"
                           autoCapitalize="none"
                           keyboardType="email-address"
                           autoComplete="email"
@@ -318,14 +275,14 @@ export default function Login() {
                         <Ionicons
                           name="lock-closed-outline"
                           size={18}
-                          color="#A9B2D0"
+                          color="#94A3B8"
                         />
                         <TextInput
                           style={styles.input}
                           value={password}
                           onChangeText={setPassword}
                           placeholder="Enter your password"
-                          placeholderTextColor="rgba(255,255,255,0.4)"
+                          placeholderTextColor="#9AA3B2"
                           secureTextEntry={!showPassword}
                           autoCapitalize="none"
                           autoComplete="password"
@@ -339,7 +296,7 @@ export default function Login() {
                               showPassword ? "eye-off-outline" : "eye-outline"
                             }
                             size={20}
-                            color="#A9B2D0"
+                            color="#94A3B8"
                           />
                         </TouchableOpacity>
                       </View>
@@ -352,7 +309,7 @@ export default function Login() {
                           <Ionicons
                             name="alert-circle-outline"
                             size={16}
-                            color="#FECACA"
+                            color="#DC2626"
                           />
                           <Text style={styles.errorBannerText}>
                             {serverError}
@@ -367,7 +324,7 @@ export default function Login() {
                         style={[styles.ctaWrap, { opacity: loading ? 0.7 : 1 }]}
                       >
                         <LinearGradient
-                          colors={["#3B82F6", "#7C3AED"]}
+                          colors={["#2563EB", "#4F46E5"]}
                           start={{ x: 0, y: 0 }}
                           end={{ x: 1, y: 0 }}
                           style={styles.cta}
@@ -390,7 +347,7 @@ export default function Login() {
                           value={otpCode}
                           onChangeText={setOtpCode}
                           placeholder="000000"
-                          placeholderTextColor="rgba(255,255,255,0.35)"
+                          placeholderTextColor="#C2C9D6"
                           keyboardType="number-pad"
                           maxLength={8}
                         />
@@ -406,7 +363,7 @@ export default function Login() {
                         ]}
                       >
                         <LinearGradient
-                          colors={["#3B82F6", "#7C3AED"]}
+                          colors={["#2563EB", "#4F46E5"]}
                           start={{ x: 0, y: 0 }}
                           end={{ x: 1, y: 0 }}
                           style={styles.cta}
@@ -438,7 +395,7 @@ export default function Login() {
                           <Text
                             style={[
                               styles.linkText,
-                              { color: "rgba(255,255,255,0.6)" },
+                              { color: "#94A3B8" },
                             ]}
                           >
                             Use different email
@@ -486,7 +443,7 @@ function FieldLabel({
 // Base styles that don't change with responsive
 const baseStyles = StyleSheet.create({
   fieldLabel: {
-    color: "rgba(255,255,255,0.82)",
+    color: "#334155",
     fontSize: 13,
     fontWeight: "600",
     marginTop: 16,
@@ -496,7 +453,7 @@ const baseStyles = StyleSheet.create({
 
 const makeStyles = (isDesktop: boolean) =>
   StyleSheet.create({
-    root: { flex: 1, backgroundColor: "#070B1F" },
+    root: { flex: 1, backgroundColor: "#F5F8FF" },
     safe: { flex: 1 },
     scroll: {
       flexGrow: 1,
@@ -506,63 +463,47 @@ const makeStyles = (isDesktop: boolean) =>
       paddingVertical: isDesktop ? 60 : 40,
     },
 
-    // Soft colour orbs behind the glass.
+    // Faint pastel orbs — low opacity so the page stays light and calm.
     orb: { position: "absolute", borderRadius: 999 },
     orbA: {
-      width: isDesktop ? 400 : 280,
-      height: isDesktop ? 400 : 280,
-      backgroundColor: "#7C3AED",
-      opacity: 0.32,
-      top: isDesktop ? -100 : -70,
-      left: isDesktop ? "10%" as DimensionValue : -60,
+      width: isDesktop ? 380 : 260,
+      height: isDesktop ? 380 : 260,
+      backgroundColor: "#93C5FD",
+      opacity: 0.22,
+      top: isDesktop ? -90 : -60,
+      left: isDesktop ? ("12%" as DimensionValue) : -70,
     },
     orbB: {
-      width: isDesktop ? 350 : 240,
-      height: isDesktop ? 350 : 240,
-      backgroundColor: "#2563EB",
-      opacity: 0.3,
-      bottom: isDesktop ? 40 : 20,
-      right: isDesktop ? "15%" as DimensionValue : -70,
-    },
-    orbC: {
-      width: isDesktop ? 250 : 180,
-      height: isDesktop ? 250 : 180,
-      backgroundColor: "#DB2777",
-      opacity: 0.24,
-      top: "42%" as DimensionValue,
-      right: "34%" as DimensionValue,
+      width: isDesktop ? 320 : 230,
+      height: isDesktop ? 320 : 230,
+      backgroundColor: "#C4B5FD",
+      opacity: 0.2,
+      bottom: isDesktop ? 30 : 10,
+      right: isDesktop ? ("16%" as DimensionValue) : -80,
     },
 
-    // Frosted dark-glass card.
+    // Light frosted-glass card.
     card: {
-      borderRadius: isDesktop ? 24 : 28,
+      borderRadius: isDesktop ? 24 : 26,
       overflow: "hidden",
       borderWidth: 1,
-      borderColor: "rgba(255,255,255,0.16)",
-      backgroundColor: "rgba(15,14,40,0.55)",
+      borderColor: "rgba(255,255,255,0.9)",
+      backgroundColor: "rgba(255,255,255,0.7)",
       paddingHorizontal: isDesktop ? 40 : 24,
-      paddingTop: isDesktop ? 40 : 30,
-      paddingBottom: isDesktop ? 36 : 28,
+      paddingTop: isDesktop ? 40 : 32,
+      paddingBottom: isDesktop ? 36 : 30,
       width: isDesktop ? 440 : ("100%" as DimensionValue),
       maxWidth: isDesktop ? 440 : undefined,
-      ...(Platform.OS === "web" && isDesktop
+      shadowColor: "#1E293B",
+      shadowOpacity: 0.12,
+      shadowRadius: 24,
+      shadowOffset: { width: 0, height: 14 },
+      elevation: 6,
+      ...(Platform.OS === "web"
         ? {
-            boxShadow: "0 25px 50px -12px rgba(0, 0, 0, 0.5)",
+            boxShadow: "0 20px 45px -15px rgba(30, 41, 59, 0.25)",
           }
         : {}),
-    },
-    topHighlight: {
-      position: "absolute",
-      top: 0,
-      left: 0,
-      right: 0,
-      height: 1.5,
-    },
-    shine: {
-      position: "absolute",
-      top: -40,
-      bottom: -40,
-      width: 90,
     },
 
     logoBadge: {
@@ -571,11 +512,13 @@ const makeStyles = (isDesktop: boolean) =>
       borderRadius: isDesktop ? 16 : 14,
       paddingHorizontal: isDesktop ? 24 : 18,
       paddingVertical: isDesktop ? 14 : 11,
-      marginBottom: isDesktop ? 28 : 20,
-      shadowColor: "#000",
-      shadowOpacity: 0.25,
-      shadowRadius: 12,
-      shadowOffset: { width: 0, height: 6 },
+      marginBottom: isDesktop ? 28 : 22,
+      borderWidth: 1,
+      borderColor: "#EEF2F7",
+      shadowColor: "#1E293B",
+      shadowOpacity: 0.08,
+      shadowRadius: 10,
+      shadowOffset: { width: 0, height: 4 },
     },
     logo: {
       width: isDesktop ? 180 : 150,
@@ -583,7 +526,7 @@ const makeStyles = (isDesktop: boolean) =>
     },
 
     title: {
-      color: "#FFFFFF",
+      color: "#0F172A",
       fontSize: isDesktop ? 28 : 24,
       fontWeight: "800",
       letterSpacing: -0.3,
@@ -591,7 +534,7 @@ const makeStyles = (isDesktop: boolean) =>
       marginBottom: isDesktop ? 8 : 6,
     },
     subtitle: {
-      color: "rgba(255,255,255,0.62)",
+      color: "#64748B",
       fontSize: isDesktop ? 15 : 13.5,
       lineHeight: isDesktop ? 22 : 19,
       textAlign: "center",
@@ -612,8 +555,8 @@ const makeStyles = (isDesktop: boolean) =>
       gap: 10,
       borderRadius: isDesktop ? 12 : 14,
       borderWidth: 1,
-      borderColor: "rgba(255,255,255,0.28)",
-      backgroundColor: "rgba(255,255,255,0.04)",
+      borderColor: "#E2E8F0",
+      backgroundColor: "#FFFFFF",
       paddingHorizontal: isDesktop ? 16 : 14,
       minHeight: isDesktop ? 52 : 50,
       ...(Platform.OS === "web"
@@ -626,7 +569,7 @@ const makeStyles = (isDesktop: boolean) =>
     input: {
       flex: 1,
       fontSize: isDesktop ? 16 : 15,
-      color: "#F8FAFF",
+      color: "#0F172A",
       paddingVertical: isDesktop ? 14 : 12,
       ...(Platform.OS === "web"
         ? ({
@@ -641,13 +584,13 @@ const makeStyles = (isDesktop: boolean) =>
       textAlign: "center",
     },
     fieldErr: {
-      color: "#FCA5A5",
+      color: "#DC2626",
       fontSize: 12,
       marginTop: 6,
       marginLeft: 2,
     },
     linkText: {
-      color: "#C4B5FD",
+      color: "#2563EB",
       fontSize: isDesktop ? 14 : 13,
       fontWeight: "600",
       ...(Platform.OS === "web"
@@ -664,12 +607,12 @@ const makeStyles = (isDesktop: boolean) =>
       padding: isDesktop ? 14 : 12,
       borderRadius: 12,
       borderWidth: 1,
-      borderColor: "rgba(248,113,113,0.4)",
-      backgroundColor: "rgba(248,113,113,0.14)",
+      borderColor: "rgba(220,38,38,0.25)",
+      backgroundColor: "rgba(254,226,226,0.7)",
       marginTop: 16,
     },
     errorBannerText: {
-      color: "#FECACA",
+      color: "#B91C1C",
       fontSize: isDesktop ? 14 : 13,
       fontWeight: "500",
       flex: 1,
@@ -703,9 +646,9 @@ const makeStyles = (isDesktop: boolean) =>
       gap: 10,
       marginTop: isDesktop ? 28 : 22,
     },
-    dot: { color: "rgba(255,255,255,0.4)", fontSize: 16 },
+    dot: { color: "#CBD5E1", fontSize: 16 },
     footnote: {
-      color: "rgba(255,255,255,0.55)",
+      color: "#94A3B8",
       fontSize: isDesktop ? 13 : 12,
       textAlign: "center",
       marginTop: isDesktop ? 28 : 22,

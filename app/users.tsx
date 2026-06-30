@@ -12,7 +12,7 @@ import {
   Platform,
   Image,
 } from "react-native";
-import { KeyboardAwareScrollView } from "react-native-keyboard-controller";
+import { KbAwareScroll } from "../src/components/KbAwareScroll";
 import { SafeAreaView } from "react-native-safe-area-context";
 
 import AsyncStorage from "@react-native-async-storage/async-storage";
@@ -617,7 +617,7 @@ export default function Users() {
           </ModalActions>
         }
       >
-        <KeyboardAwareScrollView
+        <KbAwareScroll
           showsVerticalScrollIndicator={false}
           keyboardShouldPersistTaps="handled"
           bottomOffset={24}
@@ -784,7 +784,7 @@ export default function Users() {
               </View>
             )}
           </FormField>
-        </KeyboardAwareScrollView>
+        </KbAwareScroll>
       </WebModal>
 
       {/* TERMINATE MODAL */}

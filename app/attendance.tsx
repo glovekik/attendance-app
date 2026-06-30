@@ -10,6 +10,7 @@ import {
   RefreshControl,
   Pressable,
   Platform,
+  ScrollView,
 } from "react-native";
 import { KeyboardAwareScrollView } from "react-native-keyboard-controller";
 import { SafeAreaView } from "react-native-safe-area-context";
@@ -298,10 +299,17 @@ export default function Attendance() {
   // Desktop shows sidebar, so we don't need bottom bar padding
   const bottomPadding = responsive.showSidebar ? 40 : BOTTOM_BAR_RESERVED_HEIGHT + 24;
 
+  // react-native-keyboard-controller's KeyboardAwareScrollView doesn't scroll
+  // reliably on web, so use a plain ScrollView there (a bounded flex:1 host
+  // makes it scrollable) and keep the keyboard-aware one on native.
+  const isWeb = Platform.OS === "web";
+  const Scroller: any = isWeb ? ScrollView : KeyboardAwareScrollView;
+  const scrollerExtraProps = isWeb ? { style: { flex: 1 } } : { bottomOffset: 24 };
+
   return (
     <SafeAreaView style={[styles.safe, { backgroundColor: c.bg }]}>
-      <KeyboardAwareScrollView
-        bottomOffset={24}
+      <Scroller
+        {...scrollerExtraProps}
         keyboardShouldPersistTaps="handled"
         contentContainerStyle={{
           padding: spacing.padding,
@@ -663,7 +671,7 @@ export default function Attendance() {
             color={c.textMuted}
           />
         </Pressable>
-      </KeyboardAwareScrollView>
+      </Scroller>
 
       <BottomTabBar user={me} />
     </SafeAreaView>

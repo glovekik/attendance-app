@@ -33,6 +33,7 @@ import {
   Platform,
   Dimensions,
   DimensionValue,
+  KeyboardAvoidingView,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 
@@ -156,6 +157,11 @@ export const BottomSheet = ({
       onRequestClose={onClose}
       statusBarTranslucent
     >
+      <KeyboardAvoidingView
+        // iOS lifts with "padding"; Android needs "height". No-op on web.
+        behavior={Platform.OS === "ios" ? "padding" : "height"}
+        style={{ flex: 1 }}
+      >
       {/* Backdrop */}
       <Pressable
         style={[styles.backdrop, { backgroundColor: c.overlay }]}
@@ -205,6 +211,7 @@ export const BottomSheet = ({
             style={styles.content}
             contentContainerStyle={styles.contentInner}
             showsVerticalScrollIndicator={false}
+            keyboardShouldPersistTaps="handled"
           >
             {children}
           </ScrollView>
@@ -222,6 +229,7 @@ export const BottomSheet = ({
           )}
         </View>
       </View>
+      </KeyboardAvoidingView>
     </Modal>
   );
 };
