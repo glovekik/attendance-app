@@ -81,7 +81,7 @@
       "reactCompiler": true
     },
     "extra": {
-      "apiUrl": "https://fourshrms-api.onrender.com",
+      "apiUrl": "https://hrmsapi.4sightai.com",
       "router": {},
       "eas": {
         "projectId": "d3f589e0-ce85-4660-9780-675b7c25cbc6"
