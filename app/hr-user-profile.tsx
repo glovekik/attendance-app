@@ -37,6 +37,10 @@ import {
   listUsers,
   adminSetUserPassword,
 } from "../src/services/users";
+import {
+  listManagerTasks,
+  listTeamLeaveBalances,
+} from "../src/services/managerTeam";
 import { listDepartments } from "../src/services/departments";
 import {
   hrGetSalaryStructure,
@@ -63,18 +67,50 @@ import {
   WageDuration,
   WageType } from "../src/types";
 import { useTheme } from "../src/theme/ThemeProvider";
+import { useResponsive } from "../src/utils/responsive";
 
 const isWeb = Platform.OS === "web";
 
 type TabKey = "work" | "personal" | "payroll" | "documents" | "assets";
 
-const TABS: { key: TabKey; label: string }[] = [
-  { key: "work", label: "Work" },
-  { key: "personal", label: "Personal" },
-  { key: "payroll", label: "Payroll" },
-  { key: "documents", label: "Documents" },
-  { key: "assets", label: "Assets" },
+const TABS: { key: TabKey; label: string; icon: keyof typeof Ionicons.glyphMap }[] = [
+  { key: "work", label: "Work", icon: "briefcase-outline" },
+  { key: "personal", label: "Personal", icon: "person-outline" },
+  { key: "payroll", label: "Payroll", icon: "cash-outline" },
+  { key: "documents", label: "Documents", icon: "folder-outline" },
+  { key: "assets", label: "Assets", icon: "cube-outline" },
 ];
+
+// Maps a SectionHeader title to a leading icon so the form reads like the
+// manager team-member screen (icon + uppercase label) instead of a bare
+// text row. Keyed loosely so wording tweaks don't drop the icon.
+const sectionIcon = (title: string): keyof typeof Ionicons.glyphMap => {
+  const t = title.toUpperCase();
+  if (t.includes("BASIC")) return "person-circle-outline";
+  if (t.includes("ACCESS")) return "key-outline";
+  if (t.includes("ORGAN")) return "business-outline";
+  if (t === "ROLE" || t.includes("POSITION")) return "ribbon-outline";
+  if (t.includes("USUAL WORK")) return "map-outline";
+  if (t.includes("LOCATION")) return "location-outline";
+  if (t.includes("NOTES")) return "document-text-outline";
+  if (t.includes("CONTACT")) return "call-outline";
+  if (t.includes("PERSONAL")) return "id-card-outline";
+  if (t.includes("ADDRESS")) return "home-outline";
+  if (t.includes("EDUCATION")) return "school-outline";
+  if (t.includes("STATUTORY")) return "shield-checkmark-outline";
+  if (t.includes("EMERGENCY")) return "medkit-outline";
+  if (t.includes("BANK")) return "card-outline";
+  if (t.includes("CONTRACT")) return "reader-outline";
+  if (t.includes("CTC")) return "flash-outline";
+  if (t.includes("PERCENTAGE")) return "calculator-outline";
+  if (t.includes("SALARY")) return "cash-outline";
+  if (t.includes("BENEFIT")) return "gift-outline";
+  if (t.includes("DEDUCTION")) return "remove-circle-outline";
+  if (t.includes("ASSIGNED")) return "cube-outline";
+  if (t.includes("ASSIGN")) return "add-circle-outline";
+  if (t.includes("SUBMITTED") || t.includes("DOCUMENT")) return "folder-open-outline";
+  return "ellipse-outline";
+};
 
 const WAGE_TYPES: WageType[] = ["Fixed Wage", "Hourly Wage"];
 const WAGE_DURATIONS: WageDuration[] = [
@@ -144,7 +180,9 @@ export default function HrUserProfile() {
   const router = useRouter();
   const { theme } = useTheme();
   const c = theme.colors;
-  const styles = useMemo(() => makeStyles(c), [c]);
+  const responsive = useResponsive();
+  const isDesktop = responsive.isDesktop;
+  const styles = useMemo(() => makeStyles(c, isDesktop), [c, isDesktop]);
   const amtStyles = useMemo(
     () =>
       StyleSheet.create({
@@ -223,9 +261,13 @@ export default function HrUserProfile() {
     () =>
       function FieldInner({
         label,
-        children }: {
+        children,
+        full }: {
         label: string;
         children: React.ReactNode;
+        // `full` fields span the whole row on desktop (used for multiline
+        // inputs and chip pickers); the rest flow two-up.
+        full?: boolean;
       }) {
         const child =
           React.isValidElement(children) &&
@@ -235,7 +277,7 @@ export default function HrUserProfile() {
                 placeholder: `Enter ${label.toLowerCase()}` })
             : children;
         return (
-          <View style={{ marginTop: 12 }}>
+          <View style={[styles.field, full && styles.fieldFull]}>
             <Text style={styles.label}>{label}</Text>
             {child}
           </View>
@@ -287,7 +329,88 @@ export default function HrUserProfile() {
   const SectionHeader = useMemo(
     () =>
       function SectionHeaderInner({ title }: { title: string }) {
-        return <Text style={styles.sectionHeader}>{title}</Text>;
+        return (
+          <View style={styles.sectionHeaderRow}>
+            <View style={styles.sectionHeaderIcon}>
+              <Ionicons name={sectionIcon(title)} size={14} color={c.accent} />
+            </View>
+            <Text style={styles.sectionHeader}>{title}</Text>
+          </View>
+        );
+      },
+    [styles, c.accent]
+  );
+
+  // A titled content card: header (title + optional one-line description)
+  // over a responsive two-up field grid. Memoized so the TextInputs inside
+  // don't remount (and drop the keyboard) on every keystroke.
+  const Card = useMemo(
+    () =>
+      function CardInner({
+        title,
+        desc,
+        children }: {
+        title: string;
+        desc?: string;
+        children: React.ReactNode;
+      }) {
+        return (
+          <View style={styles.card}>
+            <View style={styles.cardHead}>
+              <Text style={styles.cardTitle}>{title}</Text>
+              {!!desc && <Text style={styles.cardDesc}>{desc}</Text>}
+            </View>
+            <View style={styles.formGrid}>{children}</View>
+          </View>
+        );
+      },
+    [styles]
+  );
+
+  // Segmented control — a refined replacement for chunky chip rows on the
+  // small, fixed choice sets (role, status).
+  const Segmented = useMemo(
+    () =>
+      function SegmentedInner<T extends string>({
+        options,
+        value,
+        onChange,
+        accentActive }: {
+        options: { value: T; label: string }[];
+        value: T;
+        onChange: (v: T) => void;
+        accentActive?: boolean;
+      }) {
+        return (
+          <View style={styles.seg}>
+            {options.map((o) => {
+              const active = value === o.value;
+              return (
+                <TouchableOpacity
+                  key={o.value}
+                  onPress={() => onChange(o.value)}
+                  style={[
+                    styles.segBtn,
+                    active &&
+                      (accentActive ? styles.segBtnAccent : styles.segBtnOn),
+                  ]}
+                >
+                  <Text
+                    style={[
+                      styles.segBtnText,
+                      active &&
+                        (accentActive
+                          ? styles.segBtnTextAccent
+                          : styles.segBtnTextOn),
+                    ]}
+                  >
+                    {o.label}
+                  </Text>
+                </TouchableOpacity>
+              );
+            })}
+          </View>
+        );
       },
     [styles]
   );
@@ -380,6 +503,15 @@ export default function HrUserProfile() {
   const [requiredDocs, setRequiredDocs] = useState<RequiredDocument[]>([]);
   const [submittedDocs, setSubmittedDocs] = useState<EmployeeDocument[]>([]);
   const [reqLoading, setReqLoading] = useState(false);
+
+  // "At a glance" counts for the right rail — fetched once on mount,
+  // best-effort (each falls back to null so the rail still renders).
+  const [summary, setSummary] = useState<{
+    leave: number | null;
+    openTasks: number | null;
+    docs: number | null;
+    assets: number | null;
+  }>({ leave: null, openTasks: null, docs: null, assets: null });
 
   // Assets tab — assignedAssets is what the user currently holds;
   // availableAssets is the AVAILABLE pool HR can hand out.
@@ -686,6 +818,47 @@ export default function HrUserProfile() {
   useEffect(() => {
     load();
   }, [load]);
+
+  // Lightweight rail summary — leave balance, open tasks, documents, assets.
+  useEffect(() => {
+    if (!id) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const token = await AsyncStorage.getItem("token");
+        if (!token) return;
+        const [bal, tasks, docs, assets] = await Promise.all([
+          listTeamLeaveBalances(token, id as string).catch(() => []),
+          listManagerTasks(token, { assigneeId: id as string }).catch(() => []),
+          listUserDocuments(token, id as string).catch(() => []),
+          hrListAssets(token, { assignedToUserId: id as string }).catch(
+            () => []
+          ),
+        ]);
+        if (cancelled) return;
+        const balances =
+          bal?.find((r: any) => r.user?.id === id)?.balances || [];
+        const leaveTotal = balances.reduce(
+          (s: number, b: any) => s + (b.remaining || 0),
+          0
+        );
+        const open = (tasks || []).filter(
+          (t: any) => t.status === "PENDING" || t.status === "ONGOING"
+        ).length;
+        setSummary({
+          leave: Math.round(leaveTotal * 10) / 10,
+          openTasks: open,
+          docs: (docs || []).length,
+          assets: (assets || []).length,
+        });
+      } catch {
+        /* rail summary is best-effort */
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [id]);
 
   // Fetch required-doc checklist when the Docs tab is opened. Cheap to
   // re-fetch every entry — the list is short and we want fresh status
@@ -1126,9 +1299,279 @@ export default function HrUserProfile() {
     .map((p) => p.charAt(0).toUpperCase())
     .join("") || "?";
 
+  // Quick actions rendered once as data, so the desktop rail and the mobile
+  // row stay in sync (single source of truth, no duplicated handlers).
+  const quickActions: {
+    key: string;
+    label: string;
+    icon: keyof typeof Ionicons.glyphMap;
+    onPress: () => void;
+    primary?: boolean;
+    danger?: boolean;
+  }[] = [
+    {
+      key: "perf",
+      label: "Work Performance",
+      icon: "stats-chart-outline",
+      primary: true,
+      onPress: () =>
+        router.push({
+          pathname: "/team-member/[id]",
+          params: {
+            id: id as string,
+            name: displayName,
+            email: user.email || "",
+            employeeCode: editableEmployeeCode || "",
+            tag: editableTag || "",
+            backTo: `/hr-user-profile?id=${id}`,
+          },
+        } as any),
+    },
+    {
+      key: "leave",
+      label: "Leave Balance",
+      icon: "airplane-outline",
+      onPress: () => router.push(`/hr-user-leave-balance?id=${id}` as any),
+    },
+    {
+      key: "pw",
+      label: "Set password",
+      icon: "key-outline",
+      onPress: openSetPassword,
+    },
+    ...(profilePictureUrl
+      ? [
+          {
+            key: "rmphoto",
+            label: "Remove photo",
+            icon: "trash-outline" as const,
+            danger: true,
+            onPress: () => setProfilePictureUrl(""),
+          },
+        ]
+      : []),
+  ];
+
+  // ----- Derived header values -----
+  const deptName =
+    departments.find((d) => d.id === departmentId)?.name || "";
+  const roleBadge =
+    roleValue === "USER" ? "Employee" : roleValue === "HR" ? "HR" : "Manager";
+  const roleLine = [editableTag, deptName].filter(Boolean).join("  ·  ");
+  const joinedLabel = editableJoiningDate
+    ? new Date(`${editableJoiningDate}T00:00:00`).toLocaleDateString("en-US", {
+        day: "numeric",
+        month: "short",
+        year: "numeric" })
+    : "—";
+  const facts = [
+    { k: "Employee ID", v: editableEmployeeCode || "—" },
+    { k: "Reporting Manager", v: reportingManagerName || "—" },
+    { k: "Date Joined", v: joinedLabel },
+    { k: "Work Location", v: workLocation || "—" },
+    { k: "Work Phone", v: editableWorkPhone || "—" },
+  ];
+
+  // Profile header — avatar, identity, badges, at-a-glance facts strip.
+  const ProfileHeader = () => (
+    <View style={styles.headCard}>
+      <View style={styles.headTop}>
+        <View style={styles.headAvatarWrap}>
+          <View style={styles.headAvatar}>
+            {profilePictureUrl ? (
+              <Image
+                source={{ uri: profilePictureUrl }}
+                style={styles.headAvatarImg}
+                resizeMode="cover"
+              />
+            ) : (
+              <Text style={styles.headAvatarText}>{initials}</Text>
+            )}
+          </View>
+          <View style={styles.headCam}>
+            <FilePickButton
+              compact
+              mimeType="image/*"
+              style={styles.headCamBtn}
+              onUploaded={(url) => setProfilePictureUrl(url)}
+            />
+          </View>
+        </View>
+
+        <View style={{ flex: 1, minWidth: 0 }}>
+          <Text style={styles.headName} numberOfLines={1}>
+            {displayName}
+          </Text>
+          {!!roleLine && (
+            <Text style={styles.headRoleLine} numberOfLines={1}>
+              {roleLine}
+            </Text>
+          )}
+          <View style={styles.headBadges}>
+            <View style={[styles.hbadge, { backgroundColor: statusTone.bg }]}>
+              <View style={[styles.hdot, { backgroundColor: statusTone.fg }]} />
+              <Text style={[styles.hbadgeText, { color: statusTone.fg }]}>
+                {statusTone.label}
+              </Text>
+            </View>
+            <View style={[styles.hbadge, { backgroundColor: c.accentSoft }]}>
+              <Text style={[styles.hbadgeText, { color: c.accentText }]}>
+                {roleBadge}
+              </Text>
+            </View>
+            {!!employeeType && (
+              <View
+                style={[
+                  styles.hbadge,
+                  {
+                    backgroundColor: c.surfaceMuted,
+                    borderColor: c.surfaceBorder,
+                    borderWidth: 1 },
+                ]}
+              >
+                <Text style={[styles.hbadgeText, { color: c.textMuted }]}>
+                  {employeeType}
+                </Text>
+              </View>
+            )}
+          </View>
+        </View>
+
+        {isDesktop && (
+          <TouchableOpacity
+            style={styles.headWorkBtn}
+            onPress={quickActions[0].onPress}
+          >
+            <Ionicons name="stats-chart-outline" size={15} color={c.text} />
+            <Text style={styles.headWorkBtnText}>Work Performance</Text>
+          </TouchableOpacity>
+        )}
+      </View>
+
+      <View style={styles.facts}>
+        {facts.map((f) => (
+          <View key={f.k} style={styles.fact}>
+            <Text style={styles.factK}>{f.k}</Text>
+            <Text style={styles.factV} numberOfLines={1}>
+              {f.v}
+            </Text>
+          </View>
+        ))}
+      </View>
+    </View>
+  );
+
+  // Tab bar — understated underline on desktop, wrapping segments on mobile.
+  const TabBar = () =>
+    isDesktop ? (
+      <View style={styles.tabsRow2}>
+        {TABS.map((t) => {
+          const active = tab === t.key;
+          return (
+            <TouchableOpacity
+              key={t.key}
+              style={styles.tab2}
+              onPress={() => setTab(t.key)}
+            >
+              <Ionicons
+                name={t.icon}
+                size={15}
+                color={active ? c.accent : c.textMuted}
+              />
+              <Text style={[styles.tab2Text, active && styles.tab2TextActive]}>
+                {t.label}
+              </Text>
+              <View
+                style={[styles.tab2Underline, active && styles.tab2UnderlineOn]}
+              />
+            </TouchableOpacity>
+          );
+        })}
+      </View>
+    ) : (
+      <View style={styles.segTabs}>
+        {TABS.map((t) => {
+          const active = tab === t.key;
+          return (
+            <TouchableOpacity
+              key={t.key}
+              onPress={() => setTab(t.key)}
+              style={[styles.segTab, active && styles.segTabActive]}
+            >
+              <Ionicons
+                name={t.icon}
+                size={15}
+                color={active ? c.accent : c.textMuted}
+              />
+              <Text style={[styles.segTabText, active && { color: c.accent }]}>
+                {t.label}
+              </Text>
+            </TouchableOpacity>
+          );
+        })}
+      </View>
+    );
+
+  // Right rail — quick actions + live "at a glance" counts.
+  const RightRail = () => (
+    <View style={styles.rail}>
+      <View style={styles.railCard}>
+        <Text style={styles.railLabel}>QUICK ACTIONS</Text>
+        <View style={styles.qaList}>
+          {quickActions.map((a) => (
+            <TouchableOpacity
+              key={a.key}
+              onPress={a.onPress}
+              style={[styles.qaItem, a.primary && styles.quickLinkPrimary]}
+            >
+              <Ionicons
+                name={a.icon}
+                size={15}
+                color={a.primary ? "#fff" : a.danger ? "#ef4444" : c.text}
+              />
+              <Text
+                style={[
+                  styles.qaItemText,
+                  a.primary && { color: "#fff" },
+                  a.danger && { color: "#ef4444" },
+                ]}
+              >
+                {a.label}
+              </Text>
+            </TouchableOpacity>
+          ))}
+        </View>
+      </View>
+
+      <View style={styles.railCard}>
+        <Text style={styles.railLabel}>AT A GLANCE</Text>
+        {[
+          {
+            k: "Leave balance",
+            v: summary.leave == null ? "—" : `${summary.leave} days`,
+          },
+          {
+            k: "Open tasks",
+            v: summary.openTasks == null ? "—" : String(summary.openTasks),
+          },
+          { k: "Documents", v: summary.docs == null ? "—" : String(summary.docs) },
+          {
+            k: "Assets assigned",
+            v: summary.assets == null ? "—" : String(summary.assets),
+          },
+        ].map((m) => (
+          <View key={m.k} style={styles.mini}>
+            <Text style={styles.miniK}>{m.k}</Text>
+            <Text style={styles.miniV}>{m.v}</Text>
+          </View>
+        ))}
+      </View>
+    </View>
+  );
+
   return (
     <SafeAreaView style={styles.safe}>
-      {/* TOP BAR — back · title · save */}
+      {/* TOP BAR — back · breadcrumb · set password · save */}
       <View style={styles.topBar}>
         <TouchableOpacity
           style={styles.topBarBtn}
@@ -1136,7 +1579,16 @@ export default function HrUserProfile() {
         >
           <Ionicons name="arrow-back" size={22} color={c.text} />
         </TouchableOpacity>
-        <Text style={styles.topBarTitle}>Employee Profile</Text>
+        <Text style={styles.crumbs} numberOfLines={1}>
+          HR Admin · Employees ·{" "}
+          <Text style={styles.crumbsStrong}>{displayName}</Text>
+        </Text>
+        {isDesktop && (
+          <TouchableOpacity style={styles.ghostBtn} onPress={openSetPassword}>
+            <Ionicons name="key-outline" size={14} color={c.text} />
+            <Text style={styles.ghostBtnText}>Set password</Text>
+          </TouchableOpacity>
+        )}
         <TouchableOpacity
           style={[styles.saveBtn, saving && { opacity: 0.6 }]}
           onPress={onSave}
@@ -1147,974 +1599,825 @@ export default function HrUserProfile() {
         </TouchableOpacity>
       </View>
 
-      {/* HERO — large avatar (with photo-edit bubble), name, role, meta,
-          status pill. Single banner card so the page opens with identity
-          front-and-center instead of a cramped row. */}
-      <View style={styles.hero}>
-        <View style={styles.avatarLgWrap}>
-          <View style={styles.avatarLg}>
-            {profilePictureUrl ? (
-              <Image
-                source={{ uri: profilePictureUrl }}
-                style={styles.avatarLgImg}
-                resizeMode="cover"
-              />
-            ) : (
-              <Text style={styles.avatarLgText}>{initials}</Text>
-            )}
-          </View>
-          {/* Photo-edit bubble — uses FilePickButton's compact mode so
-              tapping the camera opens the picker directly. */}
-          <View style={styles.avatarCamera}>
-            <FilePickButton
-              compact
-              mimeType="image/*"
-              style={styles.avatarCameraBtn}
-              onUploaded={(url) => setProfilePictureUrl(url)}
-            />
-          </View>
-        </View>
-
-        <View style={styles.heroBody}>
-          <Text style={styles.heroName} numberOfLines={1}>
-            {displayName}
-          </Text>
-          {!!editableTag && (
-            <Text style={styles.heroRole} numberOfLines={1}>
-              {editableTag}
-            </Text>
-          )}
-
-          <View style={styles.metaRow}>
-            {!!editableEmployeeCode && (
-              <View style={styles.metaItem}>
-                <Ionicons name="card-outline" size={12} color={c.textMuted} />
-                <Text style={styles.metaText}>{editableEmployeeCode}</Text>
-              </View>
-            )}
-            {!!user.email && (
-              <View style={styles.metaItem}>
-                <Ionicons name="mail-outline" size={12} color={c.textMuted} />
-                <Text style={styles.metaText} numberOfLines={1}>
-                  {user.email}
-                </Text>
-              </View>
-            )}
-          </View>
-
-          <View style={[styles.statusPill, { backgroundColor: statusTone.bg }]}>
-            <View style={[styles.statusDot, { backgroundColor: statusTone.fg }]} />
-            <Text style={[styles.statusPillText, { color: statusTone.fg }]}>
-              {statusTone.label}
-            </Text>
-            <Text style={[styles.statusRoleText, { color: statusTone.fg }]}>
-              · {roleValue}
-            </Text>
-          </View>
-        </View>
-      </View>
-
-      {/* QUICK ACTIONS — homogenized neutral pills, icon-only color. The
-          old rainbow of cyan/green/amber + the duplicated Documents link
-          have been removed; Documents lives under its tab. */}
-      <ScrollView
-        horizontal
-        showsHorizontalScrollIndicator={false}
-        style={styles.actionsBar}
-        contentContainerStyle={styles.actionsRow}
-      >
-        <TouchableOpacity
-          style={styles.quickLink}
-          onPress={() => router.push(`/hr-user-leave-balance?id=${id}` as any)}
-        >
-          <Ionicons name="airplane-outline" size={14} color={c.text} />
-          <Text style={styles.quickLinkText}>Leave Balance</Text>
-        </TouchableOpacity>
-        <TouchableOpacity style={styles.quickLink} onPress={openSetPassword}>
-          <Ionicons name="key-outline" size={14} color={c.text} />
-          <Text style={styles.quickLinkText}>Set password</Text>
-        </TouchableOpacity>
-        {!!profilePictureUrl && (
-          <TouchableOpacity
-            style={styles.quickLink}
-            onPress={() => setProfilePictureUrl("")}
-          >
-            <Ionicons name="trash-outline" size={14} color="#ef4444" />
-            <Text style={[styles.quickLinkText, { color: "#ef4444" }]}>
-              Remove photo
-            </Text>
-          </TouchableOpacity>
-        )}
-      </ScrollView>
-
-      {/* TABS — underline-indicator instead of pill-fill. Horizontally
-          scrollable so labels don't get squeezed if we add more. */}
-      <ScrollView
-        horizontal
-        showsHorizontalScrollIndicator={false}
-        style={styles.tabsBar}
-        contentContainerStyle={styles.tabsRow}
-      >
-        {TABS.map((t) => {
-          const active = tab === t.key;
-          return (
-            <TouchableOpacity
-              key={t.key}
-              style={styles.tab}
-              onPress={() => setTab(t.key)}
-            >
-              <Text
-                style={[styles.tabText, active && styles.tabTextActive]}
-              >
-                {t.label}
-              </Text>
-              <View
-                style={[styles.tabUnderline, active && styles.tabUnderlineActive]}
-              />
-            </TouchableOpacity>
-          );
-        })}
-      </ScrollView>
-
-      <KeyboardAvoidingView
-        behavior="padding"
-        style={{ flex: 1 }}
-      >
+      <KeyboardAvoidingView behavior="padding" style={{ flex: 1 }}>
         <ScrollView
-          contentContainerStyle={{ padding: 16, paddingBottom: 80 }}
+          contentContainerStyle={styles.page}
           keyboardShouldPersistTaps="handled"
+          showsVerticalScrollIndicator={false}
         >
+          <ProfileHeader />
+          <TabBar />
+          <View style={styles.bodyRow}>
+            <View style={styles.mainCol}>
           {/* ===== WORK TAB ===== */}
           {tab === "work" && (
             <>
-              <SectionHeader title="BASIC INFO" />
-              <Field label="Name">
-                <TextField
-                  value={editableName}
-                  onChange={setEditableName}
-                  placeholder="Full name"
-                />
-              </Field>
-              <Field label="Login Email">
-                <TextField
-                  value={editableEmail}
-                  onChange={setEditableEmail}
-                  placeholder="name@company.com"
-                  keyboardType="email-address"
-                  autoCapitalize="none"
-                />
-              </Field>
-              <Field label="Designation">
-                <TextField
-                  value={editableTag}
-                  onChange={setEditableTag}
-                  placeholder="e.g. Senior Engineer, Intern, Founder"
-                />
-              </Field>
-              <Field label="Employee Code">
-                <TextField
-                  value={editableEmployeeCode}
-                  onChange={setEditableEmployeeCode}
-                  placeholder="EMP-0042"
-                  autoCapitalize="characters"
-                />
-              </Field>
-              <Field label="Work Phone">
-                <TextField
-                  value={editableWorkPhone}
-                  onChange={setEditableWorkPhone}
-                  placeholder="+91-..."
-                  keyboardType="phone-pad"
-                />
-              </Field>
-              <Field label="Joining Date">
-                {isWeb ? (
-                  <View style={styles.dateField}>
-                    <Ionicons
-                      name="calendar-outline"
-                      size={18}
-                      color={c.textMuted}
-                    />
-                    <WebDateField
-                      mode="date"
-                      value={editableJoiningDate}
-                      onChange={(v) => v && setEditableJoiningDate(v)}
-                    />
-                  </View>
-                ) : (
-                  <>
-                    <TouchableOpacity
-                      style={styles.dateField}
-                      onPress={() => setShowJoiningPicker(true)}
-                      activeOpacity={0.7}
-                    >
+              <Card
+                title="Basic information"
+                desc="Identity and contact used across the app."
+              >
+                <Field label="Name">
+                  <TextField
+                    value={editableName}
+                    onChange={setEditableName}
+                    placeholder="Full name"
+                  />
+                </Field>
+                <Field label="Login Email">
+                  <TextField
+                    value={editableEmail}
+                    onChange={setEditableEmail}
+                    placeholder="name@company.com"
+                    keyboardType="email-address"
+                    autoCapitalize="none"
+                  />
+                </Field>
+                <Field label="Designation">
+                  <TextField
+                    value={editableTag}
+                    onChange={setEditableTag}
+                    placeholder="e.g. Senior Engineer, Intern, Founder"
+                  />
+                </Field>
+                <Field label="Employee Code">
+                  <TextField
+                    value={editableEmployeeCode}
+                    onChange={setEditableEmployeeCode}
+                    placeholder="EMP-0042"
+                    autoCapitalize="characters"
+                  />
+                </Field>
+                <Field label="Work Phone">
+                  <TextField
+                    value={editableWorkPhone}
+                    onChange={setEditableWorkPhone}
+                    placeholder="+91-..."
+                    keyboardType="phone-pad"
+                  />
+                </Field>
+                <Field label="Joining Date">
+                  {isWeb ? (
+                    <View style={styles.dateField}>
                       <Ionicons
                         name="calendar-outline"
                         size={18}
                         color={c.textMuted}
                       />
-                      <Text style={styles.dateFieldText}>
-                        {editableJoiningDate
-                          ? new Date(
-                              `${editableJoiningDate}T00:00:00`
-                            ).toLocaleDateString("en-US", {
-                              month: "short",
-                              day: "numeric",
-                              year: "numeric" })
-                          : "Pick a date"}
-                      </Text>
-                    </TouchableOpacity>
-                    {showJoiningPicker && (
-                      <DateTimePicker
-                        value={
-                          ymdToDate(editableJoiningDate) || new Date()
-                        }
+                      <WebDateField
                         mode="date"
-                        onChange={(_, d) => {
-                          setShowJoiningPicker(
-                            Platform.OS === "ios"
-                          );
-                          if (d) setEditableJoiningDate(dateToYMD(d));
-                        }}
+                        value={editableJoiningDate}
+                        onChange={(v) => v && setEditableJoiningDate(v)}
                       />
-                    )}
-                  </>
-                )}
-              </Field>
-              <Field label="Status">
-                <View style={styles.chipRow}>
-                  {(
-                    ["Active", "Inactive", "OnLeave", "Terminated"] as const
-                  ).map((s) => (
-                    <TouchableOpacity
-                      key={s}
-                      style={[
-                        styles.chip,
-                        editableStatus === s && styles.chipActive,
-                      ]}
-                      onPress={() => setEditableStatus(s)}
-                    >
-                      <Text
-                        style={[
-                          styles.chipText,
-                          editableStatus === s && styles.chipTextActive,
-                        ]}
-                      >
-                        {s === "Terminated" ? "Not Active" : s}
-                      </Text>
-                    </TouchableOpacity>
-                  ))}
-                </View>
-              </Field>
-
-              <SectionHeader title="ACCESS" />
-              <Field label="Role">
-                <>
-                  <View style={styles.chipRow}>
-                    {(["USER", "MANAGER", "HR"] as const).map((r) => (
+                    </View>
+                  ) : (
+                    <>
                       <TouchableOpacity
-                        key={r}
-                        style={[
-                          styles.chip,
-                          roleValue === r && styles.chipActive,
-                          roleValue === r &&
-                            r === "MANAGER" && {
-                              backgroundColor: "#7c3aed",
-                              borderColor: "#7c3aed" },
-                          roleValue === r &&
-                            r === "HR" && {
-                              backgroundColor: "#db2777",
-                              borderColor: "#db2777" },
-                        ]}
-                        onPress={() => setRoleValue(r)}
+                        style={styles.dateField}
+                        onPress={() => setShowJoiningPicker(true)}
+                        activeOpacity={0.7}
                       >
-                        <Text
-                          style={[
-                            styles.chipText,
-                            roleValue === r && styles.chipTextActive,
-                          ]}
-                        >
-                          {r}
+                        <Ionicons
+                          name="calendar-outline"
+                          size={18}
+                          color={c.textMuted}
+                        />
+                        <Text style={styles.dateFieldText}>
+                          {editableJoiningDate
+                            ? new Date(
+                                `${editableJoiningDate}T00:00:00`
+                              ).toLocaleDateString("en-US", {
+                                month: "short",
+                                day: "numeric",
+                                year: "numeric" })
+                            : "Pick a date"}
                         </Text>
                       </TouchableOpacity>
+                      {showJoiningPicker && (
+                        <DateTimePicker
+                          value={
+                            ymdToDate(editableJoiningDate) || new Date()
+                          }
+                          mode="date"
+                          onChange={(_, d) => {
+                            setShowJoiningPicker(Platform.OS === "ios");
+                            if (d) setEditableJoiningDate(dateToYMD(d));
+                          }}
+                        />
+                      )}
+                    </>
+                  )}
+                </Field>
+              </Card>
+
+              <Card
+                title="Access & role"
+                desc="Controls what this person can see and approve."
+              >
+                <Field label="System role" full>
+                  <Segmented
+                    accentActive
+                    value={roleValue}
+                    onChange={(v) => setRoleValue(v)}
+                    options={[
+                      { value: "USER", label: "User" },
+                      { value: "MANAGER", label: "Manager" },
+                      { value: "HR", label: "HR" },
+                    ]}
+                  />
+                  <Text style={[styles.hint, { marginTop: 8 }]}>
+                    Manager can approve leave, corrections, reimbursements &amp;
+                    timesheets for their direct reports. HR has full org-wide
+                    access — promote carefully.
+                  </Text>
+                </Field>
+                <Field label="Employment status" full>
+                  <Segmented
+                    value={editableStatus}
+                    onChange={(v) => setEditableStatus(v)}
+                    options={[
+                      { value: "Active", label: "Active" },
+                      { value: "OnLeave", label: "On leave" },
+                      { value: "Inactive", label: "Inactive" },
+                      { value: "Terminated", label: "Not active" },
+                    ]}
+                  />
+                </Field>
+              </Card>
+
+              <Card
+                title="Organisation"
+                desc="Where this person sits in the company."
+              >
+                <Field label="Department" full>
+                  <View style={styles.chipRow}>
+                    {departments.length === 0 ? (
+                      <Text style={styles.hint}>
+                        No departments yet — create one in HR Admin
+                      </Text>
+                    ) : (
+                      departments.map((d) => (
+                        <TouchableOpacity
+                          key={d.id}
+                          style={[
+                            styles.chip,
+                            departmentId === d.id && styles.chipActive,
+                          ]}
+                          onPress={() =>
+                            setDepartmentId(
+                              departmentId === d.id ? null : d.id
+                            )
+                          }
+                        >
+                          <Text
+                            style={[
+                              styles.chipText,
+                              departmentId === d.id && styles.chipTextActive,
+                            ]}
+                          >
+                            {d.name}
+                          </Text>
+                        </TouchableOpacity>
+                      ))
+                    )}
+                  </View>
+                </Field>
+
+                <Field label="Reporting Manager" full>
+                  <TouchableOpacity
+                    style={styles.pickerInput}
+                    onPress={() => setShowMgrPicker(true)}
+                  >
+                    <Text
+                      style={{
+                        color: reportingManagerId ? c.text : c.textFaint,
+                        fontSize: 14,
+                      }}
+                    >
+                      {reportingManagerName || "Choose a manager…"}
+                    </Text>
+                    <Ionicons
+                      name="chevron-down"
+                      size={16}
+                      color={c.textFaint}
+                    />
+                  </TouchableOpacity>
+                  {!!reportingManagerId && (
+                    <TouchableOpacity
+                      onPress={() => setReportingManagerId(null)}
+                      style={{ marginTop: 6 }}
+                    >
+                      <Text style={styles.linkClear}>Clear</Text>
+                    </TouchableOpacity>
+                  )}
+                </Field>
+
+                <Field label="Project Manager(s)" full>
+                  {(() => {
+                    const pool = allUsers.filter(
+                      (u) =>
+                        (u.role === "MANAGER" || u.role === "HR") &&
+                        u.id !== id &&
+                        u.status !== "Terminated"
+                    );
+                    if (pool.length === 0) {
+                      return (
+                        <Text style={styles.hint}>
+                          No managers available — promote someone to MANAGER
+                          first.
+                        </Text>
+                      );
+                    }
+                    return (
+                      <View style={styles.chipRow}>
+                        {pool.map((u) => {
+                          const picked = projectManagerIds.includes(u.id);
+                          return (
+                            <TouchableOpacity
+                              key={u.id}
+                              style={[
+                                styles.chip,
+                                picked && styles.chipActive,
+                              ]}
+                              onPress={() =>
+                                setProjectManagerIds((prev) =>
+                                  picked
+                                    ? prev.filter((x) => x !== u.id)
+                                    : [...prev, u.id]
+                                )
+                              }
+                            >
+                              <Text
+                                style={[
+                                  styles.chipText,
+                                  picked && styles.chipTextActive,
+                                ]}
+                              >
+                                {u.name}
+                              </Text>
+                            </TouchableOpacity>
+                          );
+                        })}
+                      </View>
+                    );
+                  })()}
+                </Field>
+              </Card>
+
+              <Card
+                title="Work location"
+                desc="Primary site and default weekly setup."
+              >
+                <Field label="Work Address" full>
+                  <TextField
+                    value={workAddress}
+                    onChange={setWorkAddress}
+                    placeholder="Street, city, state, PIN"
+                    multiline
+                  />
+                </Field>
+                <Field label="Work Location">
+                  <TextField
+                    value={workLocation}
+                    onChange={setWorkLocation}
+                    placeholder="Bangalore Office"
+                  />
+                </Field>
+                <Field label="Usual work location (Mon–Sun)" full>
+                  <View style={{ gap: 6 }}>
+                    {WEEKDAYS.map((d) => (
+                      <View key={d.key} style={styles.weekdayRow}>
+                        <Text style={styles.weekdayLabel}>{d.label}</Text>
+                        <View style={styles.chipRow}>
+                          {WEEK_LOCS.map((loc) => {
+                            const active = usualWorkLocation[d.key] === loc;
+                            return (
+                              <TouchableOpacity
+                                key={loc}
+                                style={[
+                                  styles.smallChip,
+                                  active && styles.chipActive,
+                                ]}
+                                onPress={() =>
+                                  setUsualWorkLocation((prev) => ({
+                                    ...prev,
+                                    [d.key]: active ? null : loc }))
+                                }
+                              >
+                                <Text
+                                  style={[
+                                    styles.smallChipText,
+                                    active && styles.chipTextActive,
+                                  ]}
+                                >
+                                  {loc}
+                                </Text>
+                              </TouchableOpacity>
+                            );
+                          })}
+                        </View>
+                      </View>
                     ))}
                   </View>
-                  <Text style={[styles.hint, { marginTop: 6 }]}>
-                    MANAGER can approve leave / corrections /
-                    reimbursements / timesheets for their direct
-                    reports. HR has full org-wide access — promote
-                    carefully.
-                  </Text>
-                </>
-              </Field>
-
-              <SectionHeader title="ORGANISATION" />
-              <Field label="Department">
-                <View style={styles.chipRow}>
-                  {departments.length === 0 ? (
-                    <Text style={styles.hint}>
-                      No departments yet — create one in HR Admin
-                    </Text>
-                  ) : (
-                    departments.map((d) => (
-                      <TouchableOpacity
-                        key={d.id}
-                        style={[
-                          styles.chip,
-                          departmentId === d.id && styles.chipActive,
-                        ]}
-                        onPress={() =>
-                          setDepartmentId(
-                            departmentId === d.id ? null : d.id
-                          )
-                        }
-                      >
-                        <Text
-                          style={[
-                            styles.chipText,
-                            departmentId === d.id && styles.chipTextActive,
-                          ]}
-                        >
-                          {d.name}
-                        </Text>
-                      </TouchableOpacity>
-                    ))
-                  )}
-                </View>
-              </Field>
-
-              <Field label="Reporting Manager">
-                <TouchableOpacity
-                  style={styles.input}
-                  onPress={() => setShowMgrPicker(true)}
-                >
-                  <Text
-                    style={{
-                      color: reportingManagerId ? "#fff" : "#475569" }}
-                  >
-                    {reportingManagerName || "Tap to choose..."}
-                  </Text>
-                </TouchableOpacity>
-                {!!reportingManagerId && (
-                  <TouchableOpacity
-                    onPress={() => setReportingManagerId(null)}
-                    style={{ marginTop: 4 }}
-                  >
-                    <Text style={styles.linkClear}>Clear</Text>
-                  </TouchableOpacity>
-                )}
-              </Field>
-
-              <Field label="Project Manager(s)">
-                {(() => {
-                  // Eligible pool: anyone with MANAGER or HR role except
-                  // the employee themselves. Inline chip multi-select —
-                  // simpler than another modal because the team is small.
-                  const pool = allUsers.filter(
-                    (u) =>
-                      (u.role === "MANAGER" || u.role === "HR") &&
-                      u.id !== id &&
-                      u.status !== "Terminated"
-                  );
-                  if (pool.length === 0) {
-                    return (
-                      <Text style={styles.hint}>
-                        No managers available — promote someone to
-                        MANAGER first.
-                      </Text>
-                    );
-                  }
-                  return (
-                    <View style={styles.chipRow}>
-                      {pool.map((u) => {
-                        const picked = projectManagerIds.includes(u.id);
-                        return (
-                          <TouchableOpacity
-                            key={u.id}
-                            style={[
-                              styles.chip,
-                              picked && styles.chipActive,
-                            ]}
-                            onPress={() =>
-                              setProjectManagerIds((prev) =>
-                                picked
-                                  ? prev.filter((x) => x !== u.id)
-                                  : [...prev, u.id]
-                              )
-                            }
-                          >
-                            <Text
-                              style={[
-                                styles.chipText,
-                                picked && styles.chipTextActive,
-                              ]}
-                            >
-                              {u.name}
-                            </Text>
-                          </TouchableOpacity>
-                        );
-                      })}
-                    </View>
-                  );
-                })()}
-              </Field>
-
-              <SectionHeader title="ROLE" />
-              <Field label="Job Title">
-                <TextField
-                  value={jobTitle}
-                  onChange={setJobTitle}
-                  placeholder="Backend Lead"
-                />
-              </Field>
-
-              <SectionHeader title="LOCATION" />
-              <Field label="Work Address">
-                <TextField
-                  value={workAddress}
-                  onChange={setWorkAddress}
-                  placeholder="..."
-                  multiline
-                />
-              </Field>
-              <Field label="Work Location">
-                <TextField
-                  value={workLocation}
-                  onChange={setWorkLocation}
-                  placeholder="Bangalore Office"
-                />
-              </Field>
-
-              <SectionHeader title="USUAL WORK LOCATION (Mon-Sun)" />
-              {WEEKDAYS.map((d) => (
-                <View key={d.key} style={styles.weekdayRow}>
-                  <Text style={styles.weekdayLabel}>{d.label}</Text>
-                  <View style={{ flex: 1 }}>
-                    <View style={styles.chipRow}>
-                      {WEEK_LOCS.map((loc) => {
-                        const active =
-                          usualWorkLocation[d.key] === loc;
-                        return (
-                          <TouchableOpacity
-                            key={loc}
-                            style={[
-                              styles.smallChip,
-                              active && styles.chipActive,
-                            ]}
-                            onPress={() =>
-                              setUsualWorkLocation((prev) => ({
-                                ...prev,
-                                [d.key]: active ? null : loc }))
-                            }
-                          >
-                            <Text
-                              style={[
-                                styles.smallChipText,
-                                active && styles.chipTextActive,
-                              ]}
-                            >
-                              {loc}
-                            </Text>
-                          </TouchableOpacity>
-                        );
-                      })}
-                    </View>
-                  </View>
-                </View>
-              ))}
-
-              <SectionHeader title="NOTES" />
-              <TextField
-                value={workNotes}
-                onChange={setWorkNotes}
-                placeholder="Any work-related notes..."
-                multiline
-              />
+                </Field>
+                <Field label="Notes" full>
+                  <TextField
+                    value={workNotes}
+                    onChange={setWorkNotes}
+                    placeholder="Any work-related notes…"
+                    multiline
+                  />
+                </Field>
+              </Card>
             </>
           )}
 
           {/* ===== PERSONAL TAB ===== */}
           {tab === "personal" && (
             <>
-              <SectionHeader title="PRIVATE CONTACT" />
-              <Field label="Personal Email">
-                <TextField
-                  value={personalEmail}
-                  onChange={setPersonalEmail}
-                  placeholder="alex@gmail.com"
-                  keyboardType="email-address"
-                  autoCapitalize="none"
-                />
-              </Field>
-              <Field label="Phone">
-                <TextField
-                  value={phone}
-                  onChange={setPhone}
-                  placeholder="+91..."
-                  keyboardType="phone-pad"
-                />
-              </Field>
+              <Card
+                title="Private contact"
+                desc="Personal reach — not shown to other employees."
+              >
+                <Field label="Personal Email">
+                  <TextField
+                    value={personalEmail}
+                    onChange={setPersonalEmail}
+                    placeholder="alex@gmail.com"
+                    keyboardType="email-address"
+                    autoCapitalize="none"
+                  />
+                </Field>
+                <Field label="Phone">
+                  <TextField
+                    value={phone}
+                    onChange={setPhone}
+                    placeholder="+91..."
+                    keyboardType="phone-pad"
+                  />
+                </Field>
+              </Card>
 
-              <SectionHeader title="PERSONAL DETAILS" />
-              <Field label="Legal Name">
-                <TextField value={legalName} onChange={setLegalName} />
-              </Field>
-              <Field label="Birthday">
-                {isWeb ? (
-                  <View style={styles.dateField}>
-                    <Ionicons
-                      name="calendar-outline"
-                      size={18}
-                      color={c.textMuted}
-                    />
-                    <WebDateField
-                      mode="date"
-                      value={birthday}
-                      max={dateToYMD(new Date())}
-                      onChange={(v) => v && setBirthday(v)}
-                    />
-                  </View>
-                ) : (
-                  <>
-                    <TouchableOpacity
-                      style={styles.dateField}
-                      onPress={() => setShowBirthdayPicker(true)}
-                      activeOpacity={0.7}
-                    >
+              <Card
+                title="Personal details"
+                desc="Demographic details kept for records."
+              >
+                <Field label="Legal Name">
+                  <TextField value={legalName} onChange={setLegalName} />
+                </Field>
+                <Field label="Birthday">
+                  {isWeb ? (
+                    <View style={styles.dateField}>
                       <Ionicons
                         name="calendar-outline"
                         size={18}
                         color={c.textMuted}
                       />
-                      <Text style={styles.dateFieldText}>
-                        {birthday
-                          ? new Date(`${birthday}T00:00:00`).toLocaleDateString(
-                              "en-US",
-                              {
+                      <WebDateField
+                        mode="date"
+                        value={birthday}
+                        max={dateToYMD(new Date())}
+                        onChange={(v) => v && setBirthday(v)}
+                      />
+                    </View>
+                  ) : (
+                    <>
+                      <TouchableOpacity
+                        style={styles.dateField}
+                        onPress={() => setShowBirthdayPicker(true)}
+                        activeOpacity={0.7}
+                      >
+                        <Ionicons
+                          name="calendar-outline"
+                          size={18}
+                          color={c.textMuted}
+                        />
+                        <Text style={styles.dateFieldText}>
+                          {birthday
+                            ? new Date(
+                                `${birthday}T00:00:00`
+                              ).toLocaleDateString("en-US", {
                                 month: "short",
                                 day: "numeric",
-                                year: "numeric" }
-                            )
-                          : "Pick a date"}
-                      </Text>
-                    </TouchableOpacity>
-                    {showBirthdayPicker && (
-                      <DateTimePicker
-                        value={
-                          ymdToDate(birthday) || new Date(2000, 0, 1)
-                        }
-                        mode="date"
-                        maximumDate={new Date()}
-                        onChange={(_, d) => {
-                          setShowBirthdayPicker(
-                            Platform.OS === "ios"
-                          );
-                          if (d) setBirthday(dateToYMD(d));
-                        }}
-                      />
-                    )}
-                  </>
-                )}
-              </Field>
-              <Field label="Place of Birth">
-                <TextField
-                  value={placeOfBirth}
-                  onChange={setPlaceOfBirth}
-                />
-              </Field>
-              <Field label="Gender">
-                <ChipPicker
-                  options={GENDER_OPTIONS}
-                  selected={
-                    (GENDER_OPTIONS as readonly string[]).includes(gender)
-                      ? (gender as typeof GENDER_OPTIONS[number])
-                      : undefined
-                  }
-                  onSelect={(v) => setGender(v || "")}
-                />
-              </Field>
-              <Field label="Marital Status">
-                <ChipPicker
-                  options={MARITAL_OPTIONS}
-                  selected={
-                    (MARITAL_OPTIONS as readonly string[]).includes(
-                      maritalStatus
-                    )
-                      ? (maritalStatus as typeof MARITAL_OPTIONS[number])
-                      : undefined
-                  }
-                  onSelect={(v) => setMaritalStatus(v || "")}
-                />
-              </Field>
-              <Field label="Blood Group">
-                <ChipPicker
-                  options={BLOOD_GROUP_OPTIONS}
-                  selected={
-                    (BLOOD_GROUP_OPTIONS as readonly string[]).includes(
-                      bloodGroup
-                    )
-                      ? (bloodGroup as typeof BLOOD_GROUP_OPTIONS[number])
-                      : undefined
-                  }
-                  onSelect={(v) => setBloodGroup(v || "")}
-                />
-              </Field>
-              <View style={[styles.row, { marginTop: 14 }]}>
-                <Text style={styles.label}>Disabled</Text>
-                <Switch
-                  value={disabled}
-                  onValueChange={setDisabled}
-                  trackColor={{ false: "#1f2937", true: "#3b82f6" }}
-                />
-              </View>
-
-              <SectionHeader title="ADDRESS" />
-              <Field label="Street 1">
-                <TextField value={street1} onChange={setStreet1} />
-              </Field>
-              <Field label="Street 2">
-                <TextField value={street2} onChange={setStreet2} />
-              </Field>
-              <View style={{ flexDirection: "row", gap: 8 }}>
-                <View style={{ flex: 1 }}>
-                  <Field label="City">
-                    <TextField value={city} onChange={setCity} />
-                  </Field>
+                                year: "numeric" })
+                            : "Pick a date"}
+                        </Text>
+                      </TouchableOpacity>
+                      {showBirthdayPicker && (
+                        <DateTimePicker
+                          value={ymdToDate(birthday) || new Date(2000, 0, 1)}
+                          mode="date"
+                          maximumDate={new Date()}
+                          onChange={(_, d) => {
+                            setShowBirthdayPicker(Platform.OS === "ios");
+                            if (d) setBirthday(dateToYMD(d));
+                          }}
+                        />
+                      )}
+                    </>
+                  )}
+                </Field>
+                <Field label="Place of Birth">
+                  <TextField value={placeOfBirth} onChange={setPlaceOfBirth} />
+                </Field>
+                <Field label="Gender" full>
+                  <ChipPicker
+                    options={GENDER_OPTIONS}
+                    selected={
+                      (GENDER_OPTIONS as readonly string[]).includes(gender)
+                        ? (gender as typeof GENDER_OPTIONS[number])
+                        : undefined
+                    }
+                    onSelect={(v) => setGender(v || "")}
+                  />
+                </Field>
+                <Field label="Marital Status" full>
+                  <ChipPicker
+                    options={MARITAL_OPTIONS}
+                    selected={
+                      (MARITAL_OPTIONS as readonly string[]).includes(
+                        maritalStatus
+                      )
+                        ? (maritalStatus as typeof MARITAL_OPTIONS[number])
+                        : undefined
+                    }
+                    onSelect={(v) => setMaritalStatus(v || "")}
+                  />
+                </Field>
+                <Field label="Blood Group" full>
+                  <ChipPicker
+                    options={BLOOD_GROUP_OPTIONS}
+                    selected={
+                      (BLOOD_GROUP_OPTIONS as readonly string[]).includes(
+                        bloodGroup
+                      )
+                        ? (bloodGroup as typeof BLOOD_GROUP_OPTIONS[number])
+                        : undefined
+                    }
+                    onSelect={(v) => setBloodGroup(v || "")}
+                  />
+                </Field>
+                <View style={[styles.switchRow]}>
+                  <Text style={styles.switchLabel}>
+                    Person with disability
+                  </Text>
+                  <Switch
+                    value={disabled}
+                    onValueChange={setDisabled}
+                    trackColor={{ false: c.surfaceBorder, true: c.accent }}
+                  />
                 </View>
-                <View style={{ flex: 1 }}>
-                  <Field label="State">
-                    <TextField value={state} onChange={setState} />
-                  </Field>
-                </View>
-              </View>
-              <View style={{ flexDirection: "row", gap: 8 }}>
-                <View style={{ flex: 1 }}>
-                  <Field label="Pin Code">
-                    <TextField
-                      value={pinCode}
-                      onChange={setPinCode}
-                      keyboardType="phone-pad"
-                    />
-                  </Field>
-                </View>
-                <View style={{ flex: 1 }}>
-                  <Field label="Country">
-                    <TextField value={country} onChange={setCountry} />
-                  </Field>
-                </View>
-              </View>
+              </Card>
 
-              <SectionHeader title="EDUCATION" />
-              <Field label="Certification Level">
-                <ChipPicker
-                  options={CERT_LEVELS}
-                  selected={certLevel}
-                  onSelect={setCertLevel}
-                />
-              </Field>
-              <Field label="Field of Study">
-                <TextField
-                  value={fieldOfStudy}
-                  onChange={setFieldOfStudy}
-                  placeholder="Computer Science"
-                />
-              </Field>
+              <Card title="Address" desc="Residential address on file.">
+                <Field label="Street 1" full>
+                  <TextField value={street1} onChange={setStreet1} />
+                </Field>
+                <Field label="Street 2" full>
+                  <TextField value={street2} onChange={setStreet2} />
+                </Field>
+                <Field label="City">
+                  <TextField value={city} onChange={setCity} />
+                </Field>
+                <Field label="State">
+                  <TextField value={state} onChange={setState} />
+                </Field>
+                <Field label="Pin Code">
+                  <TextField
+                    value={pinCode}
+                    onChange={setPinCode}
+                    keyboardType="phone-pad"
+                  />
+                </Field>
+                <Field label="Country">
+                  <TextField value={country} onChange={setCountry} />
+                </Field>
+              </Card>
 
-              <SectionHeader title="STATUTORY" />
-              <Field label="PAN">
-                <TextField
-                  value={pan}
-                  onChange={setPan}
-                  placeholder="ABCDE1234F"
-                  autoCapitalize="characters"
-                />
-              </Field>
-              <Field label="UAN">
-                <TextField
-                  value={uan}
-                  onChange={setUan}
-                  keyboardType="phone-pad"
-                />
-              </Field>
-              <Field label="PF Account #">
-                <TextField value={pfAcct} onChange={setPfAcct} />
-              </Field>
-              <Field label="ESI #">
-                <TextField value={esiNum} onChange={setEsiNum} />
-              </Field>
+              <Card title="Education">
+                <Field label="Certification Level" full>
+                  <ChipPicker
+                    options={CERT_LEVELS}
+                    selected={certLevel}
+                    onSelect={setCertLevel}
+                  />
+                </Field>
+                <Field label="Field of Study">
+                  <TextField
+                    value={fieldOfStudy}
+                    onChange={setFieldOfStudy}
+                    placeholder="Computer Science"
+                  />
+                </Field>
+              </Card>
 
-              <SectionHeader title="EMERGENCY CONTACT" />
-              <Field label="Name">
-                <TextField value={ecName} onChange={setEcName} />
-              </Field>
-              <Field label="Relationship">
-                <TextField
-                  value={ecRel}
-                  onChange={setEcRel}
-                  placeholder="Spouse / Parent / ..."
-                />
-              </Field>
-              <Field label="Phone">
-                <TextField
-                  value={ecPhone}
-                  onChange={setEcPhone}
-                  keyboardType="phone-pad"
-                />
-              </Field>
+              <Card
+                title="Statutory IDs"
+                desc="Tax and provident-fund identifiers."
+              >
+                <Field label="PAN">
+                  <TextField
+                    value={pan}
+                    onChange={setPan}
+                    placeholder="ABCDE1234F"
+                    autoCapitalize="characters"
+                  />
+                </Field>
+                <Field label="UAN">
+                  <TextField
+                    value={uan}
+                    onChange={setUan}
+                    keyboardType="phone-pad"
+                  />
+                </Field>
+                <Field label="PF Account #">
+                  <TextField value={pfAcct} onChange={setPfAcct} />
+                </Field>
+                <Field label="ESI #">
+                  <TextField value={esiNum} onChange={setEsiNum} />
+                </Field>
+              </Card>
 
-              <SectionHeader title="BANK ACCOUNT" />
-              <Field label="Bank Name">
-                <TextField value={bankName} onChange={setBankName} />
-              </Field>
-              <Field label="Account Number">
-                <TextField
-                  value={bankAcct}
-                  onChange={setBankAcct}
-                  keyboardType="phone-pad"
-                />
-              </Field>
-              <Field label="IFSC">
-                <TextField
-                  value={bankIfsc}
-                  onChange={setBankIfsc}
-                  autoCapitalize="characters"
-                />
-              </Field>
-              <Field label="Branch">
-                <TextField value={bankBranch} onChange={setBankBranch} />
-              </Field>
-              <Field label="Account Holder">
-                <TextField value={bankHolder} onChange={setBankHolder} />
-              </Field>
+              <Card title="Emergency contact">
+                <Field label="Name">
+                  <TextField value={ecName} onChange={setEcName} />
+                </Field>
+                <Field label="Relationship">
+                  <TextField
+                    value={ecRel}
+                    onChange={setEcRel}
+                    placeholder="Spouse / Parent / ..."
+                  />
+                </Field>
+                <Field label="Phone">
+                  <TextField
+                    value={ecPhone}
+                    onChange={setEcPhone}
+                    keyboardType="phone-pad"
+                  />
+                </Field>
+              </Card>
+
+              <Card
+                title="Bank account"
+                desc="Primary account used for payroll."
+              >
+                <Field label="Bank Name">
+                  <TextField value={bankName} onChange={setBankName} />
+                </Field>
+                <Field label="Account Number">
+                  <TextField
+                    value={bankAcct}
+                    onChange={setBankAcct}
+                    keyboardType="phone-pad"
+                  />
+                </Field>
+                <Field label="IFSC">
+                  <TextField
+                    value={bankIfsc}
+                    onChange={setBankIfsc}
+                    autoCapitalize="characters"
+                  />
+                </Field>
+                <Field label="Branch">
+                  <TextField value={bankBranch} onChange={setBankBranch} />
+                </Field>
+                <Field label="Account Holder">
+                  <TextField value={bankHolder} onChange={setBankHolder} />
+                </Field>
+              </Card>
             </>
           )}
 
           {/* ===== PAYROLL TAB ===== */}
           {tab === "payroll" && (
             <>
-              <SectionHeader title="CONTRACT" />
-              <Field label="Start Date">
-                <DatePickerField
-                  value={contractStart}
-                  onChange={setContractStart}
-                />
-              </Field>
-              <Field label="End Date (optional)">
-                <DatePickerField
-                  value={contractEnd}
-                  onChange={setContractEnd}
-                  min={contractStart || undefined}
-                />
-              </Field>
-              <Field label="Wage Type">
-                <ChipPicker
-                  options={WAGE_TYPES}
-                  selected={wageType}
-                  onSelect={setWageType}
-                />
-              </Field>
-              <Field label="Wage Amount">
-                <TextField
-                  value={wage}
-                  onChange={setWage}
-                  placeholder="1500000"
-                  keyboardType="decimal-pad"
-                />
-              </Field>
-              <Field label="Wage Duration">
-                <ChipPicker
-                  options={WAGE_DURATIONS}
-                  selected={wageDuration}
-                  onSelect={setWageDuration}
-                />
-              </Field>
-              <Field label="Employee Type">
-                <ChipPicker
-                  options={EMPLOYEE_TYPES}
-                  selected={employeeType}
-                  onSelect={setEmployeeType}
-                />
-              </Field>
+              <Card
+                title="Contract"
+                desc="Engagement type and headline wage."
+              >
+                <Field label="Start Date">
+                  <DatePickerField
+                    value={contractStart}
+                    onChange={setContractStart}
+                  />
+                </Field>
+                <Field label="End Date (optional)">
+                  <DatePickerField
+                    value={contractEnd}
+                    onChange={setContractEnd}
+                    min={contractStart || undefined}
+                  />
+                </Field>
+                <Field label="Wage Type" full>
+                  <ChipPicker
+                    options={WAGE_TYPES}
+                    selected={wageType}
+                    onSelect={setWageType}
+                  />
+                </Field>
+                <Field label="Wage Amount">
+                  <TextField
+                    value={wage}
+                    onChange={setWage}
+                    placeholder="1500000"
+                    keyboardType="decimal-pad"
+                  />
+                </Field>
+                <Field label="Wage Duration" full>
+                  <ChipPicker
+                    options={WAGE_DURATIONS}
+                    selected={wageDuration}
+                    onSelect={setWageDuration}
+                  />
+                </Field>
+                <Field label="Employee Type" full>
+                  <ChipPicker
+                    options={EMPLOYEE_TYPES}
+                    selected={employeeType}
+                    onSelect={setEmployeeType}
+                  />
+                </Field>
+                {isSimplifiedEmployee && (
+                  <Text style={[styles.hint, { marginTop: 8 }]}>
+                    {employeeType === "Internship"
+                      ? "Interns receive a stipend — only the wage amount above is captured. Full salary structure (HRA / PF / TDS) is skipped."
+                      : "Consultants are paid the wage amount above on the chosen duration. No salary structure required."}
+                  </Text>
+                )}
+              </Card>
 
-              {isSimplifiedEmployee ? (
-                <Text style={[styles.hint, { marginTop: 14 }]}>
-                  {employeeType === "Internship"
-                    ? "Interns receive a stipend — only the wage amount above is captured. Full salary structure (HRA / PF / TDS) is skipped."
-                    : "Consultants are paid the wage amount above on the chosen duration. No salary structure required."}
-                </Text>
-              ) : (
+              {!isSimplifiedEmployee && (
                 <>
-                  {/* QUICK FILL FROM MONTHLY CTC */}
-                  <SectionHeader title="QUICK FILL FROM CTC" />
-                  <Field label="Monthly CTC (₹)">
-                    <TextField
-                      value={monthlyCTC}
-                      onChange={setMonthlyCTC}
-                      placeholder="e.g. 100000"
-                      keyboardType="decimal-pad"
-                    />
-                  </Field>
-                  <Text style={[styles.hint, { marginTop: 4 }]}>
-                    Basic 50% · HRA 20% · Comm 5% · Other 19% · Employer
-                    PF 6% (cap ₹{PF_MONTHLY_CAP})
-                  </Text>
-                  <TouchableOpacity
-                    style={[styles.saveReqBtn, { marginTop: 10 }]}
-                    onPress={applyFormula}
+                  <Card
+                    title="Quick fill from CTC"
+                    desc="Enter a monthly CTC to auto-split the components."
                   >
-                    <Text style={styles.saveReqText}>Apply formula</Text>
-                  </TouchableOpacity>
-
-                  {/* PCT BASIS TOGGLE */}
-                  <SectionHeader title="PERCENTAGE BASIS" />
-                  <Text style={[styles.hint, { marginBottom: 8 }]}>
-                    When a field is in % mode the value is read against
-                    this basis.
-                  </Text>
-                  <View style={styles.chipRow}>
-                    {(["CTC", "Basic"] as const).map((b) => (
-                      <TouchableOpacity
-                        key={b}
-                        style={[
-                          styles.chip,
-                          pctBasis === b && styles.chipActive,
+                    <Field label="Monthly CTC (₹)" full>
+                      <TextField
+                        value={monthlyCTC}
+                        onChange={setMonthlyCTC}
+                        placeholder="e.g. 100000"
+                        keyboardType="decimal-pad"
+                      />
+                    </Field>
+                    <Text style={styles.hint}>
+                      Basic 50% · HRA 20% · Comm 5% · Other 19% · Employer PF 6%
+                      (cap ₹{PF_MONTHLY_CAP})
+                    </Text>
+                    <TouchableOpacity
+                      style={[styles.saveReqBtn, { marginTop: 12 }]}
+                      onPress={applyFormula}
+                    >
+                      <Text style={styles.saveReqText}>Apply formula</Text>
+                    </TouchableOpacity>
+                    <Field label="Percentage basis" full>
+                      <Segmented
+                        value={pctBasis}
+                        onChange={(v) => setPctBasis(v)}
+                        options={[
+                          { value: "CTC", label: "% of CTC" },
+                          { value: "Basic", label: "% of Basic" },
                         ]}
-                        onPress={() => setPctBasis(b)}
-                      >
-                        <Text
-                          style={[
-                            styles.chipText,
-                            pctBasis === b && styles.chipTextActive,
-                          ]}
-                        >
-                          % of {b}
-                        </Text>
-                      </TouchableOpacity>
-                    ))}
-                  </View>
-
-                  <SectionHeader title="SALARY COMPONENTS (INR / MONTH)" />
-                  <Field label="Basic">
-                    <TextField
-                      value={salBasic}
-                      onChange={setSalBasic}
-                      placeholder="50000"
-                      keyboardType="decimal-pad"
-                    />
-                  </Field>
-                  <Field label="House Rent Allowance">
-                    <AmountOrPctField
-                      value={salHra}
-                      onChange={setSalHra}
-                      pctMode={pctHra}
-                      onTogglePct={setPctHra}
-                      basis={pctBasisAmount}
-                      placeholder={pctHra ? "20" : "20000"}
-                    />
-                  </Field>
-                  <Field label="Communication Allowance">
-                    <AmountOrPctField
-                      value={salCommAllowance}
-                      onChange={setSalCommAllowance}
-                      pctMode={pctComm}
-                      onTogglePct={setPctComm}
-                      basis={pctBasisAmount}
-                      placeholder={pctComm ? "5" : "0"}
-                    />
-                  </Field>
-                  <Field label="Other Allowance">
-                    <AmountOrPctField
-                      value={salOtherAllowance}
-                      onChange={setSalOtherAllowance}
-                      pctMode={pctOther}
-                      onTogglePct={setPctOther}
-                      basis={pctBasisAmount}
-                      placeholder={pctOther ? "19" : "0"}
-                    />
-                  </Field>
-
-                  <SectionHeader title="BENEFITS (EMPLOYER)" />
-                  <Field label="Employer PF (blank = auto-compute)">
-                    <AmountOrPctField
-                      value={salEmployerPF}
-                      onChange={setSalEmployerPF}
-                      pctMode={pctEmployerPF}
-                      onTogglePct={setPctEmployerPF}
-                      basis={pctBasisAmount}
-                      placeholder={pctEmployerPF ? "6" : "auto"}
-                    />
-                  </Field>
-                  <Field label="Health Insurance">
-                    <AmountOrPctField
-                      value={salEmployerInsurance}
-                      onChange={setSalEmployerInsurance}
-                      pctMode={pctEmployerIns}
-                      onTogglePct={setPctEmployerIns}
-                      basis={pctBasisAmount}
-                      placeholder={pctEmployerIns ? "2" : "0"}
-                    />
-                  </Field>
-
-                  <SectionHeader title="DEDUCTIONS (EMPLOYEE)" />
-                  <Field label="Employee PF (blank = auto-compute)">
-                    <AmountOrPctField
-                      value={salEmployeePF}
-                      onChange={setSalEmployeePF}
-                      pctMode={pctEmployeePF}
-                      onTogglePct={setPctEmployeePF}
-                      basis={pctBasisAmount}
-                      placeholder={pctEmployeePF ? "12" : "auto"}
-                    />
-                  </Field>
-                  <Field label="Health Insurance">
-                    <AmountOrPctField
-                      value={salEmployeeInsurance}
-                      onChange={setSalEmployeeInsurance}
-                      pctMode={pctEmployeeIns}
-                      onTogglePct={setPctEmployeeIns}
-                      basis={pctBasisAmount}
-                      placeholder={pctEmployeeIns ? "2" : "0"}
-                    />
-                  </Field>
-                  <Field label="Professional Tax">
-                    <TextField
-                      value={salProfTax}
-                      onChange={setSalProfTax}
-                      placeholder="200"
-                      keyboardType="decimal-pad"
-                    />
-                  </Field>
-                  <Field label="TDS">
-                    <TextField
-                      value={salTds}
-                      onChange={setSalTds}
-                      placeholder="0"
-                      keyboardType="decimal-pad"
-                    />
-                  </Field>
-
-                  <TouchableOpacity
-                    style={[
-                      styles.saveReqBtn,
-                      savingSalary && { opacity: 0.7 },
-                    ]}
-                    onPress={saveSalary}
-                    disabled={savingSalary}
-                  >
-                    {savingSalary ? (
-                      <ActivityIndicator color="#fff" />
-                    ) : (
-                      <Text style={styles.saveReqText}>
-                        Save salary structure
+                      />
+                      <Text style={[styles.hint, { marginTop: 8 }]}>
+                        When a field is in % mode its value is read against this
+                        basis.
                       </Text>
-                    )}
-                  </TouchableOpacity>
+                    </Field>
+                  </Card>
 
-                  <Text style={[styles.hint, { marginTop: 14 }]}>
-                    Salary is stored separately from the employee profile so
-                    history is preserved when you raise it. Leave PF fields
-                    blank to auto-compute from Basic with the EPF cap.
-                  </Text>
+                  <Card
+                    title="Earnings"
+                    desc="Monthly salary components (₹)."
+                  >
+                    <Field label="Basic">
+                      <TextField
+                        value={salBasic}
+                        onChange={setSalBasic}
+                        placeholder="50000"
+                        keyboardType="decimal-pad"
+                      />
+                    </Field>
+                    <Field label="House Rent Allowance">
+                      <AmountOrPctField
+                        value={salHra}
+                        onChange={setSalHra}
+                        pctMode={pctHra}
+                        onTogglePct={setPctHra}
+                        basis={pctBasisAmount}
+                        placeholder={pctHra ? "20" : "20000"}
+                      />
+                    </Field>
+                    <Field label="Communication Allowance">
+                      <AmountOrPctField
+                        value={salCommAllowance}
+                        onChange={setSalCommAllowance}
+                        pctMode={pctComm}
+                        onTogglePct={setPctComm}
+                        basis={pctBasisAmount}
+                        placeholder={pctComm ? "5" : "0"}
+                      />
+                    </Field>
+                    <Field label="Other Allowance">
+                      <AmountOrPctField
+                        value={salOtherAllowance}
+                        onChange={setSalOtherAllowance}
+                        pctMode={pctOther}
+                        onTogglePct={setPctOther}
+                        basis={pctBasisAmount}
+                        placeholder={pctOther ? "19" : "0"}
+                      />
+                    </Field>
+                  </Card>
+
+                  <Card
+                    title="Employer contributions"
+                    desc="Paid by the company on top of CTC."
+                  >
+                    <Field label="Employer PF (blank = auto)">
+                      <AmountOrPctField
+                        value={salEmployerPF}
+                        onChange={setSalEmployerPF}
+                        pctMode={pctEmployerPF}
+                        onTogglePct={setPctEmployerPF}
+                        basis={pctBasisAmount}
+                        placeholder={pctEmployerPF ? "6" : "auto"}
+                      />
+                    </Field>
+                    <Field label="Health Insurance">
+                      <AmountOrPctField
+                        value={salEmployerInsurance}
+                        onChange={setSalEmployerInsurance}
+                        pctMode={pctEmployerIns}
+                        onTogglePct={setPctEmployerIns}
+                        basis={pctBasisAmount}
+                        placeholder={pctEmployerIns ? "2" : "0"}
+                      />
+                    </Field>
+                  </Card>
+
+                  <Card
+                    title="Employee deductions"
+                    desc="Withheld from the employee's pay."
+                  >
+                    <Field label="Employee PF (blank = auto)">
+                      <AmountOrPctField
+                        value={salEmployeePF}
+                        onChange={setSalEmployeePF}
+                        pctMode={pctEmployeePF}
+                        onTogglePct={setPctEmployeePF}
+                        basis={pctBasisAmount}
+                        placeholder={pctEmployeePF ? "12" : "auto"}
+                      />
+                    </Field>
+                    <Field label="Health Insurance">
+                      <AmountOrPctField
+                        value={salEmployeeInsurance}
+                        onChange={setSalEmployeeInsurance}
+                        pctMode={pctEmployeeIns}
+                        onTogglePct={setPctEmployeeIns}
+                        basis={pctBasisAmount}
+                        placeholder={pctEmployeeIns ? "2" : "0"}
+                      />
+                    </Field>
+                    <Field label="Professional Tax">
+                      <TextField
+                        value={salProfTax}
+                        onChange={setSalProfTax}
+                        placeholder="200"
+                        keyboardType="decimal-pad"
+                      />
+                    </Field>
+                    <Field label="TDS">
+                      <TextField
+                        value={salTds}
+                        onChange={setSalTds}
+                        placeholder="0"
+                        keyboardType="decimal-pad"
+                      />
+                    </Field>
+                    <TouchableOpacity
+                      style={[
+                        styles.saveReqBtn,
+                        savingSalary && { opacity: 0.7 },
+                      ]}
+                      onPress={saveSalary}
+                      disabled={savingSalary}
+                    >
+                      {savingSalary ? (
+                        <ActivityIndicator color="#fff" />
+                      ) : (
+                        <Text style={styles.saveReqText}>
+                          Save salary structure
+                        </Text>
+                      )}
+                    </TouchableOpacity>
+                    <Text style={[styles.hint, { marginTop: 12 }]}>
+                      Salary is stored separately so history is preserved when
+                      you raise it. Leave PF blank to auto-compute from Basic
+                      with the EPF cap.
+                    </Text>
+                  </Card>
                 </>
               )}
             </>
@@ -2343,6 +2646,10 @@ export default function HrUserProfile() {
               )}
             </>
           )}
+            </View>
+            {isDesktop && <RightRail />}
+          </View>
+          {!isDesktop && <RightRail />}
         </ScrollView>
       </KeyboardAvoidingView>
 
@@ -2458,7 +2765,7 @@ export default function HrUserProfile() {
   );
 }
 
-const makeStyles = (c: any) => StyleSheet.create({
+const makeStyles = (c: any, isDesktop: boolean) => StyleSheet.create({
   safe: { flex: 1, backgroundColor: c.bg },
   loader: {
     flex: 1,
@@ -2494,66 +2801,446 @@ const makeStyles = (c: any) => StyleSheet.create({
     borderRadius: 10 },
   saveText: { color: "#fff", fontWeight: "800", fontSize: 13 },
 
-  // ===== HERO (banner card with avatar + identity) =====
+  // ===== HERO (accent banner, centered identity) =====
   hero: {
-    flexDirection: "row",
     alignItems: "center",
-    backgroundColor: c.surface,
-    borderRadius: 16,
+    backgroundColor: c.accent,
+    borderRadius: 22,
     marginHorizontal: 12,
-    marginBottom: 10,
-    padding: 14,
-    borderWidth: 1,
-    borderColor: c.surfaceBorder,
-    gap: 14 },
-  avatarLgWrap: { position: "relative" },
+    marginBottom: 12,
+    paddingHorizontal: 20,
+    paddingVertical: 20,
+    shadowColor: c.accent,
+    shadowOpacity: 0.3,
+    shadowRadius: 16,
+    shadowOffset: { width: 0, height: 8 },
+    elevation: 5,
+    ...(isDesktop && {
+      maxWidth: 980,
+      width: "100%" as const,
+      alignSelf: "center" as const,
+      marginHorizontal: 0,
+    }) },
+  avatarLgWrap: { position: "relative", marginBottom: 12 },
   avatarLg: {
-    width: 68,
-    height: 68,
-    borderRadius: 34,
-    backgroundColor: c.accentSoft,
+    width: 76,
+    height: 76,
+    borderRadius: 38,
+    backgroundColor: "rgba(255,255,255,0.22)",
     alignItems: "center",
     justifyContent: "center",
     overflow: "hidden" },
-  avatarLgImg: { width: 68, height: 68 },
-  avatarLgText: { color: c.accentText, fontSize: 24, fontWeight: "800" },
-  // Tiny camera bubble sitting on the bottom-right of the avatar. The
-  // FilePickButton renders inside it so a tap goes straight to the
-  // file picker — no separate "Upload photo" pill needed.
+  avatarLgImg: { width: 76, height: 76 },
+  avatarLgText: { color: "#fff", fontSize: 28, fontWeight: "800" },
+  // Tiny camera bubble sitting on the bottom-right of the avatar. The white
+  // ring separates the accent button from the accent hero background.
   avatarCamera: {
     position: "absolute",
     right: -2,
     bottom: -2,
-    borderRadius: 14,
-    backgroundColor: c.surface,
-    padding: 2 },
+    borderRadius: 15,
+    backgroundColor: "#fff",
+    padding: 3 },
   avatarCameraBtn: {
     width: 26,
     height: 26,
     borderRadius: 13,
     backgroundColor: c.accent },
-  heroBody: { flex: 1, gap: 4 },
-  heroName: { color: c.text, fontSize: 18, fontWeight: "800" },
-  heroRole: { color: c.textMuted, fontSize: 12, fontWeight: "600" },
-  metaRow: {
+  heroName: { color: "#fff", fontSize: 20, fontWeight: "800", textAlign: "center" },
+  heroRole: {
+    color: "rgba(255,255,255,0.9)",
+    fontSize: 13,
+    fontWeight: "600",
+    marginTop: 2,
+    textAlign: "center" },
+  heroPills: {
     flexDirection: "row",
     flexWrap: "wrap",
-    gap: 10,
-    marginTop: 4 },
-  metaItem: { flexDirection: "row", alignItems: "center", gap: 4 },
-  metaText: { color: c.textMuted, fontSize: 11 },
+    gap: 6,
+    marginTop: 12,
+    justifyContent: "center" },
+  heroPill: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+    backgroundColor: "rgba(255,255,255,0.18)",
+    borderRadius: 999,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    maxWidth: 240 },
+  heroPillText: { color: "#fff", fontSize: 11, fontWeight: "700" },
   statusPill: {
     flexDirection: "row",
     alignItems: "center",
-    alignSelf: "flex-start",
-    paddingHorizontal: 8,
-    paddingVertical: 4,
+    alignSelf: "center",
+    paddingHorizontal: 10,
+    paddingVertical: 5,
     borderRadius: 999,
     gap: 5,
-    marginTop: 8 },
+    marginTop: 12 },
   statusDot: { width: 6, height: 6, borderRadius: 3 },
   statusPillText: { fontSize: 10, fontWeight: "800", letterSpacing: 0.3 },
   statusRoleText: { fontSize: 10, fontWeight: "700", opacity: 0.85 },
+
+  // ===== WORKSPACE (two-pane on desktop, single column on mobile) =====
+  workspace: {
+    flex: 1,
+    ...(isDesktop && { flexDirection: "row" as const }) },
+  leftRail: {
+    width: 300,
+    borderRightWidth: 1,
+    borderRightColor: c.surfaceBorder,
+    backgroundColor: c.bg },
+  leftRailContent: { padding: 16, gap: 6 },
+  railSectionLabel: {
+    color: c.textMuted,
+    fontSize: 10,
+    fontWeight: "800",
+    letterSpacing: 1.4,
+    marginTop: 18,
+    marginBottom: 8,
+    marginLeft: 4 },
+
+  // Rail identity card (compact, surface)
+  railIdentity: {
+    alignItems: "center",
+    backgroundColor: c.surface,
+    borderWidth: 1,
+    borderColor: c.surfaceBorder,
+    borderRadius: 18,
+    paddingHorizontal: 16,
+    paddingVertical: 20 },
+  avatarRail: {
+    width: 84,
+    height: 84,
+    borderRadius: 42,
+    backgroundColor: c.accentSoft,
+    alignItems: "center",
+    justifyContent: "center",
+    overflow: "hidden" },
+  avatarRailImg: { width: 84, height: 84 },
+  avatarRailText: { color: c.accentText, fontSize: 30, fontWeight: "800" },
+  railName: {
+    color: c.text,
+    fontSize: 17,
+    fontWeight: "800",
+    textAlign: "center",
+    marginTop: 12 },
+  railRole: {
+    color: c.textMuted,
+    fontSize: 12,
+    fontWeight: "600",
+    textAlign: "center",
+    marginTop: 2 },
+  railPill: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+    backgroundColor: c.surfaceMuted,
+    borderRadius: 999,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    maxWidth: 240 },
+  railPillText: { color: c.text, fontSize: 11, fontWeight: "600" },
+
+  // Vertical section nav (desktop rail)
+  navList: { gap: 4 },
+  navItem: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+    paddingHorizontal: 12,
+    paddingVertical: 11,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: "transparent",
+    ...(Platform.OS === "web" && { cursor: "pointer" as any }) },
+  navItemActive: {
+    backgroundColor: c.accentSoft,
+    borderColor: c.accent },
+  navItemText: { color: c.textMuted, fontSize: 14, fontWeight: "700" },
+
+  // Wrapping segmented tabs (mobile)
+  segTabs: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 8,
+    marginTop: 16,
+    marginBottom: 4 },
+  segTab: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    paddingHorizontal: 14,
+    paddingVertical: 9,
+    borderRadius: 999,
+    backgroundColor: c.surfaceMuted,
+    borderWidth: 1,
+    borderColor: c.surfaceBorder },
+  segTabActive: { backgroundColor: c.accentSoft, borderColor: c.accent },
+  segTabText: { color: c.textMuted, fontSize: 13, fontWeight: "700" },
+
+  // Quick actions (vertical rail buttons / mobile wrap row)
+  qaList: { gap: 8 },
+  qaItem: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 11,
+    borderRadius: 12,
+    backgroundColor: c.surface,
+    borderWidth: 1,
+    borderColor: c.surfaceBorder,
+    ...(Platform.OS === "web" && { cursor: "pointer" as any }) },
+  qaItemText: { color: c.text, fontSize: 13, fontWeight: "700" },
+  qaRow: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 8,
+    marginTop: 2 },
+
+  // ================= REDESIGN: page / header / facts / tabs / body / rail =====
+  page: {
+    padding: isDesktop ? 24 : 16,
+    paddingBottom: 96,
+    ...(isDesktop && {
+      maxWidth: 1180,
+      width: "100%",
+      alignSelf: "center" as const,
+    }) },
+  crumbs: { flex: 1, color: c.textMuted, fontSize: 13, marginLeft: 2 },
+  crumbsStrong: { color: c.text, fontWeight: "700" },
+  ghostBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    height: 38,
+    paddingHorizontal: 14,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: c.surfaceBorder,
+    backgroundColor: c.surface },
+  ghostBtnText: { color: c.text, fontSize: 13, fontWeight: "700" },
+
+  headCard: {
+    backgroundColor: c.surface,
+    borderWidth: 1,
+    borderColor: c.surfaceBorder,
+    borderRadius: 16,
+    padding: isDesktop ? 24 : 18,
+    shadowColor: c.shadow,
+    shadowOpacity: 1,
+    shadowRadius: 12,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 2 },
+  headTop: { flexDirection: "row", alignItems: "center", gap: 18 },
+  headAvatarWrap: { position: "relative" },
+  headAvatar: {
+    width: isDesktop ? 76 : 62,
+    height: isDesktop ? 76 : 62,
+    borderRadius: 20,
+    backgroundColor: c.accent,
+    alignItems: "center",
+    justifyContent: "center",
+    overflow: "hidden" },
+  headAvatarImg: { width: "100%", height: "100%" },
+  headAvatarText: {
+    color: "#fff",
+    fontSize: isDesktop ? 28 : 23,
+    fontWeight: "800",
+    letterSpacing: 0.5 },
+  headCam: {
+    position: "absolute",
+    right: -6,
+    bottom: -6,
+    width: 26,
+    height: 26,
+    borderRadius: 13,
+    backgroundColor: c.surface,
+    borderWidth: 1,
+    borderColor: c.surfaceBorder,
+    alignItems: "center",
+    justifyContent: "center",
+    overflow: "hidden" },
+  headCamBtn: { width: 24, height: 24, borderRadius: 12, backgroundColor: "transparent" },
+  headName: {
+    color: c.text,
+    fontSize: isDesktop ? 24 : 20,
+    fontWeight: "800",
+    letterSpacing: -0.3 },
+  headRoleLine: { color: c.textMuted, fontSize: 14, marginTop: 3 },
+  headBadges: { flexDirection: "row", flexWrap: "wrap", gap: 8, marginTop: 12 },
+  hbadge: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    height: 24,
+    paddingHorizontal: 10,
+    borderRadius: 999 },
+  hdot: { width: 6, height: 6, borderRadius: 3 },
+  hbadgeText: { fontSize: 12, fontWeight: "700" },
+  headWorkBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 7,
+    height: 38,
+    paddingHorizontal: 14,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: c.surfaceBorder,
+    backgroundColor: c.surface },
+  headWorkBtnText: { color: c.text, fontSize: 13, fontWeight: "700" },
+
+  facts: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    marginTop: 20,
+    borderWidth: 1,
+    borderColor: c.surfaceBorder,
+    borderRadius: 10,
+    overflow: "hidden" },
+  fact: {
+    width: isDesktop ? "20%" : "50%",
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    borderRightWidth: StyleSheet.hairlineWidth,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderColor: c.surfaceBorder },
+  factK: {
+    color: c.textFaint,
+    fontSize: 10.5,
+    letterSpacing: 0.6,
+    fontWeight: "800",
+    textTransform: "uppercase" },
+  factV: { color: c.text, fontSize: 14, fontWeight: "600", marginTop: 4 },
+
+  tabsRow2: {
+    flexDirection: "row",
+    gap: 2,
+    marginTop: 22,
+    marginBottom: 20,
+    borderBottomWidth: 1,
+    borderBottomColor: c.surfaceBorder },
+  tab2: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    ...(Platform.OS === "web" && { cursor: "pointer" as any }) },
+  tab2Text: { color: c.textMuted, fontSize: 14, fontWeight: "700" },
+  tab2TextActive: { color: c.text },
+  tab2Underline: {
+    position: "absolute",
+    left: 10,
+    right: 10,
+    bottom: -1,
+    height: 2,
+    borderRadius: 2,
+    backgroundColor: "transparent" },
+  tab2UnderlineOn: { backgroundColor: c.accent },
+
+  bodyRow: {
+    gap: 20,
+    alignItems: "flex-start",
+    ...(isDesktop && { flexDirection: "row" as const }) },
+  mainCol: { flex: 1, gap: 16, minWidth: 0, width: "100%" },
+  rail: {
+    width: isDesktop ? 300 : "100%",
+    gap: 16 },
+  railCard: {
+    backgroundColor: c.surface,
+    borderWidth: 1,
+    borderColor: c.surfaceBorder,
+    borderRadius: 14,
+    padding: 18,
+    shadowColor: c.shadow,
+    shadowOpacity: 1,
+    shadowRadius: 10,
+    shadowOffset: { width: 0, height: 3 },
+    elevation: 1 },
+  railLabel: {
+    color: c.textFaint,
+    fontSize: 10.5,
+    letterSpacing: 0.6,
+    fontWeight: "800",
+    textTransform: "uppercase",
+    marginBottom: 12 },
+  mini: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    paddingVertical: 9,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: c.surfaceBorder },
+  miniK: { color: c.textMuted, fontSize: 13 },
+  miniV: { color: c.text, fontSize: 13, fontWeight: "700" },
+
+  // Titled content card + responsive field grid
+  card: {
+    backgroundColor: c.surface,
+    borderWidth: 1,
+    borderColor: c.surfaceBorder,
+    borderRadius: 14,
+    padding: isDesktop ? 22 : 18,
+    shadowColor: c.shadow,
+    shadowOpacity: 1,
+    shadowRadius: 10,
+    shadowOffset: { width: 0, height: 3 },
+    elevation: 1 },
+  cardHead: { marginBottom: 16 },
+  cardTitle: { color: c.text, fontSize: 15, fontWeight: "800", letterSpacing: -0.2 },
+  cardDesc: { color: c.textMuted, fontSize: 12.5, marginTop: 3 },
+  formGrid: {
+    ...(isDesktop
+      ? {
+          flexDirection: "row" as const,
+          flexWrap: "wrap" as const,
+          justifyContent: "space-between" as const,
+          rowGap: 16 }
+      : { rowGap: 14 }) },
+
+  // Segmented control
+  seg: {
+    flexDirection: "row",
+    backgroundColor: c.surfaceMuted,
+    borderWidth: 1,
+    borderColor: c.surfaceBorder,
+    borderRadius: 10,
+    padding: 3,
+    gap: 2 },
+  segBtn: { flex: 1, alignItems: "center", paddingVertical: 9, borderRadius: 7 },
+  segBtnOn: {
+    backgroundColor: c.surface,
+    shadowColor: c.shadow,
+    shadowOpacity: 1,
+    shadowRadius: 4,
+    shadowOffset: { width: 0, height: 1 },
+    elevation: 1 },
+  segBtnAccent: { backgroundColor: c.accent },
+  segBtnText: { color: c.textMuted, fontSize: 13, fontWeight: "700" },
+  segBtnTextOn: { color: c.text },
+  segBtnTextAccent: { color: "#fff" },
+
+  // Dropdown-style picker input + switch row
+  pickerInput: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    backgroundColor: c.surface,
+    borderWidth: 1,
+    borderColor: c.surfaceBorder,
+    borderRadius: 10,
+    paddingHorizontal: 12,
+    minHeight: 42 },
+  switchRow: {
+    width: "100%",
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    paddingVertical: 4 },
+  switchLabel: { color: c.text, fontSize: 14, fontWeight: "600" },
 
   // ===== QUICK ACTIONS =====
   actionsBar: {
@@ -2575,6 +3262,7 @@ const makeStyles = (c: any) => StyleSheet.create({
     borderWidth: 1,
     borderColor: c.surfaceBorder,
     gap: 6 },
+  quickLinkPrimary: { backgroundColor: c.accent, borderColor: c.accent },
   quickLinkText: { color: c.text, fontSize: 12, fontWeight: "700" },
   pwSubmit: {
     backgroundColor: c.accent,
@@ -2600,6 +3288,7 @@ const makeStyles = (c: any) => StyleSheet.create({
     paddingTop: 12,
     paddingBottom: 0,
     alignItems: "center" },
+  tabLabelRow: { flexDirection: "row", alignItems: "center", gap: 6 },
   tabText: { color: c.textMuted, fontSize: 13, fontWeight: "700" },
   tabTextActive: { color: c.text },
   tabUnderline: {
@@ -2610,28 +3299,69 @@ const makeStyles = (c: any) => StyleSheet.create({
     backgroundColor: "transparent" },
   tabUnderlineActive: { backgroundColor: c.accent },
 
+  // Content of each form tab sits inside one rounded surface card so the
+  // screen matches the manager team-member layout (cards under headers).
+  tabCard: {
+    backgroundColor: c.surface,
+    borderRadius: 18,
+    borderWidth: 1,
+    borderColor: c.surfaceBorder,
+    paddingHorizontal: isDesktop ? 24 : 14,
+    paddingTop: 2,
+    paddingBottom: isDesktop ? 24 : 16,
+    shadowColor: c.shadow,
+    shadowOpacity: 1,
+    shadowRadius: 12,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 2,
+    // Desktop: fields flow two-up in a wrapping grid; mobile stays single
+    // column. Section headers / `full` fields span the whole row.
+    ...(isDesktop && {
+      flexDirection: "row" as const,
+      flexWrap: "wrap" as const,
+      justifyContent: "space-between" as const,
+      alignItems: "flex-start" as const,
+    }) },
+  // Form-grid children (row spacing comes from the grid's rowGap).
+  field: { width: isDesktop ? "48%" : "100%" },
+  fieldFull: { width: "100%" },
+  gridFull: { width: "100%" },
+  sectionHeaderRow: {
+    width: "100%",
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    marginTop: 22,
+    marginBottom: 6 },
+  sectionHeaderIcon: {
+    width: 26,
+    height: 26,
+    borderRadius: 8,
+    backgroundColor: c.accentSoft,
+    alignItems: "center",
+    justifyContent: "center" },
   sectionHeader: {
     color: c.textMuted,
     fontSize: 11,
-    letterSpacing: 2,
-    fontWeight: "800",
-    marginTop: 24,
-    marginBottom: 4 },
+    letterSpacing: 1.5,
+    fontWeight: "800" },
   label: {
     color: c.textMuted,
     fontSize: 11,
-    letterSpacing: 1.2,
+    letterSpacing: 0.5,
     fontWeight: "700",
+    textTransform: "uppercase",
     marginBottom: 6 },
   input: {
-    backgroundColor: c.surfaceMuted,
+    backgroundColor: c.surface,
     color: c.text,
     paddingHorizontal: 12,
     paddingVertical: 10,
     borderRadius: 10,
     borderWidth: 1,
     borderColor: c.surfaceBorder,
-    minHeight: 42 },
+    minHeight: 42,
+    fontSize: 14 },
   dateField: {
     flexDirection: "row",
     alignItems: "center",
@@ -2649,15 +3379,16 @@ const makeStyles = (c: any) => StyleSheet.create({
     fontWeight: "600",
     flex: 1 },
   row: {
+    width: "100%",
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between" },
-  chipRow: { flexDirection: "row", flexWrap: "wrap", gap: 6 },
+  chipRow: { width: "100%", flexDirection: "row", flexWrap: "wrap", gap: 6 },
   chip: {
     paddingHorizontal: 12,
     paddingVertical: 7,
     borderRadius: 999,
-    backgroundColor: c.surface,
+    backgroundColor: c.surfaceMuted,
     borderWidth: 1,
     borderColor: c.surfaceBorder },
   chipActive: { backgroundColor: c.accent, borderColor: c.accent },
@@ -2667,11 +3398,12 @@ const makeStyles = (c: any) => StyleSheet.create({
     paddingHorizontal: 10,
     paddingVertical: 6,
     borderRadius: 999,
-    backgroundColor: c.surface,
+    backgroundColor: c.surfaceMuted,
     borderWidth: 1,
     borderColor: c.surfaceBorder },
   smallChipText: { color: c.textMuted, fontSize: 10, fontWeight: "700" },
   weekdayRow: {
+    width: "100%",
     flexDirection: "row",
     alignItems: "center",
     marginTop: 6,
@@ -2681,7 +3413,7 @@ const makeStyles = (c: any) => StyleSheet.create({
     fontSize: 12,
     fontWeight: "800",
     width: 36 },
-  hint: { color: c.textMuted, fontSize: 12, fontStyle: "italic" },
+  hint: { width: "100%", color: c.textMuted, fontSize: 12, fontStyle: "italic" },
   linkClear: { color: "#ef4444", fontSize: 11, fontWeight: "700" },
 
   modalWrap: {
@@ -2739,6 +3471,7 @@ const makeStyles = (c: any) => StyleSheet.create({
   // Shared row + button styles reused by the Salary save button and
   // the Assets tab (assigned/available asset rows + Return action).
   saveReqBtn: {
+    width: "100%",
     marginTop: 14,
     backgroundColor: "#16a34a",
     paddingVertical: 12,

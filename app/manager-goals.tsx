@@ -22,7 +22,7 @@ import {
   listManagerGoals,
   createManagerGoal,
   updateManagerGoal } from "../src/services/goals";
-import { listUsers } from "../src/services/users";
+import { listUserDirectory } from "../src/services/users";
 import {
   GOAL_STATUSES,
   Goal,
@@ -64,12 +64,12 @@ export default function ManagerGoals() {
         router.replace("/login");
         return;
       }
-      const [goals, allUsers] = await Promise.all([
+      const [goals, dir] = await Promise.all([
         listManagerGoals(token),
-        listUsers(token).catch(() => [] as User[]),
+        listUserDirectory(token).catch(() => ({ items: [] as User[], nextCursor: null })),
       ]);
       setItems(goals || []);
-      setUsers(allUsers || []);
+      setUsers((dir.items || []) as User[]);
     } catch (err: any) {
       Alert.alert(
         "Couldn't load goals",

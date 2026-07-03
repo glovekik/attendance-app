@@ -315,12 +315,8 @@ export default function MyLeaves() {
           <View style={styles.balanceGrid}>
             {balances.map((b, idx) => {
               const tint = balanceTints[idx % balanceTints.length];
-              const allocated = Number(b.allocated ?? 0);
-              const used = Number(b.used ?? 0);
-              const pending = Number(b.pending ?? 0);
-              const remaining = Number(
-                b.remaining ?? allocated - used - pending
-              );
+              // Show the monthly entitlement only (not the cumulative total).
+              const perMonth = Number(b.leaveType?.daysPerMonth ?? 0);
               return (
                 <View
                   key={b.leaveTypeCode}
@@ -350,36 +346,25 @@ export default function MyLeaves() {
                   >
                     {b.leaveType?.name || b.leaveTypeCode}
                   </Text>
-                  <Text
-                    style={[styles.balanceValue, { color: tint.fg }]}
-                  >
-                    {remaining}
+                  <Text style={[styles.balanceValue, { color: tint.fg }]}>
+                    {perMonth}
                   </Text>
-                  <Text
-                    style={[styles.balanceSub, { color: c.textMuted }]}
-                  >
-                    of {allocated}
+                  <Text style={[styles.balanceSub, { color: c.textMuted }]}>
+                    {perMonth === 1 ? "day / month" : "days / month"}
                   </Text>
-                  <View style={styles.balanceFooter}>
-                    <Text
+                  {!!b.accruedThisMonth && (
+                    <View
                       style={[
-                        styles.balanceFoot,
-                        { color: c.textMuted },
+                        styles.monthlyRow,
+                        { backgroundColor: tint.bg },
                       ]}
                     >
-                      Used {used}
-                    </Text>
-                    {pending > 0 && (
-                      <Text
-                        style={[
-                          styles.balanceFoot,
-                          { color: c.warningText },
-                        ]}
-                      >
-                        Pending {pending}
+                      <Ionicons name="trending-up" size={12} color={tint.fg} />
+                      <Text style={[styles.monthlyText, { color: tint.fg }]}>
+                        +{b.accruedThisMonth} this month
                       </Text>
-                    )}
-                  </View>
+                    </View>
+                  )}
                 </View>
               );
             })}
@@ -674,7 +659,7 @@ const RequestCard = ({
           {req.reason}
         </Text>
       )}
-      {req.note ? (
+      {(req.decisionNote || req.note) ? (
         <Text
           style={{
             fontSize: isDesktop ? 13 : 12,
@@ -683,7 +668,7 @@ const RequestCard = ({
             color: c.text,
           }}
         >
-          HR note: {req.note}
+          HR note: {req.decisionNote || req.note}
         </Text>
       ) : null}
       {req.status === "PENDING" && (
@@ -795,6 +780,17 @@ const makeStyles = (c: any, isDesktop: boolean) =>
       marginTop: isDesktop ? 14 : 12,
     },
     balanceFoot: { fontSize: isDesktop ? 12 : 11, fontWeight: "700" },
+    monthlyRow: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 5,
+      marginTop: 10,
+      paddingHorizontal: 8,
+      paddingVertical: 6,
+      borderRadius: 8,
+      alignSelf: "flex-start",
+    },
+    monthlyText: { fontSize: isDesktop ? 12 : 11, fontWeight: "800" },
 
     emptyCard: {
       padding: isDesktop ? 32 : 24,

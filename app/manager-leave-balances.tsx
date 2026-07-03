@@ -5,6 +5,7 @@ import {
   Text,
   StyleSheet,
   FlatList,
+  TextInput,
   TouchableOpacity,
   ActivityIndicator,
   RefreshControl,
@@ -26,8 +27,20 @@ export default function ManagerLeaveBalances() {
   const c = theme.colors;
   const styles = useMemo(() => makeStyles(c), [c]);
   const [rows, setRows] = useState<TeamLeaveBalanceRow[]>([]);
+  const [query, setQuery] = useState("");
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+
+  const filtered = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    if (!q) return rows;
+    return rows.filter(
+      (r) =>
+        (r.user.name || "").toLowerCase().includes(q) ||
+        (r.user.email || "").toLowerCase().includes(q) ||
+        (r.user.employeeCode || "").toLowerCase().includes(q)
+    );
+  }, [rows, query]);
 
   const load = useCallback(async () => {
     try {
@@ -75,11 +88,29 @@ export default function ManagerLeaveBalances() {
         </View>
       </View>
 
+      <View style={styles.searchRow}>
+        <View style={styles.searchBox}>
+          <Ionicons name="search" size={17} color={c.textMuted} />
+          <TextInput
+            style={styles.searchInput}
+            value={query}
+            onChangeText={setQuery}
+            placeholder="Search a person…"
+            placeholderTextColor={c.textFaint}
+          />
+          {query.length > 0 && (
+            <TouchableOpacity hitSlop={8} onPress={() => setQuery("")}>
+              <Ionicons name="close-circle" size={17} color={c.textFaint} />
+            </TouchableOpacity>
+          )}
+        </View>
+      </View>
+
       <FlatList
-        data={rows}
+        data={filtered}
         keyExtractor={(r) => r.user.id}
         contentContainerStyle={
-          rows.length === 0 ? styles.emptyWrap : { padding: 12 }
+          filtered.length === 0 ? styles.emptyWrap : { padding: 12 }
         }
         refreshControl={
           <RefreshControl
@@ -168,6 +199,17 @@ const makeStyles = (c: any) => StyleSheet.create({
     gap: 12 },
   title: { color: c.text, fontSize: 18, fontWeight: "800" },
   subtitle: { color: c.textMuted, fontSize: 12, marginTop: 2 },
+
+  searchRow: { paddingHorizontal: 12, paddingTop: 12 },
+  searchBox: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    backgroundColor: c.surfaceMuted,
+    borderRadius: 12,
+    paddingHorizontal: 12,
+    height: 42 },
+  searchInput: { flex: 1, color: c.text, fontSize: 14, padding: 0 },
 
   card: {
     backgroundColor: c.surface,

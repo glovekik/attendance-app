@@ -356,7 +356,6 @@ export default function ManagerHub() {
               sub="Direct reports & assign tasks"
               tint={c.pastelLavender}
               iconColor="#6d28d9"
-              count={dash?.directReports}
               onPress={() => router.push("/manager-team" as any)}
               theme={theme}
               styles={styles}
@@ -367,18 +366,7 @@ export default function ManagerHub() {
               sub="All tasks you assigned"
               tint={c.pastelMint}
               iconColor="#15803d"
-              count={dash?.openTasksForReports}
               onPress={() => router.push("/manager-tasks" as any)}
-              theme={theme}
-              styles={styles}
-            />
-            <Tile
-              icon="calendar-outline"
-              label="Team Attendance"
-              sub="Day / month view"
-              tint={c.pastelSky}
-              iconColor="#0369a1"
-              onPress={() => router.push("/manager-attendance" as any)}
               theme={theme}
               styles={styles}
             />

@@ -24,7 +24,7 @@ import {
   listFeedbackAboutMe,
   listFeedbackSent,
   sendFeedback } from "../src/services/feedback";
-import { listUsers } from "../src/services/users";
+import { listUserDirectory } from "../src/services/users";
 import { useTheme } from "../src/theme/ThemeProvider";
 import { feedbackTypeColor } from "../src/theme/statusColors";
 import {
@@ -69,8 +69,13 @@ export default function FeedbackScreen() {
           : await listFeedbackSent(token).catch(() => []);
       setItems(list || []);
       if (users.length === 0) {
-        const u = await listUsers(token).catch(() => [] as User[]);
-        setUsers(u || []);
+        // Everyone can send feedback, so use the all-auth directory (not the
+        // HR-only /hr/users which 403s for regular employees).
+        const dir = await listUserDirectory(token).catch(() => ({
+          items: [] as User[],
+          nextCursor: null,
+        }));
+        setUsers((dir.items || []) as User[]);
       }
     } catch (err: any) {
       Alert.alert(

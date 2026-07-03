@@ -2,6 +2,7 @@ import { apiCall } from "./http";
 import {
   AttendanceStatus,
   LeaveBalance,
+  LeaveRequest,
   Task,
   TaskStatus,
   TaskPriority,
@@ -30,7 +31,8 @@ export interface TeamAttendanceRow {
     employeeCode?: string;
   };
   date: string;
-  attendanceType?: "OFFICE" | "WFH" | "LEAVE" | "HOLIDAY";
+  attendanceType?: "OFFICE" | "WFH" | "CLIENT" | "LEAVE" | "HOLIDAY";
+  clientAddress?: string | null;
   status: AttendanceStatus;
   isLate?: boolean;
   hoursWorked?: number;
@@ -112,5 +114,20 @@ export const listTeamAttendance = (
   return apiCall<TeamAttendanceRow[]>(`/manager/attendance${qs}`, { token });
 };
 
-export const listTeamLeaveBalances = (token: string) =>
-  apiCall<TeamLeaveBalanceRow[]>("/manager/leave-balances", { token });
+export const listTeamLeaveBalances = (token: string, userId?: string) =>
+  apiCall<TeamLeaveBalanceRow[]>(
+    `/manager/leave-balances${userId ? `?userId=${userId}` : ""}`,
+    { token }
+  );
+
+// Leave requests raised by the manager's direct reports. Pass a status to
+// filter (e.g. "APPROVED"); omit it to fetch every status (the backend
+// treats an empty status as "all"). Filter to one member client-side.
+export const listManagerLeaveRequests = (
+  token: string,
+  status?: LeaveRequest["status"]
+) =>
+  apiCall<LeaveRequest[]>(
+    `/manager/leave-requests?status=${status ?? ""}`,
+    { token }
+  );

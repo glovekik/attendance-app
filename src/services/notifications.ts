@@ -8,6 +8,11 @@ import { apiCall } from "./http";
 const isWeb = Platform.OS === "web";
 const PUSH_TOKEN_KEY = "expo_push_token";
 export const ANDROID_CHANNEL_ID = "default";
+// Separate channels so check-in and check-out reminders feel different —
+// Android ties sound + vibration to the channel, so distinct vibration
+// patterns here let users tell the two nudges apart without looking.
+export const CHECKIN_CHANNEL_ID = "checkin";
+export const CHECKOUT_CHANNEL_ID = "checkout";
 
 if (!isWeb) {
   Notifications.setNotificationHandler({
@@ -35,6 +40,20 @@ const ensureAndroidChannel = async () => {
       importance: Notifications.AndroidImportance.MAX,
       vibrationPattern: [0, 250, 250, 250],
       lightColor: "#2563eb",
+    });
+    // Check-in: two firm buzzes — a "start your day" feel.
+    await Notifications.setNotificationChannelAsync(CHECKIN_CHANNEL_ID, {
+      name: "Check-in reminders",
+      importance: Notifications.AndroidImportance.MAX,
+      vibrationPattern: [0, 400, 200, 400],
+      lightColor: "#16a34a",
+    });
+    // Check-out: three short pulses — clearly different from check-in.
+    await Notifications.setNotificationChannelAsync(CHECKOUT_CHANNEL_ID, {
+      name: "Check-out reminders",
+      importance: Notifications.AndroidImportance.MAX,
+      vibrationPattern: [0, 150, 100, 150, 100, 150],
+      lightColor: "#dc2626",
     });
   } catch (err) {
     console.log("Android channel setup failed:", err);

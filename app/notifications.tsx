@@ -18,11 +18,14 @@ import { Ionicons } from "@expo/vector-icons";
 import {
   listNotifications,
   markRead,
-  markAllRead } from "../src/services/inbox";
+  markAllRead,
+  deleteNotification,
+  clearAllNotifications } from "../src/services/inbox";
 import { getMe } from "../src/services/api";
 import { openNotificationStream } from "../src/services/sse";
 import { NotificationItem } from "../src/types";
 import { resolveNotificationRoute } from "../src/utils/notificationRoute";
+import { confirmAction } from "../src/utils/confirm";
 import { useTheme } from "../src/theme/ThemeProvider";
 
 const iconForType = (
@@ -206,6 +209,42 @@ export default function NotificationsScreen() {
     }
   };
 
+  // Delete a single notification. Optimistic — remove from the list first,
+  // restore it if the request fails.
+  const deleteOne = async (n: NotificationItem) => {
+    const prev = items;
+    setItems((cur) => cur.filter((x) => x.id !== n.id));
+    try {
+      const token = await AsyncStorage.getItem("token");
+      if (!token) return;
+      await deleteNotification(token, n.id);
+    } catch (err: any) {
+      setItems(prev);
+      Alert.alert("Couldn't delete", err?.message || "");
+    }
+  };
+
+  const onClearAll = async () => {
+    if (marking || items.length === 0) return;
+    const ok = await confirmAction({
+      title: "Clear all notifications?",
+      message: "This permanently removes all your notifications.",
+      confirmLabel: "Clear all",
+      destructive: true,
+    });
+    if (!ok) return;
+    const prev = items;
+    setItems([]);
+    try {
+      const token = await AsyncStorage.getItem("token");
+      if (!token) return;
+      await clearAllNotifications(token);
+    } catch (err: any) {
+      setItems(prev);
+      Alert.alert("Couldn't clear", err?.message || "");
+    }
+  };
+
   const unreadCount = items.filter((n) => !n.read).length;
 
   if (loading) {
@@ -223,19 +262,28 @@ export default function NotificationsScreen() {
           <Ionicons name="arrow-back" size={24} color={c.text} />
         </TouchableOpacity>
         <Text style={styles.title}>Notifications</Text>
-        {unreadCount > 0 ? (
-          <TouchableOpacity
-            onPress={onMarkAll}
-            disabled={marking}
-            style={styles.markAll}
-          >
-            <Text style={styles.markAllText}>
-              {marking ? "..." : "Mark all read"}
-            </Text>
-          </TouchableOpacity>
-        ) : (
-          <View style={{ width: 90 }} />
-        )}
+        <View style={styles.headerActions}>
+          {unreadCount > 0 && (
+            <TouchableOpacity
+              onPress={onMarkAll}
+              disabled={marking}
+              style={styles.markAll}
+            >
+              <Text style={styles.markAllText}>
+                {marking ? "..." : "Mark all read"}
+              </Text>
+            </TouchableOpacity>
+          )}
+          {items.length > 0 && (
+            <TouchableOpacity
+              onPress={onClearAll}
+              style={styles.clearAll}
+              hitSlop={8}
+            >
+              <Ionicons name="trash-outline" size={18} color={c.dangerText} />
+            </TouchableOpacity>
+          )}
+        </View>
       </View>
 
       <FlatList
@@ -296,26 +344,36 @@ export default function NotificationsScreen() {
                 {formatRelative(item.createdAt)}
               </Text>
             </View>
-            {!item.read ? (
+            <View style={styles.rowActions}>
+              {!item.read ? (
+                <TouchableOpacity
+                  onPress={() => markOne(item)}
+                  style={styles.markBtn}
+                  activeOpacity={0.7}
+                >
+                  <Ionicons name="checkmark" size={14} color={c.accent} />
+                  <Text style={styles.markBtnText}>Mark as read</Text>
+                </TouchableOpacity>
+              ) : (
+                <Ionicons
+                  name="checkmark-done"
+                  size={18}
+                  color={c.textFaint}
+                />
+              )}
               <TouchableOpacity
-                onPress={() => markOne(item)}
-                style={styles.markBtn}
+                onPress={() => deleteOne(item)}
+                style={styles.deleteBtn}
+                hitSlop={8}
                 activeOpacity={0.7}
               >
                 <Ionicons
-                  name="checkmark"
-                  size={14}
-                  color={c.accent}
+                  name="trash-outline"
+                  size={16}
+                  color={c.dangerText}
                 />
-                <Text style={styles.markBtnText}>Mark as read</Text>
               </TouchableOpacity>
-            ) : (
-              <Ionicons
-                name="checkmark-done"
-                size={18}
-                color={c.textFaint}
-              />
-            )}
+            </View>
           </TouchableOpacity>
         )}
       />
@@ -339,12 +397,20 @@ const makeStyles = (c: any) => StyleSheet.create({
     borderBottomColor: c.surfaceBorder,
     gap: 12 },
   title: { color: c.text, fontSize: 18, fontWeight: "800", flex: 1 },
+  headerActions: { flexDirection: "row", alignItems: "center", gap: 8 },
   markAll: {
     paddingHorizontal: 10,
     paddingVertical: 6,
     borderRadius: 8,
     backgroundColor: c.surfaceMuted },
   markAllText: { color: c.text, fontSize: 11, fontWeight: "700" },
+  clearAll: {
+    width: 34,
+    height: 30,
+    borderRadius: 8,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: c.dangerBg },
   row: {
     flexDirection: "row",
     alignItems: "center",
@@ -374,6 +440,14 @@ const makeStyles = (c: any) => StyleSheet.create({
     borderWidth: 1,
     borderColor: c.accent },
   markBtnText: { color: c.accent, fontSize: 11, fontWeight: "700" },
+  rowActions: { flexDirection: "row", alignItems: "center", gap: 8 },
+  deleteBtn: {
+    width: 32,
+    height: 32,
+    borderRadius: 8,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: c.dangerBg },
   emptyWrap: { flex: 1, justifyContent: "center" },
   empty: { alignItems: "center", gap: 10 },
   emptyText: { color: c.textMuted, fontSize: 14 } });

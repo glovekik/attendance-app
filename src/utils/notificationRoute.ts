@@ -22,6 +22,7 @@ export const resolveNotificationRoute = (
     case "task_assigned":
     case "task_complete":
     case "task_completed":
+    case "task_comment":
       return payload.taskId ? `/tasks/${payload.taskId}` : "/tasks";
     case "leave_decision":
     case "leave_decided":
@@ -29,7 +30,10 @@ export const resolveNotificationRoute = (
     case "reimbursement_decision":
       return "/reimbursements";
     case "correction_decision":
-      return "/corrections";
+      // The recipient is the employee whose correction was decided — send them
+      // to their attendance history (where they raised it), NOT /corrections
+      // which is the HR/manager approval queue (403 for a plain user).
+      return "/history";
     case "manual_attendance_decision":
       return "/manual-request";
     case "timesheet_decision":
@@ -37,15 +41,37 @@ export const resolveNotificationRoute = (
     case "resignation_decision":
       return "/exit";
     case "goal_assigned":
+    case "goal_updated":
       return "/my-goals";
     case "review_submitted":
+    case "review_started":
       return "/my-reviews";
     case "payslip_ready":
       return "/my-payroll";
     case "asset_assigned":
+    case "asset_issue_resolved":
       return "/assets";
+    case "attendance_edited":
+      return "/history";
+    case "document_verified":
+    case "documents_required":
+      return "/my-documents";
+    case "feedback_received":
+      return "/feedback";
+    case "interview_scheduled":
+      return "/my-interviews";
+    case "leave_balance_updated":
+      return "/leaves";
+    case "onboarding_started":
+      return "/my-onboarding";
     case "checkout_reminder":
+    case "checkin_reminder":
+    case "checkout_8h":
       return "/attendance";
+    case "auto_checkout":
+      // Employee's record was auto-closed — send them to history to review /
+      // request a correction on it.
+      return "/history";
     case "todo_reminder":
       return "/todos";
     case "chat_mention":
@@ -72,13 +98,23 @@ export const resolveNotificationRoute = (
       // HR is authorised on the manager queue too; the screen serves both.
       return isManagerial ? "/manager-corrections" : null;
     case "review_self_eval_submitted":
+    case "review_acknowledged":
       return isManagerial ? "/manager-reviews" : null;
+    case "offer_response":
+      return isHrOrCeo ? "/hr-offers" : null;
     case "onboarding_completed":
       return isHrOrCeo ? "/onboardings" : "/my-onboarding";
     case "resignation_submitted":
       return isHrOrCeo ? "/exits" : null;
 
+    // A report's missed check-out was auto-closed — goes to their manager + HR.
+    case "auto_checkout_report":
+      if (!isManagerial) return null;
+      return isHrOrCeo ? "/hr-attendance" : "/manager-attendance";
+
     // ===== HR-owned events =====
+    case "hr_daily_brief":
+      return isHrOrCeo ? "/hr-attendance" : null;
     case "asset_issue_reported":
       return isHrOrCeo ? "/asset-reports" : null;
     case "interview_feedback_submitted":

@@ -24,6 +24,40 @@ export const getCurrentLocation = async () => {
   return loc.coords;
 };
 
+// Best-effort reverse geocode → a human-readable single-line address.
+// Returns "" when unavailable (e.g. web, no network, or no permission) so
+// callers can fall back to raw coordinates without special-casing errors.
+export const reverseGeocode = async (
+  latitude: number,
+  longitude: number
+): Promise<string> => {
+  try {
+    const results = await Location.reverseGeocodeAsync({ latitude, longitude });
+    const p = results?.[0];
+    if (!p) return "";
+    const parts = [
+      p.name,
+      p.street,
+      p.district,
+      p.city,
+      p.region,
+      p.postalCode,
+      p.country,
+    ].filter((x): x is string => !!x && x.trim().length > 0);
+    // De-dupe consecutive repeats (name often equals street) and cap length.
+    const seen = new Set<string>();
+    const cleaned = parts.filter((x) => {
+      const k = x.toLowerCase();
+      if (seen.has(k)) return false;
+      seen.add(k);
+      return true;
+    });
+    return cleaned.join(", ");
+  } catch {
+    return "";
+  }
+};
+
 // Haversine formula
 export const getDistance = (
   lat1: number,

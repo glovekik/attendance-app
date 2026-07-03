@@ -465,42 +465,28 @@ export default function TaskDetail() {
           ) : (
             comments.map((cm) => {
               const mine = cm.userId === me?.id;
-              const displayName =
-                cm.user?.name || (mine ? "You" : "User");
               return (
                 <View
                   key={cm.id}
-                  style={[
-                    styles.commentBox,
-                    mine && styles.commentMine,
-                  ]}
+                  style={[styles.cRow, mine ? { alignItems: "flex-end" } : { alignItems: "flex-start" }]}
                 >
-                  <View style={styles.commentHead}>
-                    <Text style={styles.commentAuthor}>
-                      {displayName}
-                    </Text>
-                    <Text style={styles.commentTime}>
-                      {new Date(cm.createdAt).toLocaleString([], {
-                        month: "short",
-                        day: "numeric",
+                  {!mine && (
+                    <Text style={styles.cAuthor}>{cm.user?.name || "User"}</Text>
+                  )}
+                  <TouchableOpacity
+                    activeOpacity={0.7}
+                    onLongPress={() => mine && removeComment(cm)}
+                    style={[styles.cBubble, mine ? styles.cMine : styles.cTheirs]}
+                  >
+                    <Text style={[styles.cText, mine && { color: "#fff" }]}>{cm.text}</Text>
+                    <Text style={[styles.cTime, mine && { color: "rgba(255,255,255,0.75)" }]}>
+                      {new Date(cm.createdAt).toLocaleTimeString([], {
                         hour: "numeric",
                         minute: "2-digit",
+                        hour12: true,
                       })}
                     </Text>
-                  </View>
-                  <Text style={styles.commentText}>{cm.text}</Text>
-                  {mine && (
-                    <TouchableOpacity
-                      style={styles.commentDelete}
-                      onPress={() => removeComment(cm)}
-                    >
-                      <Ionicons
-                        name="trash-outline"
-                        size={14}
-                        color={c.textMuted}
-                      />
-                    </TouchableOpacity>
-                  )}
+                  </TouchableOpacity>
                 </View>
               );
             })
@@ -746,32 +732,41 @@ const makeStyles = (c: any) => StyleSheet.create({
     padding: 4,
   },
 
+  // Modern chat bubbles
+  cRow: { marginBottom: 8 },
+  cAuthor: { color: c.textMuted, fontSize: 11, fontWeight: "600", marginLeft: 12, marginBottom: 3 },
+  cBubble: { maxWidth: "80%", paddingHorizontal: 12, paddingVertical: 8, borderRadius: 16 },
+  cMine: { backgroundColor: c.accent, borderBottomRightRadius: 4 },
+  cTheirs: { backgroundColor: c.surfaceMuted, borderBottomLeftRadius: 4 },
+  cText: { color: c.text, fontSize: 15, lineHeight: 20 },
+  cTime: { color: c.textMuted, fontSize: 10, alignSelf: "flex-end", marginTop: 3 },
+
   composer: {
     flexDirection: "row",
     alignItems: "flex-end",
-    padding: 12,
-    backgroundColor: c.surfaceMuted,
+    padding: 10,
+    backgroundColor: c.bg,
     borderTopWidth: 1,
     borderTopColor: c.surfaceBorder,
     gap: 8,
   },
   composerInput: {
     flex: 1,
-    backgroundColor: c.surface,
+    backgroundColor: c.surfaceMuted,
     color: c.text,
-    borderRadius: 14,
+    borderRadius: 22,
     paddingVertical: 10,
-    paddingHorizontal: 14,
-    minHeight: 40,
+    paddingHorizontal: 16,
+    minHeight: 44,
     maxHeight: 120,
     borderWidth: 1,
     borderColor: c.surfaceBorder,
-    fontSize: 14,
+    fontSize: 15,
   },
   sendBtn: {
-    width: 40,
-    height: 40,
-    borderRadius: 14,
+    width: 44,
+    height: 44,
+    borderRadius: 22,
     backgroundColor: c.accent,
     justifyContent: "center",
     alignItems: "center",

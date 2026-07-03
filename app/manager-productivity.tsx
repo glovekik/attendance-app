@@ -5,6 +5,7 @@ import {
   Text,
   StyleSheet,
   FlatList,
+  TextInput,
   TouchableOpacity,
   ActivityIndicator,
   RefreshControl,
@@ -25,8 +26,16 @@ export default function ManagerProductivity() {
   const c = theme.colors;
   const styles = useMemo(() => makeStyles(c), [c]);
   const [rows, setRows] = useState<TeamProductivityRow[]>([]);
+  const [query, setQuery] = useState("");
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+
+  const nameOf = (r: TeamProductivityRow) =>
+    r.userName || (r as any).name || "Unknown";
+  const filtered = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    return q ? rows.filter((r) => nameOf(r).toLowerCase().includes(q)) : rows;
+  }, [rows, query]);
 
   const load = useCallback(async () => {
     try {
@@ -74,11 +83,29 @@ export default function ManagerProductivity() {
         </View>
       </View>
 
+      <View style={styles.searchRow}>
+        <View style={styles.searchBox}>
+          <Ionicons name="search" size={17} color={c.textMuted} />
+          <TextInput
+            style={styles.searchInput}
+            value={query}
+            onChangeText={setQuery}
+            placeholder="Search a person…"
+            placeholderTextColor={c.textFaint}
+          />
+          {query.length > 0 && (
+            <TouchableOpacity hitSlop={8} onPress={() => setQuery("")}>
+              <Ionicons name="close-circle" size={17} color={c.textFaint} />
+            </TouchableOpacity>
+          )}
+        </View>
+      </View>
+
       <FlatList
-        data={rows}
+        data={filtered}
         keyExtractor={(r) => r.userId}
         contentContainerStyle={
-          rows.length === 0 ? styles.emptyWrap : { padding: 12 }
+          filtered.length === 0 ? styles.emptyWrap : { padding: 12 }
         }
         refreshControl={
           <RefreshControl
@@ -97,16 +124,18 @@ export default function ManagerProductivity() {
             <Text style={styles.emptyText}>No direct reports yet.</Text>
           </View>
         }
-        renderItem={({ item }) => (
+        renderItem={({ item }) => {
+          const name = item.userName || (item as any).name || "Unknown";
+          return (
           <View style={styles.card}>
             <View style={styles.cardTop}>
               <View style={styles.avatar}>
                 <Text style={styles.avatarText}>
-                  {(item.userName || "?").charAt(0).toUpperCase()}
+                  {name.charAt(0).toUpperCase()}
                 </Text>
               </View>
               <Text style={styles.cardName} numberOfLines={1}>
-                {item.userName}
+                {name}
               </Text>
             </View>
             <View style={styles.metricRow}>
@@ -128,7 +157,8 @@ export default function ManagerProductivity() {
               </View>
             </View>
           </View>
-        )}
+          );
+        }}
       />
     </SafeAreaView>
   );
@@ -151,6 +181,17 @@ const makeStyles = (c: any) => StyleSheet.create({
     gap: 12 },
   title: { color: c.text, fontSize: 18, fontWeight: "800" },
   subtitle: { color: c.textMuted, fontSize: 12, marginTop: 2 },
+
+  searchRow: { paddingHorizontal: 12, paddingTop: 12 },
+  searchBox: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    backgroundColor: c.surfaceMuted,
+    borderRadius: 12,
+    paddingHorizontal: 12,
+    height: 42 },
+  searchInput: { flex: 1, color: c.text, fontSize: 14, padding: 0 },
 
   card: {
     backgroundColor: c.surface,

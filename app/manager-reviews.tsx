@@ -19,11 +19,11 @@ import { useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 
 import {
-  listHrReviews,
+  listManagerReviews,
   createManagerReview,
   submitManagerEval,
   submitReview } from "../src/services/reviews";
-import { listUsers } from "../src/services/users";
+import { listUserDirectory } from "../src/services/users";
 import { useTheme } from "../src/theme/ThemeProvider";
 import { reviewStatusColor } from "../src/theme/statusColors";
 import {
@@ -74,12 +74,12 @@ export default function ManagerReviews() {
         router.replace("/login");
         return;
       }
-      const [revs, allUsers] = await Promise.all([
-        listHrReviews(token),
-        listUsers(token).catch(() => [] as User[]),
+      const [revs, dir] = await Promise.all([
+        listManagerReviews(token).catch(() => [] as Review[]),
+        listUserDirectory(token).catch(() => ({ items: [] as User[], nextCursor: null })),
       ]);
       setItems(revs || []);
-      setUsers(allUsers || []);
+      setUsers((dir.items || []) as User[]);
     } catch (err: any) {
       Alert.alert(
         "Couldn't load reviews",

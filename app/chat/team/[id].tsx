@@ -26,10 +26,16 @@ import { ChatThread } from "../../../src/components/ChatThread";
 import {
   listTeamMessages,
   sendTeamMessage,
+  editTeamMessage,
   deleteTeamMessage,
+  markTeamReadReceipt,
   markChatRead,
+  DeleteScope,
 } from "../../../src/services/chat";
 import { chatUnreadStore } from "../../../src/services/chatUnread";
+import { uploadFile } from "../../../src/services/uploads";
+import { AttachInput } from "../../../src/components/ChatThread";
+import { ChatAttachment } from "../../../src/types";
 
 import {
   getTeam,
@@ -104,21 +110,51 @@ export default function TeamChat() {
   );
 
   const sendMessage = useCallback(
-    async (text: string) => {
+    async (text: string, attachments?: ChatAttachment[]) => {
       const token = await AsyncStorage.getItem("token");
       if (!token) throw new Error("Not authenticated");
-      return sendTeamMessage(token, teamId, text);
+      return sendTeamMessage(token, teamId, text, undefined, attachments);
+    },
+    [teamId]
+  );
+
+  const editMessage = useCallback(
+    async (id: string, text: string) => {
+      const token = await AsyncStorage.getItem("token");
+      if (!token) throw new Error("Not authenticated");
+      return editTeamMessage(token, teamId, id, text);
     },
     [teamId]
   );
 
   const removeMessage = useCallback(
-    async (id: string) => {
+    async (id: string, scope: DeleteScope) => {
       const token = await AsyncStorage.getItem("token");
       if (!token) throw new Error("Not authenticated");
-      return deleteTeamMessage(token, teamId, id);
+      return deleteTeamMessage(token, teamId, id, scope);
     },
     [teamId]
+  );
+
+  const markRead = useCallback(() => {
+    AsyncStorage.getItem("token").then((t) => {
+      if (t) markTeamReadReceipt(t, teamId).catch(() => {});
+    });
+  }, [teamId]);
+
+  const uploadAttachment = useCallback(
+    async (file: AttachInput): Promise<ChatAttachment> => {
+      const token = await AsyncStorage.getItem("token");
+      if (!token) throw new Error("Not authenticated");
+      const r = await uploadFile(token, file);
+      return {
+        url: r.url,
+        type: (r.mimeType || file.mimeType || "").startsWith("image/") ? "image" : "file",
+        name: r.fileName || file.name,
+        mimeType: r.mimeType || file.mimeType,
+      };
+    },
+    []
   );
 
   return (
@@ -148,7 +184,10 @@ export default function TeamChat() {
         me={me}
         fetchMessages={fetchMessages}
         sendMessage={sendMessage}
+        editMessage={editMessage}
         deleteMessage={removeMessage}
+        markRead={markRead}
+        uploadAttachment={uploadAttachment}
         emptyText="No team messages yet. Get the conversation going 💬"
       />
 

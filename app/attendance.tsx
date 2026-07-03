@@ -33,7 +33,9 @@ import {
   ALLOWED_RADIUS,
   getCurrentLocation,
   getDistance,
+  reverseGeocode,
 } from "../src/utils/location";
+import { WebModal, ModalActions } from "../src/components/WebModal";
 
 import { useTheme } from "../src/theme/ThemeProvider";
 import { User } from "../src/types";
@@ -48,7 +50,7 @@ import { PageHeader } from "../src/components/PageHeader";
 // LEAVE and HOLIDAY are intentionally not selectable here: leave days are
 // set automatically when a leave request is approved, and holidays are
 // declared by HR. Users only choose how they're working today.
-const TYPES = ["OFFICE", "WFH"] as const;
+const TYPES = ["OFFICE", "WFH", "CLIENT"] as const;
 type AttType = (typeof TYPES)[number];
 
 /**
@@ -74,6 +76,16 @@ export default function Attendance() {
   const [acting, setActing] = useState(false);
   const [pulling, setPulling] = useState(false);
   const [pullingTodos, setPullingTodos] = useState(false);
+
+  // Client-location flow: capture GPS, confirm, add notes, submit.
+  const [clientOpen, setClientOpen] = useState(false);
+  const [capturing, setCapturing] = useState(false);
+  const [clientCoords, setClientCoords] = useState<{
+    latitude: number;
+    longitude: number;
+  } | null>(null);
+  const [clientAddress, setClientAddress] = useState("");
+  const [clientSubmitting, setClientSubmitting] = useState(false);
 
   const load = useCallback(async () => {
     try {
@@ -111,6 +123,12 @@ export default function Attendance() {
 
   const onCheckIn = async () => {
     if (acting) return;
+    // Client check-ins confirm the location first, then check in from the
+    // confirm sheet (submitClient).
+    if (attType === "CLIENT") {
+      await openClientLocation();
+      return;
+    }
     try {
       setActing(true);
       // Capture the moment the user tapped the button as the source of
@@ -186,6 +204,74 @@ export default function Attendance() {
       notify("Check-out failed", err?.message || "");
     } finally {
       setActing(false);
+    }
+  };
+
+  // Grab the device location, reverse-geocode it, then open the confirm
+  // sheet so the employee can verify it's right and add a note.
+  const openClientLocation = async () => {
+    if (capturing) return;
+    try {
+      setCapturing(true);
+      const coords = await getCurrentLocation();
+      // If they're actually at the office, this isn't a client visit — send
+      // them to the normal check-in flow instead.
+      const officeDist = getDistance(
+        coords.latitude,
+        coords.longitude,
+        OFFICE.latitude,
+        OFFICE.longitude
+      );
+      if (officeDist <= ALLOWED_RADIUS) {
+        notify(
+          "You're at the office",
+          "This is the office location — please use Check in instead of Client Location."
+        );
+        return;
+      }
+      setClientCoords({
+        latitude: coords.latitude,
+        longitude: coords.longitude,
+      });
+      const addr = await reverseGeocode(coords.latitude, coords.longitude);
+      setClientAddress(addr);
+      setClientOpen(true);
+    } catch (err: any) {
+      notify(
+        "Location required",
+        err?.message || "Enable location access and try again."
+      );
+    } finally {
+      setCapturing(false);
+    }
+  };
+
+  // Confirm sheet → actually check in with attendanceType=CLIENT + location.
+  const submitClient = async () => {
+    if (clientSubmitting || !clientCoords) return;
+    try {
+      setClientSubmitting(true);
+      const token = await AsyncStorage.getItem("token");
+      if (!token) return;
+      const now = new Date();
+      await checkIn(token, {
+        date: dateToYMD(now),
+        checkIn: now.toISOString(),
+        attendanceType: "CLIENT",
+        latitude: clientCoords.latitude,
+        longitude: clientCoords.longitude,
+        clientAddress: clientAddress.trim() || undefined,
+      });
+      setClientOpen(false);
+      notify(
+        "Checked in from client",
+        "You're checked in at a client location — check out here when you're done."
+      );
+      await load();
+    } catch (err: any) {
+      notify("Check-in failed", err?.message || "");
+    } finally {
+      setClientSubmitting(false);
     }
   };
 
@@ -286,14 +372,17 @@ export default function Attendance() {
   const typeIconBg: Record<AttType, string> = {
     OFFICE: c.pastelLavender,
     WFH: c.pastelMint,
+    CLIENT: c.pastelSky,
   };
   const typeIconFg: Record<AttType, string> = {
     OFFICE: "#6d28d9",
     WFH: "#15803d",
+    CLIENT: "#0369a1",
   };
   const typeIconName: Record<AttType, keyof typeof Ionicons.glyphMap> = {
     OFFICE: "business-outline",
     WFH: "home-outline",
+    CLIENT: "navigate-outline",
   };
 
   // Desktop shows sidebar, so we don't need bottom bar padding
@@ -417,6 +506,32 @@ export default function Attendance() {
             )}
           </View>
         </View>
+
+        {typeof me?.autoCheckoutQuota === "number" && (
+          <View
+            style={{
+              flexDirection: "row",
+              alignItems: "center",
+              gap: 8,
+              backgroundColor: (me.autoCheckoutQuota <= 1 ? c.dangerBg : c.surfaceMuted),
+              borderRadius: 12,
+              paddingHorizontal: 12,
+              paddingVertical: 10,
+              marginBottom: 12,
+            }}
+          >
+            <Ionicons
+              name="time-outline"
+              size={16}
+              color={me.autoCheckoutQuota <= 1 ? c.dangerText : c.textMuted}
+            />
+            <Text style={{ color: c.text, fontSize: 12, flex: 1 }}>
+              Auto check-outs left this month:{" "}
+              <Text style={{ fontWeight: "800" }}>{me.autoCheckoutQuota}/5</Text>
+              {"  "}— forget to check out and one is used at 11:59 PM.
+            </Text>
+          </View>
+        )}
 
         {/* TYPE PICKER */}
         {!completed && (
@@ -673,6 +788,65 @@ export default function Attendance() {
         </Pressable>
       </Scroller>
 
+      {/* CLIENT LOCATION — confirm + notes */}
+      <WebModal
+        visible={clientOpen}
+        onClose={() => !clientSubmitting && setClientOpen(false)}
+        title="Confirm client location"
+        subtitle="Is this where you're working from?"
+        size="sm"
+        footer={
+          <ModalActions align="spread">
+            <TouchableOpacity
+              style={[styles.modalBtn, styles.modalBtnGhost]}
+              onPress={() => !clientSubmitting && setClientOpen(false)}
+              disabled={clientSubmitting}
+            >
+              <Text style={[styles.modalBtnText, { color: c.text }]}>
+                Cancel
+              </Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[styles.modalBtn, { backgroundColor: c.accent }]}
+              onPress={submitClient}
+              disabled={clientSubmitting}
+            >
+              {clientSubmitting ? (
+                <ActivityIndicator color="#fff" size="small" />
+              ) : (
+                <Text style={[styles.modalBtnText, { color: "#fff" }]}>
+                  Check in here
+                </Text>
+              )}
+            </TouchableOpacity>
+          </ModalActions>
+        }
+      >
+        <View
+          style={[
+            styles.locBox,
+            { backgroundColor: c.surfaceMuted, borderColor: c.surfaceBorder },
+          ]}
+        >
+          <Ionicons name="location" size={20} color={c.accent} />
+          <View style={{ flex: 1 }}>
+            <Text style={[styles.locAddress, { color: c.text }]}>
+              {clientAddress || "Address unavailable — using coordinates"}
+            </Text>
+            {!!clientCoords && (
+              <Text style={[styles.locCoords, { color: c.textMuted }]}>
+                {clientCoords.latitude.toFixed(5)},{" "}
+                {clientCoords.longitude.toFixed(5)}
+              </Text>
+            )}
+          </View>
+        </View>
+        <Text style={[styles.locHelp, { color: c.textMuted }]}>
+          You'll check in here as your attendance for today. Add your work
+          notes when you check out.
+        </Text>
+      </WebModal>
+
       <BottomTabBar user={me} />
     </SafeAreaView>
   );
@@ -681,6 +855,8 @@ export default function Attendance() {
 const formatTime = (iso?: string | null): string => {
   if (!iso) return "—";
   try {
+    // Times are stored/served as IST wall-clock (see backend utils/ist.py) —
+    // render as-is, no timezone conversion.
     return new Date(iso).toLocaleTimeString([], {
       hour: "numeric",
       minute: "2-digit",
@@ -752,9 +928,9 @@ const makeStyles = (c: any, isDesktop: boolean) =>
       gap: isDesktop ? 16 : 10,
     },
     typeCard: {
-      width: isDesktop ? "48%" : "47%",
+      width: "31%",
       flexGrow: 1,
-      padding: isDesktop ? 24 : 16,
+      padding: isDesktop ? 20 : 12,
       borderRadius: 18,
       borderWidth: 2,
       alignItems: "center",
@@ -879,4 +1055,39 @@ const makeStyles = (c: any, isDesktop: boolean) =>
       alignItems: "center",
       justifyContent: "center",
     },
+
+    // Client-location modal
+    locBox: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 12,
+      padding: 14,
+      borderRadius: 14,
+      borderWidth: 1,
+    },
+    locAddress: { fontSize: 14, fontWeight: "700", lineHeight: 19 },
+    locCoords: { fontSize: 12, marginTop: 4 },
+    locHelp: { fontSize: 12, lineHeight: 18, marginTop: 14 },
+    modalBtn: {
+      flex: 1,
+      paddingVertical: 13,
+      borderRadius: 12,
+      alignItems: "center",
+      justifyContent: "center",
+    },
+    modalBtnGhost: {
+      backgroundColor: "transparent",
+      borderWidth: 1,
+      borderColor: c.surfaceBorder,
+    },
+    modalBtnText: { fontSize: 14, fontWeight: "800" },
+    clientOutBtn: {
+      paddingHorizontal: 14,
+      paddingVertical: 9,
+      borderRadius: 10,
+      alignItems: "center",
+      justifyContent: "center",
+      minWidth: 92,
+    },
+    clientOutText: { color: "#fff", fontSize: 13, fontWeight: "800" },
   });

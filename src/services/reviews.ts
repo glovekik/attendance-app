@@ -58,10 +58,14 @@ export const submitReview = (
 
 export const acknowledgeReview = (
   token: string,
-  id: string
+  id: string,
+  note = ""
 ): Promise<Review> =>
   apiCall(`/reviews/${id}/acknowledge`, {
     method: "POST",
+    // The endpoint expects a JSON body (ReviewAcknowledge); without one FastAPI
+    // 422s "body required" even though the fields are optional.
+    body: { note },
     token,
   });
 
@@ -77,4 +81,14 @@ export const listHrReviews = (
   if (opts.status) params.set("status", opts.status);
   const qs = params.toString();
   return apiCall(`/hr/reviews${qs ? `?${qs}` : ""}`, { token });
+};
+
+// Manager-scoped review list — reviews the manager authored or that belong to
+// their direct reports (HR sees all). Managers can't hit /hr/reviews (403).
+export const listManagerReviews = (
+  token: string,
+  opts: { status?: ReviewStatus } = {}
+): Promise<Review[]> => {
+  const qs = opts.status ? `?status=${opts.status}` : "";
+  return apiCall(`/manager/reviews${qs}`, { token });
 };

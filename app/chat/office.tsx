@@ -21,15 +21,20 @@ import { ChatThread, MentionUser } from "../../src/components/ChatThread";
 import {
   listOfficeMessages,
   sendOfficeMessage,
+  editOfficeMessage,
   deleteOfficeMessage,
-  markChatRead } from "../../src/services/chat";
+  markOfficeReadReceipt,
+  markChatRead,
+  DeleteScope } from "../../src/services/chat";
 import { chatUnreadStore } from "../../src/services/chatUnread";
+import { uploadFile } from "../../src/services/uploads";
+import { AttachInput } from "../../src/components/ChatThread";
 
 import { getMe } from "../../src/services/api";
 
 import { listUserDirectory } from "../../src/services/users";
 
-import { User } from "../../src/types";
+import { User, ChatAttachment } from "../../src/types";
 
 import { useTheme } from "../../src/theme/ThemeProvider";
 // Pull `@First Last` tokens from the message text and map each to a known
@@ -105,20 +110,51 @@ export default function OfficeChat() {
   }, []);
 
   const sendMessage = useCallback(
-    async (text: string) => {
+    async (text: string, attachments?: ChatAttachment[]) => {
       const token = await AsyncStorage.getItem("token");
       if (!token) throw new Error("Not authenticated");
       const mentions = resolveMentions(text, mentionPeople);
-      return sendOfficeMessage(token, text, mentions);
+      return sendOfficeMessage(token, text, mentions, attachments);
     },
     [mentionPeople]
   );
 
-  const removeMessage = useCallback(async (id: string) => {
+  const editMessage = useCallback(
+    async (id: string, text: string) => {
+      const token = await AsyncStorage.getItem("token");
+      if (!token) throw new Error("Not authenticated");
+      const mentions = resolveMentions(text, mentionPeople);
+      return editOfficeMessage(token, id, text, mentions);
+    },
+    [mentionPeople]
+  );
+
+  const removeMessage = useCallback(async (id: string, scope: DeleteScope) => {
     const token = await AsyncStorage.getItem("token");
     if (!token) throw new Error("Not authenticated");
-    return deleteOfficeMessage(token, id);
+    return deleteOfficeMessage(token, id, scope);
   }, []);
+
+  const markRead = useCallback(() => {
+    AsyncStorage.getItem("token").then((t) => {
+      if (t) markOfficeReadReceipt(t).catch(() => {});
+    });
+  }, []);
+
+  const uploadAttachment = useCallback(
+    async (file: AttachInput): Promise<ChatAttachment> => {
+      const token = await AsyncStorage.getItem("token");
+      if (!token) throw new Error("Not authenticated");
+      const r = await uploadFile(token, file);
+      return {
+        url: r.url,
+        type: (r.mimeType || file.mimeType || "").startsWith("image/") ? "image" : "file",
+        name: r.fileName || file.name,
+        mimeType: r.mimeType || file.mimeType,
+      };
+    },
+    []
+  );
 
   return (
     <SafeAreaView style={styles.safe}>
@@ -141,7 +177,10 @@ export default function OfficeChat() {
         me={me}
         fetchMessages={fetchMessages}
         sendMessage={sendMessage}
+        editMessage={editMessage}
         deleteMessage={removeMessage}
+        markRead={markRead}
+        uploadAttachment={uploadAttachment}
         emptyText="No messages yet. Start the conversation 👋"
         mentionUsers={mentionPeople}
       />

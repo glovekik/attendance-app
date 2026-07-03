@@ -49,9 +49,13 @@ export const attritionReport = (
   });
 
 export const teamProductivityReport = (
-  token: string
+  token: string,
+  userId?: string
 ): Promise<TeamProductivityRow[]> =>
-  apiCall("/manager/reports/team-productivity", { token });
+  apiCall(
+    `/manager/reports/team-productivity${userId ? `?userId=${userId}` : ""}`,
+    { token }
+  );
 
 // ===== XLSX DOWNLOADS =====
 // Returns a blob and suggested filename. On RN we can't trigger a save

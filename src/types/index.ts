@@ -161,6 +161,7 @@ export interface User {
   workPhone?: string;
   joiningDate?: string;
   status?: UserStatus;
+  autoCheckoutQuota?: number;
   profilePictureUrl?: string;
   ledTeamIds?: string[];
   memberOfTeamIds?: string[];
@@ -534,6 +535,7 @@ export interface LeaveRequest {
   halfDayPart?: HalfDayPart;
   attachmentUrl?: string;
   note?: string;
+  decisionNote?: string;
   decidedAt?: string;
   decidedBy?: string;
   createdAt: string;
@@ -564,6 +566,14 @@ export interface AttendanceCorrection {
   requestedAt: string;
 }
 
+export interface ChatAttachment {
+  url: string;
+  type: "image" | "file" | "voice" | "sticker";
+  name?: string;
+  mimeType?: string;
+  durationMs?: number;
+}
+
 export interface ChatMessage {
   id: string;
   userId: string;
@@ -574,7 +584,11 @@ export interface ChatMessage {
   };
   text: string;
   mentions?: string[];
+  attachments?: ChatAttachment[];
   createdAt: string;
+  editedAt?: string | null;
+  deleted?: boolean;
+  readByOthers?: boolean;
 }
 
 export interface Task {

@@ -195,6 +195,30 @@ export default function Holidays() {
     }
   };
 
+  // Delete the holiday currently open in the edit modal.
+  const deleteEditing = () => {
+    if (!editingId) return;
+    const label = name.trim() || "this holiday";
+    if (Platform.OS === "web") {
+      if (typeof window !== "undefined" && window.confirm(`Delete "${label}"?`)) {
+        setModalVisible(false);
+        doDelete(editingId);
+      }
+      return;
+    }
+    Alert.alert("Delete holiday?", label, [
+      { text: "Cancel", style: "cancel" },
+      {
+        text: "Delete",
+        style: "destructive",
+        onPress: () => {
+          setModalVisible(false);
+          doDelete(editingId);
+        },
+      },
+    ]);
+  };
+
   if (loading) {
     return (
       <View style={s.loader}>
@@ -304,35 +328,51 @@ export default function Holidays() {
                   const weekday = d.toLocaleDateString("en-US", {
                     weekday: "short" });
                   return (
-                    <TouchableOpacity
-                      key={h.id}
-                      style={s.row}
-                      onPress={() => isHR && openEdit(h)}
-                      onLongPress={() => askDelete(h)}
-                      activeOpacity={isHR ? 0.85 : 1}
-                    >
-                      <View style={s.dateBox}>
-                        <Text style={s.dayNum}>{day}</Text>
-                        <Text style={s.weekday}>
-                          {weekday}
-                        </Text>
-                      </View>
-                      <View style={{ flex: 1 }}>
-                        <Text style={s.rowName}>{h.name}</Text>
-                        {h.description ? (
-                          <Text style={s.rowDesc}>
-                            {h.description}
-                          </Text>
-                        ) : null}
-                      </View>
+                    <View key={h.id} style={s.row}>
+                      <TouchableOpacity
+                        style={s.rowMain}
+                        onPress={() => isHR && openEdit(h)}
+                        onLongPress={() => askDelete(h)}
+                        activeOpacity={isHR ? 0.85 : 1}
+                      >
+                        <View style={s.dateBox}>
+                          <Text style={s.dayNum}>{day}</Text>
+                          <Text style={s.weekday}>{weekday}</Text>
+                        </View>
+                        <View style={{ flex: 1 }}>
+                          <Text style={s.rowName}>{h.name}</Text>
+                          {h.description ? (
+                            <Text style={s.rowDesc}>{h.description}</Text>
+                          ) : null}
+                        </View>
+                      </TouchableOpacity>
                       {isHR && (
-                        <Ionicons
-                          name="chevron-forward"
-                          size={16}
-                          color={c.textMuted}
-                        />
+                        <>
+                          <TouchableOpacity
+                            style={s.rowIconBtn}
+                            onPress={() => openEdit(h)}
+                            hitSlop={6}
+                          >
+                            <Ionicons
+                              name="create-outline"
+                              size={18}
+                              color={c.textMuted}
+                            />
+                          </TouchableOpacity>
+                          <TouchableOpacity
+                            style={s.rowDeleteBtn}
+                            onPress={() => askDelete(h)}
+                            hitSlop={6}
+                          >
+                            <Ionicons
+                              name="trash-outline"
+                              size={18}
+                              color={c.dangerText}
+                            />
+                          </TouchableOpacity>
+                        </>
                       )}
-                    </TouchableOpacity>
+                    </View>
                   );
                 })}
             </View>
@@ -438,6 +478,20 @@ export default function Holidays() {
                 multiline
               />
 
+              {editingId && (
+                <TouchableOpacity
+                  style={s.deleteLink}
+                  onPress={deleteEditing}
+                >
+                  <Ionicons
+                    name="trash-outline"
+                    size={16}
+                    color={c.dangerText}
+                  />
+                  <Text style={s.deleteLinkText}>Delete this holiday</Text>
+                </TouchableOpacity>
+              )}
+
       </WebModal>
 
     </SafeAreaView>
@@ -488,7 +542,22 @@ const makeStyles = (c: any) => StyleSheet.create({
     marginBottom: 8,
     borderWidth: 1,
     borderColor: c.surfaceBorder,
-    gap: 12 },
+    gap: 8 },
+  rowMain: { flex: 1, flexDirection: "row", alignItems: "center", gap: 12 },
+  rowIconBtn: {
+    width: 34,
+    height: 34,
+    borderRadius: 9,
+    backgroundColor: c.surfaceMuted,
+    alignItems: "center",
+    justifyContent: "center" },
+  rowDeleteBtn: {
+    width: 34,
+    height: 34,
+    borderRadius: 9,
+    backgroundColor: c.dangerBg,
+    alignItems: "center",
+    justifyContent: "center" },
   dateBox: {
     width: 44,
     height: 44,
@@ -517,5 +586,17 @@ const makeStyles = (c: any) => StyleSheet.create({
   modalActions: { flexDirection: "row", gap: 10, marginTop: 22 },
   cancelBtn: { flex: 1, backgroundColor: c.surfaceMuted, padding: 14, borderRadius: 12, alignItems: "center" },
   saveBtn: { flex: 1, backgroundColor: "#16a34a", padding: 14, borderRadius: 12, alignItems: "center" },
-  modalBtnText: { color: c.text, fontWeight: "700" } });
+  modalBtnText: { color: c.text, fontWeight: "700" },
+  deleteLink: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 8,
+    marginTop: 20,
+    paddingVertical: 12,
+    borderRadius: 12,
+    backgroundColor: c.dangerBg,
+    borderWidth: 1,
+    borderColor: c.dangerBg },
+  deleteLinkText: { color: c.dangerText, fontWeight: "800", fontSize: 13 } });
 

@@ -11,7 +11,8 @@ export interface HrAttendanceRow {
     employeeCode?: string;
   };
   date: string;
-  attendanceType?: "OFFICE" | "WFH" | "LEAVE" | "HOLIDAY";
+  attendanceType?: "OFFICE" | "WFH" | "CLIENT" | "LEAVE" | "HOLIDAY";
+  clientAddress?: string | null;
   status: AttendanceStatus;
   isLate?: boolean;
   hoursWorked?: number;

@@ -12,7 +12,10 @@
       "supportsTablet": true,
       "infoPlist": {
         "NSLocationWhenInUseUsageDescription": "We use your location to verify office check-in.",
-        "NSLocationAlwaysAndWhenInUseUsageDescription": "We use your location to verify office check-in."
+        "NSLocationAlwaysAndWhenInUseUsageDescription": "We use your location to verify office check-in.",
+        "NSCameraUsageDescription": "Take photos to share in chat.",
+        "NSMicrophoneUsageDescription": "Record voice messages in chat.",
+        "NSPhotoLibraryUsageDescription": "Attach photos from your library in chat."
       }
     },
     "android": {
@@ -27,7 +30,10 @@
       "softwareKeyboardLayoutMode": "resize",
       "permissions": [
         "ACCESS_COARSE_LOCATION",
-        "ACCESS_FINE_LOCATION"
+        "ACCESS_FINE_LOCATION",
+        "CAMERA",
+        "RECORD_AUDIO",
+        "READ_MEDIA_IMAGES"
       ],
       "package": "com.lovekik.attendanceapp",
       "googleServicesFile": "./google-services.json"
@@ -73,6 +79,19 @@
           "android": {
             "usesCleartextTraffic": false
           }
+        }
+      ],
+      [
+        "expo-audio",
+        {
+          "microphonePermission": "Record voice messages in chat."
+        }
+      ],
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "Attach photos from your library in chat.",
+          "cameraPermission": "Take photos to share in chat."
         }
       ]
     ],

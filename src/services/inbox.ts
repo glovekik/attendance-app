@@ -25,3 +25,14 @@ export const markAllRead = (
   token: string
 ): Promise<{ updated: number }> =>
   apiCall("/notifications/read-all", { method: "POST", token });
+
+export const deleteNotification = (
+  token: string,
+  id: string
+): Promise<{ message: string }> =>
+  apiCall(`/notifications/${id}`, { method: "DELETE", token });
+
+export const clearAllNotifications = (
+  token: string
+): Promise<{ deleted: number }> =>
+  apiCall("/notifications", { method: "DELETE", token });
