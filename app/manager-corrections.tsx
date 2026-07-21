@@ -23,6 +23,7 @@ import {
   decideManagerCorrection,
   bulkDecideManagerCorrections } from "../src/services/manager";
 import { AttendanceCorrection } from "../src/types";
+import { notify } from "../src/utils/confirm";
 
 import { useTheme } from "../src/theme/ThemeProvider";
 const fmtTime = (iso?: string | null): string => {
@@ -32,6 +33,18 @@ const fmtTime = (iso?: string | null): string => {
   } catch {
     return iso;
   }
+};
+
+// When the request was raised — date + time.
+const fmtRaised = (iso?: string | null): string => {
+  if (!iso) return "—";
+  const d = new Date(iso);
+  if (isNaN(d.getTime())) return "—";
+  return (
+    d.toLocaleDateString([], { day: "numeric", month: "short", year: "numeric" }) +
+    ", " +
+    d.toLocaleTimeString([], { hour: "numeric", minute: "2-digit", hour12: true })
+  );
 };
 
 export default function ManagerCorrections() {
@@ -65,7 +78,7 @@ export default function ManagerCorrections() {
       const valid = new Set(list.map((i) => i.id));
       setSelectedIds((prev) => new Set([...prev].filter((id) => valid.has(id))));
     } catch (err: any) {
-      Alert.alert(
+      notify(
         "Couldn't load corrections",
         err?.message || "Pull down to retry."
       );
@@ -100,7 +113,7 @@ export default function ManagerCorrections() {
   const onDecide = async (action: "APPROVE" | "REJECT") => {
     if (!selected) return;
     if (action === "REJECT" && !note.trim()) {
-      Alert.alert("Please add a note explaining the rejection");
+      notify("Please add a note explaining the rejection");
       return;
     }
     setActing(action);
@@ -117,7 +130,7 @@ export default function ManagerCorrections() {
       setItems((prev) => prev.filter((x) => x.id !== selected.id));
       close();
     } catch (err: any) {
-      Alert.alert(
+      notify(
         action === "APPROVE" ? "Approve failed" : "Reject failed",
         err?.message || ""
       );
@@ -174,15 +187,15 @@ export default function ManagerCorrections() {
       setItems((prev) => prev.filter((x) => !ids.has(x.id)));
       setSelectedIds(new Set());
       if (res.failed === 0) {
-        Alert.alert(
+        notify(
           "Done",
           `Approved ${res.succeeded} correction${res.succeeded === 1 ? "" : "s"}`
         );
       } else {
-        Alert.alert("Partly done", `Approved ${res.succeeded}, ${res.failed} failed`);
+        notify("Partly done", `Approved ${res.succeeded}, ${res.failed} failed`);
       }
     } catch (err: any) {
-      Alert.alert("Bulk approve failed", err?.message || "");
+      notify("Bulk approve failed", err?.message || "");
     } finally {
       setBulkBusy(false);
     }
@@ -313,8 +326,7 @@ export default function ManagerCorrections() {
             )}
             <View style={styles.cardFooter}>
               <Text style={styles.meta}>
-                Requested{" "}
-                {new Date(item.requestedAt).toLocaleDateString()}
+                Raised {fmtRaised(item.requestedAt)}
               </Text>
               <Ionicons
                 name="chevron-forward"
@@ -371,6 +383,22 @@ export default function ManagerCorrections() {
                   </View>
                 )}
                 <View style={styles.detailRow}>
+                  <Text style={styles.detailValueLabel}>Raised on</Text>
+                  <Text style={styles.detailValue}>
+                    {fmtRaised(selected.requestedAt)}
+                  </Text>
+                </View>
+                {!!selected.requestedCheckIn && (
+                  <View style={styles.detailRow}>
+                    <Text style={styles.detailValueLabel}>
+                      Requested check-in
+                    </Text>
+                    <Text style={styles.detailValue}>
+                      {fmtTime(selected.requestedCheckIn)}
+                    </Text>
+                  </View>
+                )}
+                <View style={styles.detailRow}>
                   <Text style={styles.detailValueLabel}>
                     Requested check-out
                   </Text>
@@ -378,11 +406,27 @@ export default function ManagerCorrections() {
                     {fmtTime(selected.requestedCheckOut)}
                   </Text>
                 </View>
+                {!!selected.requestedAttendanceType && (
+                  <View style={styles.detailRow}>
+                    <Text style={styles.detailValueLabel}>Requested type</Text>
+                    <Text style={styles.detailValue}>
+                      {selected.requestedAttendanceType}
+                    </Text>
+                  </View>
+                )}
                 {!!selected.reason && (
                   <>
                     <Text style={styles.detailLabel}>Reason</Text>
                     <Text style={styles.detailBody}>
                       {selected.reason}
+                    </Text>
+                  </>
+                )}
+                {!!selected.requestedWorkNotes?.trim() && (
+                  <>
+                    <Text style={styles.detailLabel}>Work notes</Text>
+                    <Text style={styles.detailBody}>
+                      {selected.requestedWorkNotes.trim()}
                     </Text>
                   </>
                 )}

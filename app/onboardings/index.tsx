@@ -29,6 +29,8 @@ import { useTheme } from "../../src/theme/ThemeProvider";
 
 import { WebModal, ModalActions } from "../../src/components/WebModal";
 
+import { Avatar } from "../../src/components/Avatar";
+
 export default function HROnboardings() {
 
   const router = useRouter();
@@ -181,13 +183,14 @@ export default function HROnboardings() {
               }
               activeOpacity={0.85}
             >
-              <View style={s.avatar}>
-                <Text style={s.avatarText}>
-                  {(o.user?.name || userName(o.userId))
-                    .charAt(0)
-                    .toUpperCase()}
-                </Text>
-              </View>
+              <Avatar
+                name={o.user?.name || userName(o.userId)}
+                uri={o.user?.profilePictureUrl}
+                size={36}
+                fontSize={14}
+                bg={c.accent}
+                fg="#fff"
+              />
               <View style={{ flex: 1 }}>
                 <Text style={s.cardName}>
                   {o.user?.name || userName(o.userId)}
@@ -260,11 +263,14 @@ export default function HROnboardings() {
               onPress={() => startOnboarding(u.id)}
               disabled={saving}
             >
-              <View style={s.avatar}>
-                <Text style={s.avatarText}>
-                  {u.name.charAt(0).toUpperCase()}
-                </Text>
-              </View>
+              <Avatar
+                name={u.name}
+                uri={u.profilePictureUrl}
+                size={36}
+                fontSize={14}
+                bg={c.accent}
+                fg="#fff"
+              />
               <View style={{ flex: 1 }}>
                 <Text style={s.cardName}>{u.name}</Text>
                 <Text style={s.cardMeta}>{u.email}</Text>
@@ -299,8 +305,6 @@ const makeStyles = (c: any) => StyleSheet.create({
   emptySub: { color: c.textMuted, fontSize: 13, marginTop: 6, textAlign: "center" },
 
   card: { flexDirection: "row", alignItems: "center", backgroundColor: c.surface, borderRadius: 14, padding: 12, marginBottom: 8, borderWidth: 1, borderColor: c.surfaceBorder, gap: 10 },
-  avatar: { width: 36, height: 36, borderRadius: 18, backgroundColor: c.accent, justifyContent: "center", alignItems: "center" },
-  avatarText: { color: "#fff", fontWeight: "700", fontSize: 14 },
   cardName: { color: c.text, fontSize: 14, fontWeight: "700" },
   cardMeta: { color: c.textMuted, fontSize: 11, marginTop: 2 },
 

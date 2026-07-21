@@ -20,6 +20,8 @@ import {
   Image,
   ViewStyle,
 } from "react-native";
+
+import { mediaUrl } from "../utils/media";
 import { Ionicons } from "@expo/vector-icons";
 
 import { useTheme } from "../theme/ThemeProvider";
@@ -446,10 +448,11 @@ export const Avatar = ({
           },
         ]}
       >
-        {src ? (
+        {mediaUrl(src) ? (
           <Image
-            source={{ uri: src }}
+            source={{ uri: mediaUrl(src) }}
             style={{ width: s, height: s, borderRadius: s / 2 }}
+            resizeMode="cover"
           />
         ) : (
           <Text style={[styles.avatarText, { fontSize: fs }]}>{getInitials()}</Text>

@@ -211,6 +211,7 @@ export interface Comment {
     id: string;
     name: string;
     email: string;
+    profilePictureUrl?: string;
   };
   text: string;
   createdAt: string;
@@ -276,6 +277,7 @@ export interface Onboarding {
     id: string;
     name: string;
     email: string;
+    profilePictureUrl?: string;
   };
   status: OnboardingStatus;
   documents: OnboardingDocument[];
@@ -316,6 +318,7 @@ export interface ExitRequest {
     id: string;
     name: string;
     email: string;
+    profilePictureUrl?: string;
   };
   status: ExitStatus;
   reason: string;
@@ -382,6 +385,7 @@ export interface Payslip {
     id: string;
     name: string;
     email: string;
+    profilePictureUrl?: string;
     employeeCode?: string;
   };
   year: number;
@@ -523,6 +527,7 @@ export interface LeaveRequest {
     id: string;
     name: string;
     email: string;
+    profilePictureUrl?: string;
   };
   leaveTypeCode: string;
   leaveType?: LeaveType;
@@ -550,6 +555,7 @@ export interface AttendanceCorrection {
     id: string;
     name: string;
     email: string;
+    profilePictureUrl?: string;
   };
   // Requested changes — every field optional. Older records only have
   // requestedCheckOut populated; newer ones can carry the full set.
@@ -581,6 +587,7 @@ export interface ChatMessage {
     id: string;
     name: string;
     email: string;
+    profilePictureUrl?: string;
   };
   text: string;
   mentions?: string[];
@@ -764,7 +771,7 @@ export const PAYMENT_MODES: PaymentMode[] = [
 export interface Reimbursement {
   id: string;
   userId: string;
-  user?: { id: string; name: string; email: string };
+  user?: { id: string; name: string; email: string; profilePictureUrl?: string };
   title: string;
   category: string;
   expenseDate: string;

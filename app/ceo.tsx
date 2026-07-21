@@ -7,8 +7,7 @@ import {
   ScrollView,
   TouchableOpacity,
   ActivityIndicator,
-  RefreshControl,
-  Alert } from "react-native";
+  RefreshControl } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 
 import AsyncStorage from "@react-native-async-storage/async-storage";
@@ -20,6 +19,7 @@ import { getMe } from "../src/services/api";
 import { DashboardHR, User } from "../src/types";
 import { KpiCard } from "../src/components/KpiCard";
 import { BottomTabBar } from "../src/components/BottomTabBar";
+import { notify } from "../src/utils/confirm";
 
 import { useTheme } from "../src/theme/ThemeProvider";
 
@@ -53,7 +53,7 @@ export default function CEOConsole() {
       setDash(d);
       setMe(meRes);
     } catch (err: any) {
-      Alert.alert(
+      notify(
         "Couldn't load CEO console",
         err?.message || "Pull down to retry."
       );

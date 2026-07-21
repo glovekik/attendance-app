@@ -23,6 +23,7 @@ import {
   ClientVisit,
 } from "../src/services/clientLocation";
 import { useTheme } from "../src/theme/ThemeProvider";
+import { Avatar } from "../src/components/Avatar";
 
 const fmtDate = (s?: string) => {
   if (!s) return "—";
@@ -195,11 +196,11 @@ export default function ClientVisits() {
           filtered.map((r) => (
             <View key={r.id} style={styles.card}>
               <View style={styles.cardTop}>
-                <View style={styles.avatar}>
-                  <Text style={styles.avatarText}>
-                    {(r.user?.name || "?").charAt(0).toUpperCase()}
-                  </Text>
-                </View>
+                <Avatar
+                  name={r.user?.name}
+                  uri={(r.user as any)?.profilePictureUrl}
+                  size={40}
+                />
                 <View style={{ flex: 1 }}>
                   <Text style={styles.name} numberOfLines={1}>
                     {r.user?.name || "Unknown"}
@@ -326,15 +327,6 @@ const makeStyles = (c: any) =>
       elevation: 1,
     },
     cardTop: { flexDirection: "row", alignItems: "center", gap: 12 },
-    avatar: {
-      width: 40,
-      height: 40,
-      borderRadius: 20,
-      backgroundColor: c.accentSoft,
-      alignItems: "center",
-      justifyContent: "center",
-    },
-    avatarText: { color: c.accentText, fontSize: 16, fontWeight: "800" },
     name: { color: c.text, fontSize: 14, fontWeight: "800" },
     when: { color: c.textMuted, fontSize: 12, marginTop: 2 },
     mapBtn: {

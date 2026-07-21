@@ -24,7 +24,12 @@ import {
   checkOut,
   getToday,
   getMe,
+  getUnfinished,
+  getHistory,
+  UnfinishedRecord,
 } from "../src/services/api";
+import { listHolidays } from "../src/services/holidays";
+import { AttendanceCalendar } from "../src/components/AttendanceCalendar";
 import { getMyTasks } from "../src/services/tasks";
 import { listTodos } from "../src/services/todos";
 import { dateToYMD } from "../src/components/WebDateField";
@@ -70,6 +75,9 @@ export default function Attendance() {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [todayAtt, setTodayAtt] = useState<any>(null);
+  // This month's attendance for the embedded calendar.
+  const [monthRows, setMonthRows] = useState<any[]>([]);
+  const [holidayMap, setHolidayMap] = useState<Record<string, string>>({});
   const [me, setMe] = useState<User | null>(null);
   const [attType, setAttType] = useState<AttType>("OFFICE");
   const [workNotes, setWorkNotes] = useState("");
@@ -87,6 +95,12 @@ export default function Attendance() {
   const [clientAddress, setClientAddress] = useState("");
   const [clientSubmitting, setClientSubmitting] = useState(false);
 
+  // "Unfinished previous day" prompt: previous days the user forgot to check
+  // out of. Shown both proactively on open and when a check-in is blocked.
+  // Resolved by sending a correction request (see openCorrectionFor).
+  const [blockRecords, setBlockRecords] =
+    useState<UnfinishedRecord[] | null>(null);
+
   const load = useCallback(async () => {
     try {
       const token = await AsyncStorage.getItem("token");
@@ -94,14 +108,26 @@ export default function Attendance() {
         router.replace("/login");
         return;
       }
-      const [t, meRes] = await Promise.all([
-        getToday(token, dateToYMD(new Date())),
+      const today = dateToYMD(new Date());
+      const monthPrefix = today.slice(0, 7); // YYYY-MM
+      const [t, meRes, unfinished, history, holidays] = await Promise.all([
+        getToday(token, today),
         getMe(token).catch(() => null),
+        getUnfinished(token, today).catch(() => [] as UnfinishedRecord[]),
+        getHistory(token, { limit: 200 }).catch(() => [] as any[]),
+        listHolidays(token, { year: Number(monthPrefix.slice(0, 4)) }).catch(() => [] as any[]),
       ]);
       setTodayAtt(t || null);
       setMe(meRes);
       if (t?.attendanceType) setAttType(t.attendanceType);
       if (t?.workNotes) setWorkNotes(t.workNotes);
+      // Proactively prompt if a previous day was left un-checked-out.
+      setBlockRecords(unfinished.length ? unfinished : null);
+      // This month's rows for the calendar.
+      setMonthRows((history || []).filter((r: any) => (r?.date || "").startsWith(monthPrefix)));
+      const hmap: Record<string, string> = {};
+      (holidays || []).forEach((h: any) => { if (h?.date) hmap[h.date] = h.name || "Holiday"; });
+      setHolidayMap(hmap);
     } catch (err: any) {
       notify("Couldn't load attendance", err?.message || "");
     } finally {
@@ -174,7 +200,11 @@ export default function Attendance() {
       await checkIn(token, payload);
       await load();
     } catch (err: any) {
-      notify("Check-in failed", err?.message || "");
+      if (err?.code === "PREV_DAY_INCOMPLETE") {
+        setBlockRecords(err.detail?.records || []);
+      } else {
+        notify("Check-in failed", err?.message || "");
+      }
     } finally {
       setActing(false);
     }
@@ -269,10 +299,34 @@ export default function Attendance() {
       );
       await load();
     } catch (err: any) {
-      notify("Check-in failed", err?.message || "");
+      if (err?.code === "PREV_DAY_INCOMPLETE") {
+        setClientOpen(false);
+        setBlockRecords(err.detail?.records || []);
+      } else {
+        notify("Check-in failed", err?.message || "");
+      }
     } finally {
       setClientSubmitting(false);
     }
+  };
+
+  // Send the user to the correction form for the earliest forgotten day,
+  // pre-filled for that record so they only need to add the real check-out
+  // time and a reason. Filing the request clears the check-in gate.
+  const sendCorrectionForUnfinished = () => {
+    const rec = (blockRecords || [])[0];
+    if (!rec) return;
+    setBlockRecords(null);
+    router.push({
+      pathname: "/history",
+      params: {
+        correctId: rec.id,
+        correctDate: rec.date,
+        correctCheckIn: rec.checkIn || "",
+        correctCheckOut: rec.checkOut || "",
+        correctType: rec.attendanceType || "OFFICE",
+      },
+    } as any);
   };
 
   const pullFromTasks = async () => {
@@ -507,32 +561,6 @@ export default function Attendance() {
           </View>
         </View>
 
-        {typeof me?.autoCheckoutQuota === "number" && (
-          <View
-            style={{
-              flexDirection: "row",
-              alignItems: "center",
-              gap: 8,
-              backgroundColor: (me.autoCheckoutQuota <= 1 ? c.dangerBg : c.surfaceMuted),
-              borderRadius: 12,
-              paddingHorizontal: 12,
-              paddingVertical: 10,
-              marginBottom: 12,
-            }}
-          >
-            <Ionicons
-              name="time-outline"
-              size={16}
-              color={me.autoCheckoutQuota <= 1 ? c.dangerText : c.textMuted}
-            />
-            <Text style={{ color: c.text, fontSize: 12, flex: 1 }}>
-              Auto check-outs left this month:{" "}
-              <Text style={{ fontWeight: "800" }}>{me.autoCheckoutQuota}/5</Text>
-              {"  "}— forget to check out and one is used at 11:59 PM.
-            </Text>
-          </View>
-        )}
-
         {/* TYPE PICKER */}
         {!completed && (
           <>
@@ -715,37 +743,25 @@ export default function Attendance() {
           </TouchableOpacity>
         )}
 
-        {/* QUICK LINK to history */}
-        <Pressable
-          onPress={() => router.push("/history")}
-          style={({ hovered, pressed }: any) => [
-            styles.historyLink,
-            {
-              backgroundColor: c.surface,
-              borderColor: c.surfaceBorder,
-              shadowColor: c.shadow,
-            },
-            Platform.OS === "web" && hovered && {
-              borderColor: c.accent,
-              transform: [{ scale: 1.01 }],
-            },
-            pressed && { opacity: 0.85 },
+        {/* THIS MONTH'S CALENDAR (replaces the old history link) */}
+        <View
+          style={[
+            styles.calCard,
+            { backgroundColor: c.surface, borderColor: c.surfaceBorder, shadowColor: c.shadow },
           ]}
         >
-          <View style={{ flex: 1 }}>
-            <Text style={[styles.historyTitle, { color: c.text }]}>
-              Attendance history
-            </Text>
-            <Text style={[styles.historySub, { color: c.textMuted }]}>
-              See past months, request corrections
-            </Text>
+          <View style={styles.calHead}>
+            <Text style={[styles.calTitle, { color: c.text }]}>This month</Text>
+            <Pressable onPress={() => router.push("/history")} hitSlop={8}>
+              <Text style={[styles.calLink, { color: c.accent }]}>Full history & corrections ›</Text>
+            </Pressable>
           </View>
-          <Ionicons
-            name="chevron-forward"
-            size={20}
-            color={c.textMuted}
+          <AttendanceCalendar
+            monthStr={dateToYMD(new Date()).slice(0, 7)}
+            rows={monthRows}
+            holidayMap={holidayMap}
           />
-        </Pressable>
+        </View>
 
         {/* QUICK LINK to leaves */}
         <Pressable
@@ -844,6 +860,58 @@ export default function Attendance() {
         <Text style={[styles.locHelp, { color: c.textMuted }]}>
           You'll check in here as your attendance for today. Add your work
           notes when you check out.
+        </Text>
+      </WebModal>
+
+      {/* FORGOT TO CHECK OUT — send a correction request before checking in */}
+      <WebModal
+        visible={!!blockRecords}
+        onClose={() => setBlockRecords(null)}
+        title="You forgot to check out"
+        subtitle="Send a correction request to fix it"
+        size="sm"
+        footer={
+          <ModalActions align="spread">
+            <TouchableOpacity
+              style={[styles.modalBtn, styles.modalBtnGhost]}
+              onPress={() => setBlockRecords(null)}
+            >
+              <Text style={[styles.modalBtnText, { color: c.text }]}>
+                Not now
+              </Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[styles.modalBtn, { backgroundColor: c.accent }]}
+              onPress={sendCorrectionForUnfinished}
+            >
+              <Text style={[styles.modalBtnText, { color: "#fff" }]}>
+                Send correction request
+              </Text>
+            </TouchableOpacity>
+          </ModalActions>
+        }
+      >
+        <View
+          style={[
+            styles.locBox,
+            { backgroundColor: c.surfaceMuted, borderColor: c.surfaceBorder },
+          ]}
+        >
+          <Ionicons name="alert-circle" size={20} color="#c2410c" />
+          <View style={{ flex: 1 }}>
+            <Text style={[styles.locAddress, { color: c.text }]}>
+              You didn't check out on{" "}
+              {(blockRecords || []).map((r) => r.date).join(", ")}
+            </Text>
+            <Text style={[styles.locCoords, { color: c.textMuted }]}>
+              It was auto-closed at 11:59 PM. Send a correction request with the
+              time you actually left — you'll need to do this before you can
+              check in today.
+            </Text>
+          </View>
+        </View>
+        <Text style={[styles.locHelp, { color: c.textMuted }]}>
+          Your manager or HR will review and approve the corrected check-out.
         </Text>
       </WebModal>
 
@@ -1028,6 +1096,25 @@ const makeStyles = (c: any, isDesktop: boolean) =>
       textAlign: "center",
       lineHeight: 20,
     },
+
+    calCard: {
+      borderRadius: 18,
+      borderWidth: 1,
+      padding: isDesktop ? 18 : 14,
+      marginTop: 16,
+      shadowOpacity: 1,
+      shadowRadius: 12,
+      shadowOffset: { width: 0, height: 4 },
+      elevation: 2,
+    },
+    calHead: {
+      flexDirection: "row",
+      alignItems: "center",
+      justifyContent: "space-between",
+      marginBottom: 12,
+    },
+    calTitle: { fontSize: isDesktop ? 16 : 15, fontWeight: "800" },
+    calLink: { fontSize: 12.5, fontWeight: "800" },
 
     historyLink: {
       flexDirection: "row",

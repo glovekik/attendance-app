@@ -17,6 +17,7 @@ import { useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 
 import { useTheme } from "../src/theme/ThemeProvider";
+import { Avatar } from "../src/components/Avatar";
 import {
   listTeamLeaveBalances,
   TeamLeaveBalanceRow } from "../src/services/managerTeam";
@@ -134,11 +135,13 @@ export default function ManagerLeaveBalances() {
         renderItem={({ item }) => (
           <View style={styles.card}>
             <View style={styles.cardHeader}>
-              <View style={styles.avatar}>
-                <Text style={styles.avatarText}>
-                  {(item.user.name || "?").charAt(0).toUpperCase()}
-                </Text>
-              </View>
+              <Avatar
+                name={item.user.name}
+                uri={item.user.profilePictureUrl}
+                size={38}
+                bg="#0d9488"
+                fg="#fff"
+              />
               <View style={{ flex: 1 }}>
                 <Text style={styles.cardName}>{item.user.name}</Text>
                 <Text style={styles.cardSub}>
@@ -220,14 +223,6 @@ const makeStyles = (c: any) => StyleSheet.create({
     borderColor: c.surfaceBorder,
     gap: 10 },
   cardHeader: { flexDirection: "row", alignItems: "center", gap: 12 },
-  avatar: {
-    width: 38,
-    height: 38,
-    borderRadius: 19,
-    backgroundColor: "#0d9488",
-    alignItems: "center",
-    justifyContent: "center" },
-  avatarText: { color: "#fff", fontWeight: "700" },
   cardName: { color: c.text, fontSize: 14, fontWeight: "700" },
   cardSub: { color: c.textMuted, fontSize: 11, marginTop: 2 },
   muted: { color: c.textMuted, fontSize: 12, fontStyle: "italic" },

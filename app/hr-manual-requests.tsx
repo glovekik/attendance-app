@@ -18,6 +18,7 @@ import { useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 
 import { useTheme } from "../src/theme/ThemeProvider";
+import { notify } from "../src/utils/confirm";
 import { WebModal, ModalActions } from "../src/components/WebModal";
 import {
   listHrManualRequests,
@@ -79,7 +80,7 @@ export default function HRManualRequests() {
       setItems(data || []);
       setSelectedIds(new Set());
     } catch (err: any) {
-      Alert.alert(
+      notify(
         "Couldn't load manual requests",
         err?.message || "Pull down to retry."
       );
@@ -101,7 +102,7 @@ export default function HRManualRequests() {
   const onDecide = async (action: "APPROVE" | "REJECT") => {
     if (!selected) return;
     if (action === "REJECT" && !note.trim()) {
-      Alert.alert("Please add a note explaining the rejection");
+      notify("Please add a note explaining the rejection");
       return;
     }
     setActing(action);
@@ -115,7 +116,7 @@ export default function HRManualRequests() {
       setSelected(null);
       setNote("");
     } catch (err: any) {
-      Alert.alert(
+      notify(
         action === "APPROVE" ? "Approve failed" : "Reject failed",
         err?.message || ""
       );
@@ -176,13 +177,13 @@ export default function HRManualRequests() {
       setItems((prev) => prev.filter((x) => !approvedIds.has(x.id)));
       setSelectedIds(new Set());
       if (failed > 0) {
-        Alert.alert(
+        notify(
           "Some approvals failed",
           `Approved ${approvedIds.size}, ${failed} failed.`
         );
       }
     } catch (err: any) {
-      Alert.alert("Bulk approve failed", err?.message || "");
+      notify("Bulk approve failed", err?.message || "");
     } finally {
       setBulkBusy(false);
     }

@@ -1,6 +1,7 @@
 import React, {
   useEffect,
   useMemo,
+  useRef,
   useState,
 } from "react";
 
@@ -19,7 +20,7 @@ import { WebModal, ModalActions } from "../src/components/WebModal";
 
 import AsyncStorage from "@react-native-async-storage/async-storage";
 
-import { useRouter } from "expo-router";
+import { useRouter, useLocalSearchParams } from "expo-router";
 
 import { Ionicons } from "@expo/vector-icons";
 
@@ -48,15 +49,27 @@ import { listHolidays } from "../src/services/holidays";
 
 import { AttendanceCorrection, User, hasRole } from "../src/types";
 import { useTheme } from "../src/theme/ThemeProvider";
+import { ATT } from "../src/theme/attendanceColors";
 
 const isWeb = Platform.OS === "web";
 
 export default function History() {
 
   const router = useRouter();
+  const params = useLocalSearchParams<{
+    correctId?: string;
+    correctDate?: string;
+    correctCheckIn?: string;
+    correctCheckOut?: string;
+    correctType?: string;
+  }>();
   const { theme } = useTheme();
   const c = theme.colors;
   const styles = useMemo(() => makeStyles(c), [c]);
+
+  // When opened from the attendance screen's "forgot to check out" prompt,
+  // auto-open the correction form for that day, pre-filled for its record.
+  const correctionDeepLinkDone = useRef(false);
 
   const [loading, setLoading] =
     useState(true);
@@ -177,6 +190,18 @@ export default function History() {
       year: "numeric",
     });
 
+  // When a correction request was raised — date + time.
+  const formatRaised = (iso?: string | null) => {
+    if (!iso) return "—";
+    const d = new Date(iso);
+    if (isNaN(d.getTime())) return "—";
+    return (
+      d.toLocaleDateString([], { day: "numeric", month: "short", year: "numeric" }) +
+      ", " +
+      d.toLocaleTimeString([], { hour: "numeric", minute: "2-digit", hour12: true })
+    );
+  };
+
   const goPrevMonth = () => {
     if (filterMonth === 1) {
       setFilterYear(filterYear - 1);
@@ -233,12 +258,12 @@ export default function History() {
   // record's own attendanceType (LEAVE / HOLIDAY) and Sundays drive those
   // two colours.
   const DAY_COLORS = {
-    present: "#16a34a",
-    inprogress: c.accent,
+    present: ATT.present,
+    inprogress: ATT.present,
     autoclosed: "#f59e0b",
-    leave: "#7c3aed",
-    holiday: "#64748b",
-    missed: "#dc2626",
+    leave: ATT.leave,
+    holiday: ATT.holiday,
+    missed: ATT.absent,
   };
 
   type DayKind =
@@ -465,6 +490,16 @@ export default function History() {
 
     if (!corrReason.trim()) {
       showError({ message: "Please give a reason" });
+      return;
+    }
+
+    // Work notes are mandatory for working-day corrections (OFFICE / WFH) —
+    // the same "what did you do that day" requirement as a normal check-out.
+    const notesRequired = corrType === "OFFICE" || corrType === "WFH";
+    if (notesRequired && corrNotes.trim().length < 5) {
+      showError({
+        message: "Please add work notes — briefly describe what you did that day.",
+      });
       return;
     }
 
@@ -750,6 +785,43 @@ export default function History() {
   useEffect(() => {
     loadHistory();
   }, []);
+
+  // Deep-link from the "forgot to check out" prompt: open the correction
+  // modal pre-filled for the forgotten day's record (check-out blank so the
+  // user fills in when they actually left).
+  useEffect(() => {
+    if (correctionDeepLinkDone.current) return;
+    const id =
+      typeof params.correctId === "string" ? params.correctId : undefined;
+    if (!id) return;
+    correctionDeepLinkDone.current = true;
+    openCorrection({
+      id,
+      date: typeof params.correctDate === "string" ? params.correctDate : "",
+      checkIn:
+        typeof params.correctCheckIn === "string" && params.correctCheckIn
+          ? params.correctCheckIn
+          : null,
+      // Placeholder 11:59 PM check-out from auto-close — seeded so the user
+      // adjusts it to when they actually left.
+      checkOut:
+        typeof params.correctCheckOut === "string" && params.correctCheckOut
+          ? params.correctCheckOut
+          : null,
+      attendanceType:
+        typeof params.correctType === "string" ? params.correctType : "OFFICE",
+      workNotes: "",
+    });
+    // Clear the params so going back/forward doesn't reopen the modal.
+    router.setParams({
+      correctId: "",
+      correctDate: "",
+      correctCheckIn: "",
+      correctCheckOut: "",
+      correctType: "",
+    } as any);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [params.correctId]);
 
   // Load HR-declared holidays for the year currently shown, merging into
   // the accumulated map so navigating across years keeps prior fetches.
@@ -1099,7 +1171,7 @@ export default function History() {
                 {/* PENDING CORRECTION NOTE (non-HR) */}
                 {!hasRole(me, "HR") && isPending && (
                   <Text style={styles.pendingNote}>
-                    Correction request pending review.
+                    Correction request raised {formatRaised(corr?.requestedAt)} · pending review.
                   </Text>
                 )}
 
@@ -1774,7 +1846,9 @@ export default function History() {
               )}
 
               {/* WORK NOTES */}
-              <Text style={styles.modalLabel}>Work Notes</Text>
+              <Text style={styles.modalLabel}>
+                Work Notes{corrType === "OFFICE" || corrType === "WFH" ? " *" : ""}
+              </Text>
               <TextInput
                 style={styles.input}
                 value={corrNotes}

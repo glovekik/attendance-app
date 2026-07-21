@@ -29,6 +29,7 @@ export interface TeamAttendanceRow {
     name: string;
     email: string;
     employeeCode?: string;
+    profilePictureUrl?: string;
   };
   date: string;
   attendanceType?: "OFFICE" | "WFH" | "CLIENT" | "LEAVE" | "HOLIDAY";
@@ -43,7 +44,7 @@ export interface TeamAttendanceRow {
 }
 
 export interface TeamLeaveBalanceRow {
-  user: { id: string; name: string; email: string; employeeCode?: string };
+  user: { id: string; name: string; email: string; employeeCode?: string; profilePictureUrl?: string };
   balances: LeaveBalance[];
 }
 

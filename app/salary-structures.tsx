@@ -14,6 +14,8 @@ import { SafeAreaView } from "react-native-safe-area-context";
 
 import { WebModal, ModalActions } from "../src/components/WebModal";
 
+import { Avatar } from "../src/components/Avatar";
+
 import AsyncStorage from "@react-native-async-storage/async-storage";
 
 import { useRouter } from "expo-router";
@@ -281,11 +283,14 @@ export default function SalaryStructures() {
             onPress={() => openFor(u)}
             activeOpacity={0.85}
           >
-            <View style={s.avatar}>
-              <Text style={s.avatarText}>
-                {u.name.charAt(0).toUpperCase()}
-              </Text>
-            </View>
+            <Avatar
+              name={u.name}
+              uri={u.profilePictureUrl}
+              size={36}
+              fontSize={14}
+              bg="#0d9488"
+              fg="#fff"
+            />
             <View style={{ flex: 1 }}>
               <Text style={s.cardName}>{u.name}</Text>
               <Text style={s.cardEmail}>{u.email}</Text>
@@ -490,8 +495,6 @@ const makeStyles = (c: any) => StyleSheet.create({
   subtitle: { color: c.textMuted, fontSize: 13, marginTop: 3 },
 
   card: { flexDirection: "row", alignItems: "center", backgroundColor: c.surface, borderRadius: 14, padding: 12, marginBottom: 8, borderWidth: 1, borderColor: c.surfaceBorder, gap: 10 },
-  avatar: { width: 36, height: 36, borderRadius: 18, backgroundColor: "#0d9488", justifyContent: "center", alignItems: "center" },
-  avatarText: { color: "#fff", fontWeight: "700", fontSize: 14 },
   cardName: { color: c.text, fontSize: 14, fontWeight: "700" },
   cardEmail: { color: c.textMuted, fontSize: 11, marginTop: 2 },
 

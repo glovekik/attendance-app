@@ -17,6 +17,7 @@
  */
 
 import type { ColorTokens } from "./tokens";
+import { attColor } from "./attendanceColors";
 
 export interface StatusColor {
   bg: string;
@@ -357,6 +358,7 @@ export const timesheetStatusLabel = (status: string): string => {
 };
 
 // Attendance status — used in hr-attendance / manager-attendance lists.
+// Colors follow the HR legend: attended = teal, leave = blue, no-show = dark.
 export const attendanceStatusColor = (
   status: string | null | undefined,
   c: ColorTokens
@@ -364,13 +366,14 @@ export const attendanceStatusColor = (
   switch (status) {
     case "COMPLETED":
     case "PRESENT":
-      return success(c);
     case "CHECKED_IN":
-      return info(c);
+    case "LATE":
     case "HALF_DAY":
-      return warning(c);
+      return attColor("present");
+    case "ON_LEAVE":
+      return attColor("leave");
     case "ABSENT":
-      return danger(c);
+      return attColor("absent");
     default:
       return neutral(c);
   }

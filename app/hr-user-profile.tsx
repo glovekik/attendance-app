@@ -12,12 +12,13 @@ import {
   Switch,
   FlatList,
   Image,
-  Linking,
   Platform } from "react-native";
 import { KeyboardAvoidingView } from "react-native-keyboard-controller";
 import { SafeAreaView } from "react-native-safe-area-context";
 
 import { WebModal } from "../src/components/WebModal";
+import { Avatar } from "../src/components/Avatar";
+import { openMedia, mediaUrl } from "../src/utils/media";
 
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useRouter, useLocalSearchParams } from "expo-router";
@@ -30,7 +31,7 @@ import {
   ymdToDate } from "../src/components/WebDateField";
 import { DatePickerField } from "../src/components/DatePickerField";
 import { FilePickButton } from "../src/components/FilePickButton";
-import { notify } from "../src/utils/confirm";
+import { confirmAction, notify } from "../src/utils/confirm";
 import {
   getUser,
   updateUser,
@@ -132,7 +133,6 @@ const EMPLOYEE_TYPES: EmployeeType[] = [
   "Consultant",
 ];
 const CERT_LEVELS = [
-  "Graduate",
   "Bachelor",
   "Master",
   "Doctor",
@@ -539,6 +539,8 @@ export default function HrUserProfile() {
   // ===== Editable form state =====
   // Profile picture
   const [profilePictureUrl, setProfilePictureUrl] = useState("");
+  const [photoModalOpen, setPhotoModalOpen] = useState(false);
+  const [savingPhoto, setSavingPhoto] = useState(false);
 
   // Editable basics — these are entered at create time in users.tsx
   // and now also editable here so HR can correct anything later.
@@ -678,7 +680,7 @@ export default function HrUserProfile() {
   const applyFormula = () => {
     const ctc = parseFloat(monthlyCTC) || 0;
     if (ctc <= 0) {
-      Alert.alert(
+      notify(
         "Enter monthly CTC",
         "Type the employee's monthly CTC first, then tap Apply formula."
       );
@@ -809,7 +811,7 @@ export default function HrUserProfile() {
       setWageDuration(c.wageDuration);
       setEmployeeType(c.employeeType);
     } catch (err: any) {
-      Alert.alert("Failed to load profile", err?.message || "");
+      notify("Failed to load profile", err?.message || "");
     } finally {
       setLoading(false);
     }
@@ -911,28 +913,30 @@ export default function HrUserProfile() {
         prev.map((r) => (r.category === category ? row : r))
       );
     } catch (err: any) {
-      Alert.alert("Verify failed", err?.message || "");
+      notify("Verify failed", err?.message || "");
     }
   };
 
-  const deleteSubmittedDoc = (doc: EmployeeDocument) => {
+  const deleteSubmittedDoc = async (doc: EmployeeDocument) => {
     if (!id) return;
-    Alert.alert("Delete document?", doc.fileName, [
-      { text: "Cancel", style: "cancel" },
-      {
-        text: "Delete",
-        style: "destructive",
-        onPress: async () => {
-          try {
-            const token = await AsyncStorage.getItem("token");
-            if (!token) return;
-            await deleteUserDocument(token, id as string, doc.id);
-            setSubmittedDocs((prev) => prev.filter((d) => d.id !== doc.id));
-          } catch (err: any) {
-            Alert.alert("Delete failed", err?.message || "");
-          }
-        } },
-    ]);
+    if (
+      await confirmAction({
+        title: "Delete document?",
+        message: doc.fileName,
+        confirmLabel: "Delete",
+        cancelLabel: "Cancel",
+        destructive: true,
+      })
+    ) {
+      try {
+        const token = await AsyncStorage.getItem("token");
+        if (!token) return;
+        await deleteUserDocument(token, id as string, doc.id);
+        setSubmittedDocs((prev) => prev.filter((d) => d.id !== doc.id));
+      } catch (err: any) {
+        notify("Delete failed", err?.message || "");
+      }
+    }
   };
 
   // Load assigned + available assets when the Assets tab is opened.
@@ -971,7 +975,7 @@ export default function HrUserProfile() {
       await hrAssignAsset(token, assetId, { userId: id as string });
       await loadAssets();
     } catch (err: any) {
-      Alert.alert("Assign failed", err?.message || "");
+      notify("Assign failed", err?.message || "");
     } finally {
       setAssetMutating(false);
     }
@@ -979,27 +983,38 @@ export default function HrUserProfile() {
 
   const onReturnAsset = async (assetId: string) => {
     if (assetMutating) return;
+    const doReturn = async () => {
+      try {
+        setAssetMutating(true);
+        const token = await AsyncStorage.getItem("token");
+        if (!token) return;
+        await hrReturnAsset(token, assetId, { status: "AVAILABLE" });
+        await loadAssets();
+      } catch (err: any) {
+        const msg = err?.message || "Please try again.";
+        if (Platform.OS === "web") window.alert(`Return failed\n\n${msg}`);
+        else Alert.alert("Return failed", msg);
+      } finally {
+        setAssetMutating(false);
+      }
+    };
+    // RN's Alert.alert button callbacks don't fire on web (it degrades to a
+    // no-button window.alert), so use window.confirm there and Alert natively.
+    if (Platform.OS === "web") {
+      const ok =
+        typeof window !== "undefined" &&
+        window.confirm(
+          "Return asset?\n\nThis marks the asset as AVAILABLE for reassignment."
+        );
+      if (ok) await doReturn();
+      return;
+    }
     Alert.alert(
       "Return asset?",
       "This marks the asset as AVAILABLE for reassignment.",
       [
         { text: "Cancel", style: "cancel" },
-        {
-          text: "Return",
-          onPress: async () => {
-            try {
-              setAssetMutating(true);
-              const token = await AsyncStorage.getItem("token");
-              if (!token) return;
-              await hrReturnAsset(token, assetId, {
-                status: "AVAILABLE" });
-              await loadAssets();
-            } catch (err: any) {
-              Alert.alert("Return failed", err?.message || "");
-            } finally {
-              setAssetMutating(false);
-            }
-          } },
+        { text: "Return", onPress: doReturn },
       ]
     );
   };
@@ -1047,7 +1062,7 @@ export default function HrUserProfile() {
     };
     const basic = n(salBasic);
     if (basic <= 0) {
-      Alert.alert(
+      notify(
         "Basic required",
         "Enter the Basic salary (in INR) before saving."
       );
@@ -1087,9 +1102,9 @@ export default function HrUserProfile() {
         employeeInsurance: resolve(salEmployeeInsurance, pctEmployeeIns),
         professionalTax: n(salProfTax),
         tds: n(salTds) });
-      Alert.alert("Salary saved", "Structure stored for next payroll run.");
+      notify("Salary saved", "Structure stored for next payroll run.");
     } catch (err: any) {
-      Alert.alert("Save failed", err?.message || "");
+      notify("Save failed", err?.message || "");
     } finally {
       setSavingSalary(false);
     }
@@ -1180,7 +1195,9 @@ export default function HrUserProfile() {
       workPhone: opt(editableWorkPhone),
       joiningDate: opt(editableJoiningDate),
       status: editableStatus,
-      profilePictureUrl: opt(profilePictureUrl),
+      // Send "" (not undefined) when cleared so the backend actually removes
+      // it — opt() would drop the field and leave the old photo in place.
+      profilePictureUrl: profilePictureUrl.trim() || "",
       departmentId: departmentId || undefined,
       reportingManagerId: reportingManagerId || undefined,
       projectManagerIds:
@@ -1205,6 +1222,25 @@ export default function HrUserProfile() {
       notify("Save failed", err?.message || "");
     } finally {
       setSaving(false);
+    }
+  };
+
+  // Photo actions persist on their own (like a social-media avatar) rather
+  // than waiting for the whole-profile Save — a partial update touching only
+  // profilePictureUrl. Passing "" clears it (the backend maps ""→null).
+  const savePhoto = async (url: string) => {
+    if (savingPhoto) return;
+    setSavingPhoto(true);
+    try {
+      const token = await AsyncStorage.getItem("token");
+      if (!token || !id) return;
+      await updateUser(token, id, { profilePictureUrl: url || "" });
+      setProfilePictureUrl(url);
+      notify(url ? "Photo updated" : "Photo removed");
+    } catch (err: any) {
+      notify("Couldn't update photo", err?.message || "");
+    } finally {
+      setSavingPhoto(false);
     }
   };
 
@@ -1339,17 +1375,6 @@ export default function HrUserProfile() {
       icon: "key-outline",
       onPress: openSetPassword,
     },
-    ...(profilePictureUrl
-      ? [
-          {
-            key: "rmphoto",
-            label: "Remove photo",
-            icon: "trash-outline" as const,
-            danger: true,
-            onPress: () => setProfilePictureUrl(""),
-          },
-        ]
-      : []),
   ];
 
   // ----- Derived header values -----
@@ -1376,11 +1401,15 @@ export default function HrUserProfile() {
   const ProfileHeader = () => (
     <View style={styles.headCard}>
       <View style={styles.headTop}>
-        <View style={styles.headAvatarWrap}>
+        <TouchableOpacity
+          style={styles.headAvatarWrap}
+          activeOpacity={0.85}
+          onPress={() => setPhotoModalOpen(true)}
+        >
           <View style={styles.headAvatar}>
             {profilePictureUrl ? (
               <Image
-                source={{ uri: profilePictureUrl }}
+                source={{ uri: mediaUrl(profilePictureUrl) }}
                 style={styles.headAvatarImg}
                 resizeMode="cover"
               />
@@ -1388,15 +1417,11 @@ export default function HrUserProfile() {
               <Text style={styles.headAvatarText}>{initials}</Text>
             )}
           </View>
-          <View style={styles.headCam}>
-            <FilePickButton
-              compact
-              mimeType="image/*"
-              style={styles.headCamBtn}
-              onUploaded={(url) => setProfilePictureUrl(url)}
-            />
+          {/* Affordance only — the whole avatar opens the photo actions. */}
+          <View style={styles.headCam} pointerEvents="none">
+            <Ionicons name="camera" size={14} color={c.textMuted} />
           </View>
-        </View>
+        </TouchableOpacity>
 
         <View style={{ flex: 1, minWidth: 0 }}>
           <Text style={styles.headName} numberOfLines={1}>
@@ -1470,7 +1495,7 @@ export default function HrUserProfile() {
           return (
             <TouchableOpacity
               key={t.key}
-              style={styles.tab2}
+              style={[styles.tab2, active && styles.tab2Active]}
               onPress={() => setTab(t.key)}
             >
               <Ionicons
@@ -1481,9 +1506,6 @@ export default function HrUserProfile() {
               <Text style={[styles.tab2Text, active && styles.tab2TextActive]}>
                 {t.label}
               </Text>
-              <View
-                style={[styles.tab2Underline, active && styles.tab2UnderlineOn]}
-              />
             </TouchableOpacity>
           );
         })}
@@ -1883,40 +1905,41 @@ export default function HrUserProfile() {
                   />
                 </Field>
                 <Field label="Usual work location (Mon–Sun)" full>
-                  <View style={{ gap: 6 }}>
-                    {WEEKDAYS.map((d) => (
-                      <View key={d.key} style={styles.weekdayRow}>
-                        <Text style={styles.weekdayLabel}>{d.label}</Text>
-                        <View style={styles.chipRow}>
-                          {WEEK_LOCS.map((loc) => {
-                            const active = usualWorkLocation[d.key] === loc;
-                            return (
-                              <TouchableOpacity
-                                key={loc}
-                                style={[
-                                  styles.smallChip,
-                                  active && styles.chipActive,
-                                ]}
-                                onPress={() =>
-                                  setUsualWorkLocation((prev) => ({
-                                    ...prev,
-                                    [d.key]: active ? null : loc }))
-                                }
-                              >
-                                <Text
-                                  style={[
-                                    styles.smallChipText,
-                                    active && styles.chipTextActive,
-                                  ]}
+                  <View style={styles.locList}>
+                    {WEEKDAYS.map((d) => {
+                      const selected = usualWorkLocation[d.key];
+                      return (
+                        <View key={d.key} style={styles.locRow}>
+                          <Text style={styles.locRowDay}>{d.label}</Text>
+                          <View style={styles.locRowChips}>
+                            {WEEK_LOCS.map((loc) => {
+                              const active = selected === loc;
+                              return (
+                                <TouchableOpacity
+                                  key={loc}
+                                  activeOpacity={0.8}
+                                  style={[styles.locCell, active && styles.locCellActive]}
+                                  onPress={() =>
+                                    setUsualWorkLocation((prev) => ({
+                                      ...prev,
+                                      [d.key]: active ? null : loc }))
+                                  }
                                 >
-                                  {loc}
-                                </Text>
-                              </TouchableOpacity>
-                            );
-                          })}
+                                  <Text
+                                    style={[
+                                      styles.locCellText,
+                                      active && styles.locCellTextActive,
+                                    ]}
+                                  >
+                                    {loc}
+                                  </Text>
+                                </TouchableOpacity>
+                              );
+                            })}
+                          </View>
                         </View>
-                      </View>
-                    ))}
+                      );
+                    })}
                   </View>
                 </Field>
                 <Field label="Notes" full>
@@ -2598,11 +2621,11 @@ export default function HrUserProfile() {
                         <View style={styles.docCardActions}>
                           <TouchableOpacity
                             style={styles.docCardBtn}
-                            onPress={() =>
-                              d.fileUrl
-                                ? Linking.openURL(d.fileUrl).catch(() => {})
-                                : Alert.alert("No file URL on record")
-                            }
+                            onPress={() => {
+                              if (!d.fileUrl || !openMedia(d.fileUrl)) {
+                                notify("No file URL on record");
+                              }
+                            }}
                           >
                             <Ionicons name="eye-outline" size={14} color={c.text} />
                             <Text style={styles.docCardBtnText}>View</Text>
@@ -2689,11 +2712,11 @@ export default function HrUserProfile() {
                     setShowMgrPicker(false);
                   }}
                 >
-                  <View style={styles.avatar}>
-                    <Text style={styles.avatarText}>
-                      {item.name.charAt(0).toUpperCase()}
-                    </Text>
-                  </View>
+                  <Avatar
+                    name={item.name}
+                    uri={item.profilePictureUrl}
+                    size={36}
+                  />
                   <View style={{ flex: 1 }}>
                     <Text style={styles.pickerName}>{item.name}</Text>
                     <Text style={styles.pickerSub}>
@@ -2760,6 +2783,83 @@ export default function HrUserProfile() {
             <Text style={styles.pwSubmitText}>Update password</Text>
           )}
         </TouchableOpacity>
+      </WebModal>
+
+      {/* Profile photo — click the avatar to change or delete it. */}
+      <WebModal
+        visible={photoModalOpen}
+        onClose={() => setPhotoModalOpen(false)}
+        title="Profile photo"
+        size="xl"
+        scrollable={false}
+      >
+        <View style={styles.photoModalRow}>
+          {/* LEFT — the image */}
+          <View style={styles.photoLeft}>
+            <View style={styles.photoCard}>
+              {profilePictureUrl ? (
+                <Image
+                  source={{ uri: mediaUrl(profilePictureUrl) }}
+                  style={styles.photoCardImg}
+                  resizeMode="contain"
+                />
+              ) : (
+                <View style={styles.photoCardEmpty}>
+                  <Ionicons name="image-outline" size={34} color={c.textFaint} />
+                  <Text style={styles.photoCardEmptyText}>No image uploaded</Text>
+                </View>
+              )}
+              {savingPhoto && (
+                <View style={styles.photoBusy}>
+                  <ActivityIndicator color="#fff" />
+                </View>
+              )}
+            </View>
+          </View>
+
+          {/* RIGHT — identity + actions */}
+          <View style={styles.photoRight}>
+            <Text style={styles.photoName} numberOfLines={1}>{displayName}</Text>
+            <Text style={styles.photoSub} numberOfLines={1}>
+              {[roleBadge, editableEmployeeCode].filter(Boolean).join("  ·  ") || "Employee"}
+            </Text>
+            <Text style={styles.photoRightDesc}>
+              Shown on the employee's profile and across the app. A clear
+              headshot or ID card works best.
+            </Text>
+
+            <View style={styles.photoActions}>
+              <FilePickButton
+                label={profilePictureUrl ? "Upload new image" : "Upload image"}
+                mimeType="image/*"
+                style={styles.photoChangeBtn}
+                onUploaded={(url) => savePhoto(url)}
+              />
+              {!!profilePictureUrl && (
+                <TouchableOpacity
+                  style={[styles.photoRemoveBtn, savingPhoto && { opacity: 0.5 }]}
+                  disabled={savingPhoto}
+                  onPress={async () => {
+                    const ok = await confirmAction({
+                      title: "Remove photo?",
+                      message: "This clears the employee's profile picture.",
+                      confirmLabel: "Remove",
+                      destructive: true,
+                    });
+                    if (ok) savePhoto("");
+                  }}
+                >
+                  <Ionicons name="trash-outline" size={15} color={c.dangerText} />
+                  <Text style={styles.photoRemoveText}>Remove photo</Text>
+                </TouchableOpacity>
+              )}
+            </View>
+
+            <Text style={[styles.hint, styles.photoHint]}>
+              JPG or PNG · saves immediately
+            </Text>
+          </View>
+        </View>
       </WebModal>
     </SafeAreaView>
   );
@@ -3027,6 +3127,8 @@ const makeStyles = (c: any, isDesktop: boolean) => StyleSheet.create({
     backgroundColor: c.surface,
     borderWidth: 1,
     borderColor: c.surfaceBorder,
+    borderTopWidth: 3,
+    borderTopColor: c.accent,
     borderRadius: 16,
     padding: isDesktop ? 24 : 18,
     shadowColor: c.shadow,
@@ -3035,7 +3137,13 @@ const makeStyles = (c: any, isDesktop: boolean) => StyleSheet.create({
     shadowOffset: { width: 0, height: 4 },
     elevation: 2 },
   headTop: { flexDirection: "row", alignItems: "center", gap: 18 },
-  headAvatarWrap: { position: "relative" },
+  headAvatarWrap: {
+    position: "relative",
+    shadowColor: c.accent,
+    shadowOpacity: 0.2,
+    shadowRadius: 10,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 3 },
   headAvatar: {
     width: isDesktop ? 76 : 62,
     height: isDesktop ? 76 : 62,
@@ -3063,7 +3171,66 @@ const makeStyles = (c: any, isDesktop: boolean) => StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
     overflow: "hidden" },
-  headCamBtn: { width: 24, height: 24, borderRadius: 12, backgroundColor: "transparent" },
+  // Profile-photo modal
+  // Two-column layout: image on the left, identity + actions on the right.
+  // Stacks vertically on mobile.
+  photoModalRow: {
+    flexDirection: isDesktop ? "row" : "column",
+    gap: isDesktop ? 24 : 18,
+    alignItems: "stretch",
+  },
+  photoLeft: { flex: isDesktop ? 1.15 : undefined, justifyContent: "center" },
+  photoRight: { flex: isDesktop ? 1 : undefined, justifyContent: "center" },
+  // Clean framed preview: white surface + thin border, image shown with
+  // "contain" so a headshot OR an ID card is fully visible (no gray bars).
+  photoCard: {
+    width: "100%",
+    aspectRatio: 1.4,
+    borderRadius: 16,
+    backgroundColor: c.surface,
+    borderWidth: 1,
+    borderColor: c.surfaceBorder,
+    overflow: "hidden",
+    alignItems: "center",
+    justifyContent: "center",
+    shadowColor: c.shadow,
+    shadowOpacity: 1,
+    shadowRadius: 10,
+    shadowOffset: { width: 0, height: 3 },
+    elevation: 2,
+  },
+  photoCardImg: { width: "100%", height: "100%" },
+  photoCardEmpty: { alignItems: "center", gap: 8 },
+  photoCardEmptyText: { color: c.textMuted, fontSize: 13, fontWeight: "600" },
+  photoBusy: {
+    ...StyleSheet.absoluteFillObject,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "rgba(0,0,0,0.35)",
+  },
+  photoName: { color: c.text, fontSize: isDesktop ? 20 : 18, fontWeight: "800" },
+  photoSub: { color: c.textMuted, fontSize: 13, fontWeight: "600", marginTop: 4 },
+  photoRightDesc: { color: c.textMuted, fontSize: 13, lineHeight: 19, marginTop: 14 },
+  photoActions: { gap: 8, marginTop: 20 },
+  // Full-width accent primary (overrides FilePickButton's default blue).
+  photoChangeBtn: {
+    alignSelf: "stretch",
+    justifyContent: "center",
+    backgroundColor: c.accent,
+    paddingVertical: 13,
+    borderRadius: 12,
+  },
+  // Subtle text-style remove — not a heavy red block.
+  photoRemoveBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 6,
+    paddingVertical: 11,
+    borderRadius: 12,
+  },
+  photoRemoveText: { color: c.dangerText, fontWeight: "700", fontSize: 13 },
+  photoHint: { marginTop: 14 },
   headName: {
     color: c.text,
     fontSize: isDesktop ? 24 : 20,
@@ -3099,6 +3266,7 @@ const makeStyles = (c: any, isDesktop: boolean) => StyleSheet.create({
     borderWidth: 1,
     borderColor: c.surfaceBorder,
     borderRadius: 10,
+    backgroundColor: c.surfaceMuted,
     overflow: "hidden" },
   fact: {
     width: isDesktop ? "20%" : "50%",
@@ -3117,18 +3285,19 @@ const makeStyles = (c: any, isDesktop: boolean) => StyleSheet.create({
 
   tabsRow2: {
     flexDirection: "row",
-    gap: 2,
+    flexWrap: "wrap",
+    gap: 6,
     marginTop: 22,
-    marginBottom: 20,
-    borderBottomWidth: 1,
-    borderBottomColor: c.surfaceBorder },
+    marginBottom: 20 },
   tab2: {
     flexDirection: "row",
     alignItems: "center",
     gap: 8,
     paddingHorizontal: 14,
-    paddingVertical: 12,
+    paddingVertical: 10,
+    borderRadius: 10,
     ...(Platform.OS === "web" && { cursor: "pointer" as any }) },
+  tab2Active: { backgroundColor: c.accentSoft },
   tab2Text: { color: c.textMuted, fontSize: 14, fontWeight: "700" },
   tab2TextActive: { color: c.text },
   tab2Underline: {
@@ -3413,6 +3582,24 @@ const makeStyles = (c: any, isDesktop: boolean) => StyleSheet.create({
     fontSize: 12,
     fontWeight: "800",
     width: 36 },
+
+  // Usual-work-location — a simple aligned list: day label + equal-width
+  // option cells that line up into columns across every row.
+  locList: { gap: 8 },
+  locRow: { flexDirection: "row", alignItems: "center", gap: 12 },
+  locRowDay: { width: 42, color: c.text, fontSize: 13, fontWeight: "800" },
+  locRowChips: { flex: 1, flexDirection: "row", gap: 8 },
+  locCell: {
+    flex: 1,
+    paddingVertical: 8,
+    borderRadius: 8,
+    alignItems: "center",
+    backgroundColor: c.surfaceMuted,
+    borderWidth: 1,
+    borderColor: c.surfaceBorder },
+  locCellActive: { backgroundColor: c.accent, borderColor: c.accent },
+  locCellText: { color: c.textMuted, fontSize: 12, fontWeight: "600" },
+  locCellTextActive: { color: "#fff", fontWeight: "800" },
   hint: { width: "100%", color: c.textMuted, fontSize: 12, fontStyle: "italic" },
   linkClear: { color: "#ef4444", fontSize: 11, fontWeight: "700" },
 
@@ -3457,14 +3644,6 @@ const makeStyles = (c: any, isDesktop: boolean) => StyleSheet.create({
     gap: 12,
     borderBottomWidth: 1,
     borderBottomColor: "#111827" },
-  avatar: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    backgroundColor: c.accentSoft,
-    alignItems: "center",
-    justifyContent: "center" },
-  avatarText: { color: c.accentText, fontWeight: "700" },
   pickerName: { color: c.text, fontSize: 14, fontWeight: "700" },
   pickerSub: { color: c.textMuted, fontSize: 11, marginTop: 2 },
 

@@ -9,9 +9,7 @@ import {
   RefreshControl,
   TextInput,
   Alert,
-  ScrollView,
-  Platform,
-  Linking } from "react-native";
+  ScrollView } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 
 import AsyncStorage from "@react-native-async-storage/async-storage";
@@ -19,6 +17,7 @@ import { useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 
 import { FilePickButton } from "../src/components/FilePickButton";
+import { openMedia } from "../src/utils/media";
 import { getMe } from "../src/services/api";
 import {
   listMyDocuments,
@@ -553,11 +552,11 @@ export default function MyDocuments() {
                       <>
                         <TouchableOpacity
                           style={[styles.actionBtn, styles.actionBtnGhost]}
-                          onPress={() =>
-                            doc.fileUrl
-                              ? Linking.openURL(doc.fileUrl).catch(() => {})
-                              : Alert.alert("No file URL on record")
-                          }
+                          onPress={() => {
+                            if (!doc.fileUrl || !openMedia(doc.fileUrl)) {
+                              Alert.alert("No file URL on record");
+                            }
+                          }}
                         >
                           <Ionicons name="eye-outline" size={16} color={c.text} />
                           <Text style={styles.actionBtnGhostText}>View</Text>

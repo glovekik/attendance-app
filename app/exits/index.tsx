@@ -22,6 +22,7 @@ import { hrListExits } from "../../src/services/exit";
 import { ExitRequest, ExitStatus } from "../../src/types";
 
 import { useTheme } from "../../src/theme/ThemeProvider";
+import { Avatar } from "../../src/components/Avatar";
 const FILTERS: (ExitStatus | "ALL")[] = [
   "ALL",
   "REQUESTED",
@@ -174,7 +175,6 @@ export default function HRExits() {
             (e.userId
               ? `Employee ${e.userId.slice(-6)}`
               : "Unknown employee");
-          const initial = displayName.charAt(0).toUpperCase();
           return (
           <TouchableOpacity
             key={e.id}
@@ -182,9 +182,14 @@ export default function HRExits() {
             onPress={() => router.push(`/exits/${e.id}`)}
             activeOpacity={0.85}
           >
-            <View style={s.avatar}>
-              <Text style={s.avatarText}>{initial}</Text>
-            </View>
+            <Avatar
+              name={displayName}
+              uri={e.user?.profilePictureUrl}
+              size={36}
+              fontSize={14}
+              bg={c.accent}
+              fg="#fff"
+            />
             <View style={{ flex: 1 }}>
               <Text style={s.cardName}>{displayName}</Text>
               {!!e.user?.email && (
@@ -249,8 +254,6 @@ const makeStyles = (c: any) => StyleSheet.create({
   emptyTitle: { color: c.text, fontSize: 15, fontWeight: "700" },
 
   card: { flexDirection: "row", alignItems: "center", backgroundColor: c.surface, borderRadius: 14, padding: 12, marginBottom: 8, borderWidth: 1, borderColor: c.surfaceBorder, gap: 10 },
-  avatar: { width: 36, height: 36, borderRadius: 18, backgroundColor: c.accent, justifyContent: "center", alignItems: "center" },
-  avatarText: { color: "#fff", fontWeight: "700", fontSize: 14 },
   cardName: { color: c.text, fontSize: 14, fontWeight: "700" },
   cardMeta: { color: c.textMuted, fontSize: 11, marginTop: 2 },
 

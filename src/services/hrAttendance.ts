@@ -9,6 +9,7 @@ export interface HrAttendanceRow {
     name: string;
     email: string;
     employeeCode?: string;
+    profilePictureUrl?: string;
   };
   date: string;
   attendanceType?: "OFFICE" | "WFH" | "CLIENT" | "LEAVE" | "HOLIDAY";
@@ -20,6 +21,8 @@ export interface HrAttendanceRow {
   checkIn?: string | null;
   checkOut?: string | null;
   workNotes?: string;
+  /** HR-marked unpaid (LOP) leave day — excluded from paid days in payroll. */
+  unpaid?: boolean;
 }
 
 export interface HrAttendanceFilters {
@@ -39,3 +42,16 @@ export const hrListAttendance = (
   const qs = parts.length ? `?${parts.join("&")}` : "";
   return apiCall<HrAttendanceRow[]>(`/hr/attendance${qs}`, { token });
 };
+
+// HR marks (unpaid=true) or clears (unpaid=false) an employee's day as an
+// UNPAID leave (LOP). Unpaid days are excluded from paid days in payroll.
+export const hrMarkUnpaidLeave = (
+  token: string,
+  userId: string,
+  date: string,
+  unpaid: boolean
+) =>
+  apiCall<{ message: string; unpaid: boolean }>(
+    "/hr/attendance/unpaid-leave",
+    { method: "POST", body: { userId, date, unpaid }, token }
+  );

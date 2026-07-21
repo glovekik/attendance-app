@@ -17,7 +17,6 @@ import {
 } from "react-native";
 import { KeyboardAvoidingView } from "react-native-keyboard-controller";
 import { SafeAreaView } from "react-native-safe-area-context";
-import { BlurView } from "expo-blur";
 import { LinearGradient } from "expo-linear-gradient";
 
 import { useResponsive } from "../src/utils/responsive";
@@ -184,18 +183,9 @@ export default function Login() {
   };
 
   return (
+    // Plain flat background + solid card on every platform (no gradient,
+    // orbs, or blur) — the clean look requested.
     <View style={styles.root}>
-      {/* Soft light backdrop. */}
-      <LinearGradient
-        colors={["#EAF0FF", "#F5F8FF", "#FFFFFF"]}
-        start={{ x: 0, y: 0 }}
-        end={{ x: 0, y: 1 }}
-        style={StyleSheet.absoluteFill}
-      />
-      {/* Two faint pastel orbs so the frosted glass has something to blur. */}
-      <View style={[styles.orb, styles.orbA]} />
-      <View style={[styles.orb, styles.orbB]} />
-
       <SafeAreaView style={styles.safe}>
         <KeyboardAvoidingView behavior="padding" style={{ flex: 1 }}>
           <ScrollView
@@ -207,12 +197,7 @@ export default function Login() {
             <Animated.View
               style={{ opacity: cardOpacity, transform: [{ translateY: cardY }] }}
             >
-              <BlurView
-                intensity={Platform.OS === "android" ? 20 : 30}
-                tint="light"
-                experimentalBlurMethod="dimezisBlurView"
-                style={styles.card}
-              >
+              <View style={[styles.card, styles.cardSolid]}>
                 {/* Logo. */}
                 <View style={styles.logoBadge}>
                   <Image
@@ -405,7 +390,7 @@ export default function Login() {
                     </>
                   )}
                 </View>
-              </BlurView>
+              </View>
             </Animated.View>
 
             <Text style={styles.footnote}>
@@ -504,6 +489,11 @@ const makeStyles = (isDesktop: boolean) =>
             boxShadow: "0 20px 45px -15px rgba(30, 41, 59, 0.25)",
           }
         : {}),
+    },
+    // Plain opaque card (no blur/gradient/orbs) — clean flat look everywhere.
+    cardSolid: {
+      backgroundColor: "#FFFFFF",
+      borderColor: "#E8EDF5",
     },
 
     logoBadge: {

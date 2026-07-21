@@ -29,6 +29,7 @@ import { AttendanceCorrection } from "../src/types";
 
 import { useTheme } from "../src/theme/ThemeProvider";
 import { WebModal, ModalActions } from "../src/components/WebModal";
+import { Avatar } from "../src/components/Avatar";
 export default function Corrections() {
 
   const router = useRouter();
@@ -226,6 +227,18 @@ export default function Corrections() {
       hour12: true });
   };
 
+  // When the request was raised (date + time), for the card footer.
+  const formatRaised = (iso?: string | null) => {
+    if (!iso) return "—";
+    const d = new Date(iso);
+    if (isNaN(d.getTime())) return "—";
+    return (
+      d.toLocaleDateString([], { day: "numeric", month: "short", year: "numeric" }) +
+      ", " +
+      d.toLocaleTimeString([], { hour: "numeric", minute: "2-digit", hour12: true })
+    );
+  };
+
   if (loading) {
     return (
       <View style={styles.loader}>
@@ -353,11 +366,14 @@ export default function Corrections() {
                   color={selected.has(corr.id) ? c.accent : c.textMuted}
                 />
               </TouchableOpacity>
-              <View style={styles.avatar}>
-                <Text style={styles.avatarText}>
-                  {(corr.user?.name || "U").charAt(0).toUpperCase()}
-                </Text>
-              </View>
+              <Avatar
+                name={corr.user?.name || "U"}
+                uri={corr.user?.profilePictureUrl}
+                size={40}
+                bg={c.accent}
+                fg="#fff"
+                fontSize={15}
+              />
               <View style={{ flex: 1 }}>
                 <Text style={styles.cardName}>
                   {corr.user?.name || "User"}
@@ -391,6 +407,20 @@ export default function Corrections() {
 
             <Text style={styles.reasonLabel}>Reason</Text>
             <Text style={styles.reasonText}>{corr.reason}</Text>
+
+            {!!corr.requestedWorkNotes?.trim() && (
+              <>
+                <Text style={[styles.reasonLabel, { marginTop: 12 }]}>Work notes</Text>
+                <Text style={styles.reasonText}>{corr.requestedWorkNotes.trim()}</Text>
+              </>
+            )}
+
+            <View style={styles.raisedRow}>
+              <Ionicons name="time-outline" size={13} color={c.textMuted} />
+              <Text style={styles.raisedText}>
+                Raised {formatRaised(corr.requestedAt)}
+              </Text>
+            </View>
 
             <View style={styles.actions}>
               <TouchableOpacity
@@ -596,17 +626,6 @@ const makeStyles = (c: any) => StyleSheet.create({
     alignItems: "center",
     gap: 12,
     marginBottom: 12 },
-  avatar: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: c.accent,
-    justifyContent: "center",
-    alignItems: "center" },
-  avatarText: {
-    color: "#fff",
-    fontWeight: "800",
-    fontSize: 15 },
   cardName: {
     color: c.text,
     fontSize: 15,
@@ -645,6 +664,15 @@ const makeStyles = (c: any) => StyleSheet.create({
     color: c.text,
     fontSize: 14,
     lineHeight: 20 },
+  raisedRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 5,
+    marginTop: 10 },
+  raisedText: {
+    color: c.textMuted,
+    fontSize: 12,
+    fontWeight: "600" },
 
   actions: {
     flexDirection: "row",

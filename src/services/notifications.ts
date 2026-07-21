@@ -77,7 +77,13 @@ export const requestNotificationPermission = async () => {
   return status === "granted";
 };
 
-// Get the Expo push token for this device.
+// Get this device's push token.
+//
+// Android → the NATIVE FCM registration token (direct FCM; the backend sends
+// via FCM HTTP v1). Requires google-services.json, which app.json wires in.
+// iOS / other → the Expo token (Expo relays to APNs; iOS's native token is an
+// APNs token that FCM v1 can't target directly). The backend routes by token
+// shape — ExponentPushToken[...] → Expo, everything else → FCM.
 const getDevicePushToken =
   async (): Promise<string | null> => {
 
@@ -89,10 +95,29 @@ const getDevicePushToken =
 
     await ensureAndroidChannel();
 
+    if (Platform.OS === "android") {
+      try {
+        const dev = await Notifications.getDevicePushTokenAsync();
+        if (dev?.data && typeof dev.data === "string") {
+          // Dev-only: loud, easy-to-grep log so you can copy the raw FCM
+          // registration token from logcat for a Firebase test send.
+          if (__DEV__) {
+            console.log("\n========== FCM DEVICE TOKEN (paste into Firebase test) ==========");
+            console.log(dev.data);
+            console.log("=================================================================\n");
+          }
+          return dev.data;
+        }
+      } catch (err) {
+        // Fall back to Expo if the native FCM token isn't available (e.g.
+        // Expo Go, or google-services.json missing in this build).
+        console.log("Native FCM token unavailable, falling back to Expo:", err);
+      }
+    }
+
     // In a dev/standalone build (not Expo Go), getExpoPushTokenAsync needs
     // the EAS projectId explicitly — otherwise it throws "No projectId
-    // found" and no token is ever registered. Resolve it from the Expo
-    // config (app.json → extra.eas.projectId).
+    // found" and no token is ever registered.
     const projectId =
       (Constants?.expoConfig as any)?.extra?.eas?.projectId ??
       (Constants as any)?.easConfig?.projectId;
@@ -101,10 +126,28 @@ const getDevicePushToken =
       projectId ? { projectId } : undefined
     );
 
+    if (__DEV__) {
+      console.log("\n========== EXPO PUSH TOKEN (native FCM unavailable — using Expo) ==========");
+      console.log(result.data);
+      console.log("==========================================================================\n");
+    }
+
     return result.data || null;
   } catch (err) {
     console.log("Push token fetch failed:", err);
     return null;
+  }
+};
+
+// Dev-only: fetch + log this device's push token WITHOUT needing to log in,
+// so you can grab the FCM registration token from the console for a Firebase
+// test send. No-op in production builds. Safe to call on every launch.
+export const logDeviceTokenForDev = async (): Promise<void> => {
+  if (isWeb || !__DEV__) return;
+  try {
+    await getDevicePushToken(); // logs the token (see getDevicePushToken)
+  } catch {
+    /* getDevicePushToken already logs its own failures */
   }
 };
 

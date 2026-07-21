@@ -29,6 +29,7 @@ import {
   downloadPayrollXlsx,
   downloadUsersXlsx,
   DownloadResult } from "../src/services/reports";
+import { notify } from "../src/utils/confirm";
 
 type ReportKey =
   | "attendance"
@@ -266,7 +267,7 @@ export default function HrReports() {
       setRows(data || []);
       setHasRun(true);
     } catch (err: any) {
-      Alert.alert("Report failed", err?.message || "");
+      notify("Report failed", err?.message || "");
     } finally {
       setLoading(false);
     }
@@ -295,7 +296,7 @@ export default function HrReports() {
       }
       await saveXlsx(result);
     } catch (err: any) {
-      Alert.alert("Download failed", err?.message || "");
+      notify("Download failed", err?.message || "");
     } finally {
       setDownloading(null);
     }

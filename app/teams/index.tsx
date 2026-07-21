@@ -35,6 +35,7 @@ import {
   Team,
   User,
   hasRole } from "../../src/types";
+import { Avatar } from "../../src/components/Avatar";
 
 export default function Teams() {
 
@@ -229,8 +230,6 @@ export default function Teams() {
     (u) => !memberIds.includes(u.id) && matches(u, memberSearch)
   );
 
-  const initial = (s: string) => (s || "?").charAt(0).toUpperCase();
-
   return (
     <SafeAreaView style={styles.safe}>
 
@@ -408,11 +407,14 @@ export default function Teams() {
                       onPress={() => setLeadId(u.id)}
                       activeOpacity={0.7}
                     >
-                      <View style={styles.personAvatar}>
-                        <Text style={styles.personAvatarText}>
-                          {initial(u.name)}
-                        </Text>
-                      </View>
+                      <Avatar
+                        name={u.name}
+                        uri={u.profilePictureUrl}
+                        size={34}
+                        bg={c.surfaceMuted}
+                        fg={c.accent}
+                        fontSize={14}
+                      />
                       <View style={{ flex: 1 }}>
                         <Text style={styles.personName} numberOfLines={1}>
                           {u.name}
@@ -483,11 +485,14 @@ export default function Teams() {
                     onPress={() => toggleMember(u.id)}
                     activeOpacity={0.7}
                   >
-                    <View style={styles.personAvatar}>
-                      <Text style={styles.personAvatarText}>
-                        {initial(u.name)}
-                      </Text>
-                    </View>
+                    <Avatar
+                      name={u.name}
+                      uri={u.profilePictureUrl}
+                      size={34}
+                      bg={c.surfaceMuted}
+                      fg={c.accent}
+                      fontSize={14}
+                    />
                     <View style={{ flex: 1 }}>
                       <Text style={styles.personName} numberOfLines={1}>
                         {u.name}
@@ -668,14 +673,6 @@ const makeStyles = (c: any) => StyleSheet.create({
     borderBottomWidth: 1,
     borderBottomColor: c.surfaceBorder },
   personRowActive: { backgroundColor: c.accentSoft },
-  personAvatar: {
-    width: 34,
-    height: 34,
-    borderRadius: 17,
-    backgroundColor: c.surfaceMuted,
-    justifyContent: "center",
-    alignItems: "center" },
-  personAvatarText: { color: c.accent, fontWeight: "800", fontSize: 14 },
   personName: { color: c.text, fontSize: 14, fontWeight: "600" },
   personEmail: { color: c.textMuted, fontSize: 11, marginTop: 1 },
 

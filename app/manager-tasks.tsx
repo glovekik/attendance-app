@@ -31,6 +31,7 @@ import { useTheme } from "../src/theme/ThemeProvider";
 import { taskPriorityColor, taskStatusColor } from "../src/theme/statusColors";
 import { WebModal, ModalActions } from "../src/components/WebModal";
 import { DatePickerField } from "../src/components/DatePickerField";
+import { Avatar } from "../src/components/Avatar";
 
 type Tab = "mine" | "team";
 
@@ -381,9 +382,14 @@ export default function ManagerTasks() {
               onPress={() => toggleDraft(m.id)}
               activeOpacity={0.7}
             >
-              <View style={styles.pplAvatar}>
-                <Text style={styles.pplAvatarText}>{m.name.charAt(0).toUpperCase()}</Text>
-              </View>
+              <Avatar
+                name={m.name}
+                uri={m.profilePictureUrl}
+                size={36}
+                bg={c.accent}
+                fg="#fff"
+                fontSize={15}
+              />
               <View style={{ flex: 1 }}>
                 <Text style={styles.pplName}>{m.name}</Text>
                 {!!m.email && <Text style={styles.pplEmail} numberOfLines={1}>{m.email}</Text>}
@@ -647,15 +653,6 @@ const makeStyles = (c: any) =>
 
     // people modal
     pplRow: { flexDirection: "row", alignItems: "center", gap: 12, paddingVertical: 10 },
-    pplAvatar: {
-      width: 36,
-      height: 36,
-      borderRadius: 18,
-      backgroundColor: c.accent,
-      alignItems: "center",
-      justifyContent: "center",
-    },
-    pplAvatarText: { color: "#fff", fontSize: 15, fontWeight: "800" },
     pplName: { color: c.text, fontSize: 14, fontWeight: "700" },
     pplEmail: { color: c.textMuted, fontSize: 12, marginTop: 1 },
     mBtn: { flex: 1, paddingVertical: 13, borderRadius: 12, alignItems: "center" },

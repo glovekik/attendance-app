@@ -47,6 +47,7 @@ import {
   User,
   hasRole,
 } from "../../src/types";
+import { Avatar } from "../../src/components/Avatar";
 
 export default function TeamDetail() {
 
@@ -176,6 +177,13 @@ export default function TeamDetail() {
     return team?.members?.find((x) => x.id === id)?.email || "";
   };
 
+  const userPhoto = (id: string) => {
+    if (isHR) {
+      return users.find((x) => x.id === id)?.profilePictureUrl;
+    }
+    return team?.members?.find((x) => x.id === id)?.profilePictureUrl;
+  };
+
   const confirmDelete = (title: string): Promise<boolean> => {
     if (Platform.OS === "web") {
       const ok = typeof window !== "undefined" &&
@@ -301,11 +309,14 @@ export default function TeamDetail() {
             const e = userEmail(mid);
             return (
               <View key={mid} style={styles.memberRow}>
-                <View style={styles.avatar}>
-                  <Text style={styles.avatarText}>
-                    {n.charAt(0).toUpperCase()}
-                  </Text>
-                </View>
+                <Avatar
+                  name={n}
+                  uri={userPhoto(mid)}
+                  size={36}
+                  bg={c.accent}
+                  fg="#fff"
+                  fontSize={14}
+                />
                 <View style={{ flex: 1 }}>
                   <Text style={styles.memberName}>{n}</Text>
                   {!!e && (
@@ -564,19 +575,6 @@ const makeStyles = (c: any) => StyleSheet.create({
     gap: 12,
   },
 
-  avatar: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    backgroundColor: c.accent,
-    justifyContent: "center",
-    alignItems: "center",
-  },
-  avatarText: {
-    color: "#fff",
-    fontWeight: "700",
-    fontSize: 14,
-  },
   memberName: { color: c.text, fontSize: 14, fontWeight: "700" },
   memberEmail: { color: c.textMuted, fontSize: 12, marginTop: 2 },
 

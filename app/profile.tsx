@@ -19,6 +19,7 @@ import { useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 
 import { getMe, changePassword } from "../src/services/api";
+import { mediaUrl } from "../src/utils/media";
 
 import { unregisterPushToken } from "../src/services/notifications";
 
@@ -512,7 +513,7 @@ export default function Profile() {
           <View style={styles.avatarWrap}>
             {user.profilePictureUrl ? (
               <Image
-                source={{ uri: user.profilePictureUrl }}
+                source={{ uri: mediaUrl(user.profilePictureUrl) }}
                 style={styles.avatarImg}
               />
             ) : (

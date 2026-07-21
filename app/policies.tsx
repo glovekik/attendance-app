@@ -9,15 +9,15 @@ import {
   ActivityIndicator,
   RefreshControl,
   TextInput,
-  Linking,
   Alert } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
-
+
 import { useTheme } from "../src/theme/ThemeProvider";
+import { openMedia } from "../src/utils/media";
 import {
   listCompanyDocuments,
   CompanyDocument,
@@ -164,7 +164,7 @@ export default function Policies() {
         renderItem={({ item }) => (
           <TouchableOpacity
             style={styles.card}
-            onPress={() => Linking.openURL(item.fileUrl).catch(() => {})}
+            onPress={() => openMedia(item.fileUrl)}
             activeOpacity={0.85}
           >
             <View style={styles.iconBox}>

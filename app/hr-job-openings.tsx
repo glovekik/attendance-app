@@ -9,7 +9,6 @@ import {
   ActivityIndicator,
   RefreshControl,
   TextInput,
-  Alert,
   Platform } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { WebModal, ModalActions } from "../src/components/WebModal";
@@ -33,6 +32,7 @@ import {
   JOB_OPENING_STATUSES,
   JobOpening,
   JobOpeningStatus } from "../src/types";
+import { confirmAction, notify } from "../src/utils/confirm";
 
 export default function HrJobOpenings() {
   const router = useRouter();
@@ -75,7 +75,7 @@ export default function HrJobOpenings() {
       setItems(jobs || []);
       setDepartments(depts || []);
     } catch (err: any) {
-      Alert.alert(
+      notify(
         "Couldn't load job openings",
         err?.message || "Pull down to retry."
       );
@@ -136,7 +136,7 @@ export default function HrJobOpenings() {
 
   const onSave = async () => {
     if (!title.trim()) {
-      Alert.alert("Title is required");
+      notify("Title is required");
       return;
     }
     setSaving(true);
@@ -162,28 +162,30 @@ export default function HrJobOpenings() {
       closeForm();
       load();
     } catch (err: any) {
-      Alert.alert("Save failed", err?.message || "");
+      notify("Save failed", err?.message || "");
       setSaving(false);
     }
   };
 
-  const onDelete = (j: JobOpening) => {
-    Alert.alert("Delete opening?", j.title, [
-      { text: "Cancel", style: "cancel" },
-      {
-        text: "Delete",
-        style: "destructive",
-        onPress: async () => {
-          try {
-            const token = await AsyncStorage.getItem("token");
-            if (!token) return;
-            await deleteJobOpening(token, j.id);
-            setItems((prev) => prev.filter((x) => x.id !== j.id));
-          } catch (err: any) {
-            Alert.alert("Delete failed", err?.message || "");
-          }
-        } },
-    ]);
+  const onDelete = async (j: JobOpening) => {
+    if (
+      await confirmAction({
+        title: "Delete opening?",
+        message: j.title,
+        confirmLabel: "Delete",
+        cancelLabel: "Cancel",
+        destructive: true,
+      })
+    ) {
+      try {
+        const token = await AsyncStorage.getItem("token");
+        if (!token) return;
+        await deleteJobOpening(token, j.id);
+        setItems((prev) => prev.filter((x) => x.id !== j.id));
+      } catch (err: any) {
+        notify("Delete failed", err?.message || "");
+      }
+    }
   };
 
   if (loading) {

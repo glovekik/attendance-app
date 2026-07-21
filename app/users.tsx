@@ -10,7 +10,6 @@ import {
   ActivityIndicator,
   Pressable,
   Platform,
-  Image,
 } from "react-native";
 import { KbAwareScroll } from "../src/components/KbAwareScroll";
 import { SafeAreaView } from "react-native-safe-area-context";
@@ -41,6 +40,7 @@ import { DataTable, Column } from "../src/components/DataTable";
 import { PageHeader } from "../src/components/PageHeader";
 import { WebInput, FormField, ChipPicker } from "../src/components/WebFormFields";
 import { ProButton, StatusBadge, Avatar } from "../src/components/ProUI";
+import { Avatar as PhotoAvatar } from "../src/components/Avatar";
 
 import {
   User,
@@ -81,6 +81,7 @@ export default function Users() {
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
   const [tab, setTab] = useState<"ACTIVE" | "INACTIVE">("ACTIVE");
+  const [roleFilter, setRoleFilter] = useState<"ALL" | "USER" | "MANAGER" | "LEAD">("ALL");
   const [me, setMe] = useState<User | null>(null);
 
   // Create modal state
@@ -132,12 +133,20 @@ export default function Users() {
     load();
   }, []);
 
+  const matchesRole = (u: User, r: typeof roleFilter) => {
+    if (r === "ALL") return true;
+    if (r === "LEAD") return u.role === "HR" || u.role === "CEO";
+    if (r === "MANAGER") return u.role === "MANAGER";
+    return u.role === "USER" || !u.role; // plain employees
+  };
+
   const filteredUsers = useMemo(() => {
     const q = search.trim().toLowerCase();
     return users
       .filter((u) =>
         tab === "ACTIVE" ? u.status !== "Terminated" : u.status === "Terminated"
       )
+      .filter((u) => matchesRole(u, roleFilter))
       .filter((u) => {
         if (!q) return true;
         return (
@@ -147,7 +156,7 @@ export default function Users() {
           (u.tag || "").toLowerCase().includes(q)
         );
       });
-  }, [users, tab, search]);
+  }, [users, tab, roleFilter, search]);
 
   const activeCount = users.filter(
     (u) => u.status !== "Terminated"
@@ -155,6 +164,19 @@ export default function Users() {
   const inactiveCount = users.filter(
     (u) => u.status === "Terminated"
   ).length;
+
+  // Role breakdown within the current status tab — drives the stat cards.
+  const roleStats = useMemo(() => {
+    const scoped = users.filter((u) =>
+      tab === "ACTIVE" ? u.status !== "Terminated" : u.status === "Terminated"
+    );
+    return {
+      total: scoped.length,
+      employees: scoped.filter((u) => u.role === "USER" || !u.role).length,
+      managers: scoped.filter((u) => u.role === "MANAGER").length,
+      leads: scoped.filter((u) => u.role === "HR" || u.role === "CEO").length,
+    };
+  }, [users, tab]);
 
   const openCreate = () => {
     setName("");
@@ -402,6 +424,20 @@ export default function Users() {
     );
   }
 
+  const roleCards: {
+    key: typeof roleFilter;
+    label: string;
+    value: number;
+    icon: any;
+    tint: string;
+    tintBg: string;
+  }[] = [
+    { key: "ALL", label: "All employees", value: roleStats.total, icon: "people", tint: c.accent, tintBg: c.accentSoft },
+    { key: "USER", label: "Employees", value: roleStats.employees, icon: "person", tint: c.infoText, tintBg: c.infoBg },
+    { key: "MANAGER", label: "Managers", value: roleStats.managers, icon: "briefcase", tint: c.warningText, tintBg: c.warningBg },
+    { key: "LEAD", label: "HR & Leadership", value: roleStats.leads, icon: "shield-checkmark", tint: "#7c3aed", tintBg: "rgba(124,58,237,0.12)" },
+  ];
+
   return (
     <SafeAreaView style={[styles.safe, { backgroundColor: c.bg }]}>
       <ScrollView
@@ -435,6 +471,32 @@ export default function Users() {
             />
           }
         />
+
+        {/* STAT CARDS — tap to filter by role */}
+        <View style={styles.statsRow}>
+          {roleCards.map((card) => {
+            const active = roleFilter === card.key;
+            return (
+              <Pressable
+                key={card.key}
+                onPress={() => setRoleFilter(card.key)}
+                style={({ hovered }: any) => [
+                  styles.statCard,
+                  { backgroundColor: c.surface, borderColor: active ? card.tint : c.surfaceBorder },
+                  Platform.OS === "web" && hovered && !active && { borderColor: card.tint },
+                ]}
+              >
+                <View style={[styles.statIcon, { backgroundColor: card.tintBg }]}>
+                  <Ionicons name={card.icon} size={18} color={card.tint} />
+                </View>
+                <Text style={[styles.statValue, { color: c.text }]}>{card.value}</Text>
+                <Text style={[styles.statLabel, { color: c.textMuted }]} numberOfLines={1}>
+                  {card.label}
+                </Text>
+              </Pressable>
+            );
+          })}
+        </View>
 
         {/* TABS & SEARCH */}
         <View style={[styles.filterRow, isDesktop && styles.filterRowDesktop]}>
@@ -875,29 +937,11 @@ const UserCard = ({
         activeOpacity={0.85}
         style={mobileStyles.userCardMain}
       >
-        {user.profilePictureUrl ? (
-          <Image
-            source={{ uri: user.profilePictureUrl }}
-            style={mobileStyles.avatar}
-          />
-        ) : (
-          <View
-            style={[
-              mobileStyles.avatar,
-              { backgroundColor: c.accentSoft },
-            ]}
-          >
-            <Text
-              style={{
-                color: c.accentText,
-                fontSize: 18,
-                fontWeight: "800",
-              }}
-            >
-              {user.name.charAt(0).toUpperCase()}
-            </Text>
-          </View>
-        )}
+        <PhotoAvatar
+          name={user.name}
+          uri={user.profilePictureUrl}
+          size={46}
+        />
         <View style={{ flex: 1 }}>
           <Text
             style={[mobileStyles.userName, { color: c.text }]}
@@ -1011,13 +1055,6 @@ const mobileStyles = StyleSheet.create({
     alignItems: "center",
     gap: 12,
   },
-  avatar: {
-    width: 46,
-    height: 46,
-    borderRadius: 23,
-    alignItems: "center",
-    justifyContent: "center",
-  },
   userName: { fontSize: 15, fontWeight: "800" },
   userMeta: { fontSize: 12, marginTop: 2 },
   userChips: { flexDirection: "row", flexWrap: "wrap", gap: 4, marginTop: 6 },
@@ -1040,6 +1077,33 @@ const makeStyles = (c: any, isDesktop: boolean) =>
   StyleSheet.create({
     safe: { flex: 1 },
     loader: { flex: 1, alignItems: "center", justifyContent: "center" },
+
+    // Stat cards (tap to filter by role)
+    statsRow: {
+      flexDirection: "row",
+      flexWrap: "wrap",
+      gap: 12,
+      marginTop: 16,
+    },
+    statCard: {
+      flexGrow: 1,
+      flexBasis: isDesktop ? 0 : "45%",
+      minWidth: isDesktop ? 0 : 140,
+      borderWidth: 1.5,
+      borderRadius: 16,
+      padding: isDesktop ? 16 : 14,
+      ...(Platform.OS === "web" && { cursor: "pointer" as any, transition: "border-color 0.15s ease" as any }),
+    },
+    statIcon: {
+      width: 34,
+      height: 34,
+      borderRadius: 10,
+      alignItems: "center",
+      justifyContent: "center",
+      marginBottom: 10,
+    },
+    statValue: { fontSize: isDesktop ? 26 : 22, fontWeight: "800" },
+    statLabel: { fontSize: 12, fontWeight: "600", marginTop: 2 },
 
     // Filter row
     filterRow: {

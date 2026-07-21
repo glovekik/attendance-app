@@ -9,7 +9,6 @@ import {
   ActivityIndicator,
   RefreshControl,
   TextInput,
-  Alert,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 
@@ -37,7 +36,12 @@ import {
 import { attendanceStatusColor } from "../../src/theme/statusColors";
 import { DatePickerField } from "../../src/components/DatePickerField";
 import { WebModal, ModalActions } from "../../src/components/WebModal";
+import { Avatar } from "../../src/components/Avatar";
 import { useTheme } from "../../src/theme/ThemeProvider";
+import { notify } from "../../src/utils/confirm";
+import { AttendanceCalendar } from "../../src/components/AttendanceCalendar";
+import { ATT } from "../../src/theme/attendanceColors";
+import { listHolidays } from "../../src/services/holidays";
 
 // ---- date helpers (local time) ----
 const pad = (n: number) => String(n).padStart(2, "0");
@@ -63,10 +67,35 @@ const startOfWeek = (d: Date) => {
   x.setHours(0, 0, 0, 0);
   return x;
 };
+// hoursWorked (a decimal) → "8h 12m" for a human-readable duration.
+const fmtHours = (h?: number | null) => {
+  if (!h || h <= 0) return "—";
+  const hh = Math.floor(h);
+  const mm = Math.round((h - hh) * 60);
+  return mm ? `${hh}h ${mm}m` : `${hh}h`;
+};
 
 const PRESENT_STATUSES = ["PRESENT", "CHECKED_IN", "COMPLETED"];
 const isPresent = (r: TeamAttendanceRow) => PRESENT_STATUSES.includes(r.status);
 const isLate = (r: TeamAttendanceRow) => !!r.isLate || r.status === "LATE";
+
+// One row → exactly one bucket. Buckets are mutually exclusive so a single
+// day is never counted twice (e.g. a PRESENT row flagged isLate must not add
+// to both "present" and "late"), and leave/holiday days are separated out so
+// they never drag the attendance rate down.
+type DayBucket = "present" | "late" | "half" | "absent" | "leave" | "holiday" | "other";
+const bucketOf = (r?: TeamAttendanceRow): DayBucket => {
+  if (!r) return "other";
+  // LEAVE / HOLIDAY are carried on attendanceType, not status.
+  const t = r.attendanceType;
+  if (t === "LEAVE") return "leave";
+  if (t === "HOLIDAY") return "holiday";
+  if (r.status === "ABSENT") return "absent";
+  if (r.status === "HALF_DAY") return "half";
+  if (isLate(r)) return "late";
+  if (isPresent(r) || r.checkIn) return "present";
+  return "other";
+};
 
 type AttTab = "today" | "week" | "month";
 
@@ -93,18 +122,23 @@ export default function TeamMemberDetail() {
   const [attTab, setAttTab] = useState<AttTab>("today");
 
   const [attendance, setAttendance] = useState<TeamAttendanceRow[]>([]);
-  // Separate bucket for the week strip: the current week can start in the
-  // previous month (e.g. Mon Jun 29 for a Fri Jul 3), and `attendance` is
-  // scoped to the current month only — so those days would otherwise be
-  // painted as "absent". This holds the union of every month the visible
-  // week touches, used purely for the week dots.
-  const [weekAttendance, setWeekAttendance] = useState<TeamAttendanceRow[]>([]);
+  const [holidayMap, setHolidayMap] = useState<Record<string, string>>({});
+  // The Week tab is independently navigable (prev/next week). Its rows are
+  // fetched on demand for whichever week is shown — the visible week can
+  // straddle a month boundary (e.g. Mon Jun 29 → Sun Jul 5), so we fetch the
+  // union of every month it touches, otherwise those days paint as "absent".
+  const [weekStart, setWeekStart] = useState<Date>(() => startOfWeek(new Date()));
+  const [weekRows, setWeekRows] = useState<TeamAttendanceRow[]>([]);
+  const [weekLoading, setWeekLoading] = useState(true);
+  // Week is compact by default; the day-by-day breakdown expands on tap.
+  const [weekExpanded, setWeekExpanded] = useState(false);
   const [balances, setBalances] = useState<LeaveBalance[]>([]);
   const [productivity, setProductivity] = useState<TeamProductivityRow | null>(
     null
   );
   const [leaves, setLeaves] = useState<LeaveRequest[]>([]);
   const [tasks, setTasks] = useState<ManagerTask[]>([]);
+  const [photoUrl, setPhotoUrl] = useState<string | undefined>(undefined);
 
   // Add-task modal
   const [assignOpen, setAssignOpen] = useState(false);
@@ -192,32 +226,22 @@ export default function TeamMemberDetail() {
       }
       const base = new Date();
       const month = monthKey(base);
-      // The visible week can straddle a month boundary; fetch that month too
-      // so the week strip has real data instead of false "absent" dots.
-      const weekStartMonth = monthKey(startOfWeek(base));
-      const months =
-        weekStartMonth === month ? [month] : [month, weekStartMonth];
-      const [attMonths, bal, prod, lv, tk] = await Promise.all([
-        Promise.all(
-          months.map((m) =>
-            listTeamAttendance(token, { userId, month: m }).catch(() => [])
-          )
-        ),
+      const [att, bal, prod, lv, tk] = await Promise.all([
+        listTeamAttendance(token, { userId, month }).catch(() => []),
         listTeamLeaveBalances(token, userId).catch(() => []),
         teamProductivityReport(token, userId).catch(() => []),
         listManagerLeaveRequests(token).catch(() => []),
         listManagerTasks(token, { assigneeId: userId }).catch(() => []),
       ]);
-      // attMonths[0] is always the current month — month stats / today read
-      // from that; the flattened union feeds only the week strip.
-      setAttendance(attMonths[0] || []);
-      setWeekAttendance(attMonths.flat());
-      setBalances(bal?.find((r) => r.user?.id === userId)?.balances || []);
+      setAttendance(att || []);
+      const balRow = bal?.find((r) => r.user?.id === userId);
+      setBalances(balRow?.balances || []);
+      setPhotoUrl(balRow?.user?.profilePictureUrl);
       setProductivity(prod?.find((r) => r.userId === userId) || null);
       setLeaves((lv || []).filter((r) => r.userId === userId));
       setTasks(tk || []);
     } catch (err: any) {
-      Alert.alert("Failed to load", err?.message || "");
+      notify("Failed to load", err?.message || "");
     } finally {
       setLoading(false);
       setRefreshing(false);
@@ -228,46 +252,200 @@ export default function TeamMemberDetail() {
     load();
   }, [load]);
 
+  // Holidays for this year — the month calendar paints them distinctly.
+  useEffect(() => {
+    (async () => {
+      try {
+        const token = await AsyncStorage.getItem("token");
+        if (!token) return;
+        const hols = await listHolidays(token, { year: new Date().getFullYear() });
+        const map: Record<string, string> = {};
+        (hols || []).forEach((h: any) => { if (h?.date) map[h.date] = h.name || "Holiday"; });
+        setHolidayMap(map);
+      } catch {
+        /* non-fatal */
+      }
+    })();
+  }, []);
+
+  // Fetch attendance for the currently-shown week (on mount + whenever the
+  // user navigates weeks). Fetches every month the week touches.
+  const loadWeek = useCallback(
+    async (ws: Date) => {
+      setWeekLoading(true);
+      try {
+        const token = await AsyncStorage.getItem("token");
+        if (!token) return;
+        const end = new Date(ws);
+        end.setDate(ws.getDate() + 6);
+        const months = Array.from(new Set([monthKey(ws), monthKey(end)]));
+        const res = await Promise.all(
+          months.map((m) =>
+            listTeamAttendance(token, { userId, month: m }).catch(() => [])
+          )
+        );
+        setWeekRows(res.flat());
+      } catch {
+        setWeekRows([]);
+      } finally {
+        setWeekLoading(false);
+      }
+    },
+    [userId]
+  );
+
+  useEffect(() => {
+    loadWeek(weekStart);
+  }, [weekStart, loadWeek]);
+
+  const shiftWeek = (delta: number) => {
+    const d = new Date(weekStart);
+    d.setDate(weekStart.getDate() + delta * 7);
+    setWeekStart(startOfWeek(d));
+  };
+  const goCurrentWeek = () => setWeekStart(startOfWeek(new Date()));
+
   // ---- attendance rollups ----
   const now = new Date();
   const todayRow = useMemo(
     () => attendance.find((r) => r.date === ymd(now)),
     [attendance] // eslint-disable-line react-hooks/exhaustive-deps
   );
+  const todayKey = ymd(now);
   const weekDays = useMemo(() => {
-    const start = startOfWeek(now);
-    const labels = ["M", "T", "W", "T", "F", "S", "S"];
-    return labels.map((label, i) => {
-      const d = new Date(start);
-      d.setDate(start.getDate() + i);
+    const dowShort = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+    const monShort = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+    return Array.from({ length: 7 }, (_, i) => {
+      const d = new Date(weekStart);
+      d.setDate(weekStart.getDate() + i);
       const key = ymd(d);
+      const dow = d.getDay();
       return {
-        label,
         key,
-        row: weekAttendance.find((r) => r.date === key),
-        isToday: key === ymd(now),
-        isFuture: d > now,
+        dow,
+        dayNum: d.getDate(),
+        dayShort: dowShort[dow],
+        monShort: monShort[d.getMonth()],
+        // Sunday is the weekly off (matches the calendar logic in history.tsx).
+        isOff: dow === 0,
+        row: weekRows.find((r) => r.date === key),
+        isToday: key === todayKey,
+        isFuture: key > todayKey,
       };
     });
-  }, [weekAttendance]); // eslint-disable-line react-hooks/exhaustive-deps
-  const weekStats = useMemo(() => {
-    const rows = weekDays.map((d) => d.row).filter(Boolean) as TeamAttendanceRow[];
-    return {
-      present: rows.filter(isPresent).length,
-      late: rows.filter(isLate).length,
-      absent: rows.filter((r) => r.status === "ABSENT").length,
-    };
-  }, [weekDays]);
-  const monthStats = useMemo(() => {
-    const present = attendance.filter(isPresent).length;
-    const late = attendance.filter(isLate).length;
-    const absent = attendance.filter((r) => r.status === "ABSENT").length;
-    const halfDay = attendance.filter((r) => r.status === "HALF_DAY").length;
-    const hours = attendance.reduce((s, r) => s + (r.hoursWorked || 0), 0);
-    const total = attendance.length;
-    const rate = total ? Math.round((present / total) * 100) : 0;
-    return { present, late, absent, halfDay, hours, total, rate };
-  }, [attendance]);
+  }, [weekStart, weekRows, todayKey]);
+
+  // Aggregate a set of rows into mutually-exclusive buckets + total hours.
+  // `workingDaysCal` is the calendar working-days denominator (Mon–Sat minus
+  // holidays, elapsed) — it counts days that have NO attendance row (true
+  // absences), which recorded-only counting misses and which inflated the %.
+  const tally = (rows: TeamAttendanceRow[], workingDaysCal?: number) => {
+    let present = 0, late = 0, half = 0, absent = 0, leave = 0, holiday = 0, hours = 0;
+    rows.forEach((r) => {
+      switch (bucketOf(r)) {
+        case "present": present++; break;
+        case "late": late++; break;
+        case "half": half++; break;
+        case "absent": absent++; break;
+        case "leave": leave++; break;
+        case "holiday": holiday++; break;
+      }
+      hours += r.hoursWorked || 0;
+    });
+    // "Attended" = actually showed up (on-time, late, or half day).
+    const attended = present + late + half;
+    const recorded = attended + absent;
+    // Prefer the calendar denominator; never below attended+leave so the
+    // numerator can't exceed it. "No record" = working days with no attendance.
+    const workingDays = Math.max(workingDaysCal ?? recorded, attended + leave);
+    const noRecord = Math.max(0, workingDays - attended - leave);
+    // Rate = attended ÷ (working days that weren't leave). Leave & holidays
+    // are excluded so they never count against attendance.
+    const denomForRate = attended + noRecord;
+    const rate = denomForRate ? Math.round((attended / denomForRate) * 100) : 0;
+    return { present, late, half, absent, leave, holiday, hours, attended, workingDays, noRecord, rate };
+  };
+
+  // Calendar working days elapsed so far this month (Sundays & holidays out).
+  const monthWorkingElapsed = useMemo(() => {
+    const y = now.getFullYear();
+    const mo = now.getMonth() + 1;
+    const daysInMonth = new Date(y, mo, 0).getDate();
+    const todayStr = ymd(now);
+    let count = 0;
+    for (let dd = 1; dd <= daysInMonth; dd++) {
+      const key = `${y}-${String(mo).padStart(2, "0")}-${String(dd).padStart(2, "0")}`;
+      if (key > todayStr) break;
+      if (new Date(y, mo - 1, dd).getDay() === 0) continue; // Sunday = weekly off
+      if (holidayMap[key]) continue;
+      count++;
+    }
+    return count;
+  }, [holidayMap]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Working days elapsed in the visible week.
+  const weekWorkingElapsed = useMemo(
+    () => weekDays.filter((d) => !d.isFuture && !d.isOff && !holidayMap[d.key]).length,
+    [weekDays, holidayMap]
+  );
+
+  const weekStats = useMemo(
+    () => tally(weekDays.map((d) => d.row).filter(Boolean) as TeamAttendanceRow[], weekWorkingElapsed),
+    [weekDays, weekWorkingElapsed] // eslint-disable-line react-hooks/exhaustive-deps
+  );
+  const monthStats = useMemo(
+    () => tally(attendance, monthWorkingElapsed),
+    [attendance, monthWorkingElapsed] // eslint-disable-line react-hooks/exhaustive-deps
+  );
+
+  const isCurrentWeek = ymd(weekStart) === ymd(startOfWeek(now));
+  const weekRangeLabel = useMemo(() => {
+    const end = new Date(weekStart);
+    end.setDate(weekStart.getDate() + 6);
+    const sameMonth = weekStart.getMonth() === end.getMonth();
+    const s = weekStart.toLocaleDateString(undefined, { day: "numeric", month: "short" });
+    const e = end.toLocaleDateString(undefined, { day: "numeric", month: "short", year: "numeric" });
+    return sameMonth
+      ? `${weekStart.getDate()} – ${e}`
+      : `${s} – ${e}`;
+  }, [weekStart]);
+
+  // Month tab always shows the current month up to today ("month to date").
+  const monthRangeLabel = useMemo(() => {
+    const monthName = now.toLocaleDateString(undefined, { month: "long", year: "numeric" });
+    return `${monthName} · 1–${now.getDate()}`;
+  }, [now]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const rateColor = (r: number) =>
+    r >= 90 ? c.successText : r >= 75 ? c.warningText : c.dangerText;
+
+  const bucketColor = (b: DayBucket): string => {
+    switch (b) {
+      case "present": return ATT.present;
+      case "late": return c.warningText; // amber — still spot late at a glance
+      case "half": return ATT.present; // half day is still attended
+      case "absent": return ATT.absent;
+      case "leave": return ATT.leave;
+      default: return ATT.holiday; // holiday / weekly off
+    }
+  };
+  // Colour for a day cell in the compact week strip.
+  const dayColor = (d: { row?: TeamAttendanceRow; isFuture: boolean; isOff: boolean }): string => {
+    if (d.isFuture) return c.surfaceMuted;
+    if (!d.row) return d.isOff ? c.surfaceMuted : c.dangerText; // missed working day
+    return bucketColor(bucketOf(d.row));
+  };
+
+  // Month composition segments (drives the stacked bar + legend).
+  const monthComp = [
+    { key: "present", label: "Present", value: monthStats.present, color: ATT.present },
+    { key: "late", label: "Late", value: monthStats.late, color: c.warningText },
+    { key: "half", label: "Half day", value: monthStats.half, color: ATT.present },
+    { key: "absent", label: "No record", value: monthStats.noRecord, color: ATT.absent },
+    { key: "leave", label: "Leave", value: monthStats.leave, color: ATT.leave },
+    { key: "holiday", label: "Holiday", value: monthStats.holiday, color: ATT.holiday },
+  ];
+  const monthCompTotal = monthComp.reduce((s, x) => s + x.value, 0);
 
   const openAssign = () => {
     setTitle("");
@@ -280,7 +458,7 @@ export default function TeamMemberDetail() {
   const onAssign = async () => {
     if (saving) return;
     if (!title.trim()) {
-      Alert.alert("Title is required");
+      notify("Title is required");
       return;
     }
     try {
@@ -297,9 +475,9 @@ export default function TeamMemberDetail() {
       setAssignOpen(false);
       setSaving(false);
       load();
-      Alert.alert("Task assigned", `Sent to ${name}`);
+      notify("Task assigned", `Sent to ${name}`);
     } catch (err: any) {
-      Alert.alert("Assign failed", err?.message || "");
+      notify("Assign failed", err?.message || "");
       setSaving(false);
     }
   };
@@ -349,11 +527,15 @@ export default function TeamMemberDetail() {
       >
         {/* HERO */}
         <View style={styles.hero}>
-          <View style={styles.heroAvatar}>
-            <Text style={styles.heroAvatarText}>
-              {name.charAt(0).toUpperCase()}
-            </Text>
-          </View>
+          <Avatar
+            name={name}
+            uri={photoUrl}
+            size={68}
+            bg="rgba(255,255,255,0.22)"
+            fg="#fff"
+            fontSize={26}
+            style={styles.heroAvatar}
+          />
           <Text style={styles.heroName}>{name}</Text>
           {!!email && <Text style={styles.heroEmail}>{email}</Text>}
           <View style={styles.heroPills}>
@@ -411,58 +593,234 @@ export default function TeamMemberDetail() {
 
           {attTab === "week" && (
             <View style={styles.tabBody}>
-              <View style={styles.weekStrip}>
-                {weekDays.map((d, i) => {
-                  const col = d.row
-                    ? attendanceStatusColor(d.row.status, c)
-                    : null;
-                  return (
-                    <View key={i} style={styles.weekCol}>
-                      <Text style={styles.weekLabel}>{d.label}</Text>
-                      <View
-                        style={[
-                          styles.weekDot,
-                          {
-                            backgroundColor: d.isFuture
-                              ? c.surfaceMuted
-                              : col
-                              ? col.solid
-                              : c.dangerBg,
-                            borderColor: d.isToday ? c.accent : "transparent",
-                          },
-                        ]}
-                      />
-                    </View>
-                  );
-                })}
+              {/* week navigator */}
+              <View style={styles.weekNav}>
+                <TouchableOpacity style={styles.weekNavBtn} onPress={() => shiftWeek(-1)}>
+                  <Ionicons name="chevron-back" size={18} color={c.text} />
+                </TouchableOpacity>
+                <View style={{ alignItems: "center" }}>
+                  <Text style={styles.weekRangeText}>{weekRangeLabel}</Text>
+                  {!isCurrentWeek && (
+                    <TouchableOpacity onPress={goCurrentWeek} hitSlop={8}>
+                      <Text style={styles.thisWeekLink}>Back to this week</Text>
+                    </TouchableOpacity>
+                  )}
+                </View>
+                <TouchableOpacity
+                  style={[styles.weekNavBtn, isCurrentWeek && { opacity: 0.35 }]}
+                  disabled={isCurrentWeek}
+                  onPress={() => shiftWeek(1)}
+                >
+                  <Ionicons name="chevron-forward" size={18} color={c.text} />
+                </TouchableOpacity>
               </View>
-              <View style={styles.statRow}>
-                <StatBlock c={c} label="Present" value={weekStats.present} tone="ok" />
-                <StatBlock c={c} label="Late" value={weekStats.late} tone="warn" />
-                <StatBlock c={c} label="Absent" value={weekStats.absent} tone="bad" />
-              </View>
+
+              {/* compact strip — always visible */}
+              {weekLoading ? (
+                <ActivityIndicator color={c.accent} style={{ paddingVertical: 24 }} />
+              ) : (
+                <>
+                  <View style={styles.strip}>
+                    {weekDays.map((d) => (
+                      <View key={d.key} style={styles.stripCol}>
+                        <Text style={styles.stripDow}>{d.dayShort.charAt(0)}</Text>
+                        <View
+                          style={[
+                            styles.stripDot,
+                            {
+                              backgroundColor: dayColor(d),
+                              borderColor: d.isToday ? c.accent : "transparent",
+                            },
+                          ]}
+                        />
+                        <Text style={[styles.stripNum, d.isToday && { color: c.accent }]}>
+                          {d.dayNum}
+                        </Text>
+                      </View>
+                    ))}
+                  </View>
+
+                  {/* week summary */}
+                  <View style={styles.weekSummary}>
+                    <StatBlock c={c} label="Present" value={weekStats.present} tone="ok" />
+                    <StatBlock c={c} label="Late" value={weekStats.late} tone="warn" />
+                    <StatBlock c={c} label="No record" value={weekStats.noRecord} tone="bad" />
+                    <StatBlock c={c} label="Hours" value={Math.round(weekStats.hours * 10) / 10} />
+                  </View>
+
+                  {/* expand toggle */}
+                  <TouchableOpacity
+                    style={styles.expandBtn}
+                    onPress={() => setWeekExpanded((v) => !v)}
+                    activeOpacity={0.8}
+                  >
+                    <Text style={styles.expandBtnText}>
+                      {weekExpanded ? "Hide day-by-day" : "Show day-by-day"}
+                    </Text>
+                    <Ionicons
+                      name={weekExpanded ? "chevron-up" : "chevron-down"}
+                      size={16}
+                      color={c.accent}
+                    />
+                  </TouchableOpacity>
+                </>
+              )}
+
+              {/* day-by-day breakdown — expanded */}
+              {!weekLoading && weekExpanded && (
+                <View style={styles.weekList}>
+                  {weekDays.map((d, i) => {
+                    const b = bucketOf(d.row);
+                    const col = d.row ? attendanceStatusColor(d.row.status, c) : null;
+                    let pillText: string;
+                    let pillBg: string;
+                    let pillFg: string;
+                    let primary: string;
+                    let secondary = "";
+                    let muted = false;
+                    if (d.isFuture) {
+                      pillText = "—"; pillBg = c.surfaceMuted; pillFg = c.textMuted;
+                      primary = "Upcoming"; muted = true;
+                    } else if (d.isOff && !d.row) {
+                      pillText = "WEEKLY OFF"; pillBg = c.surfaceMuted; pillFg = c.textMuted;
+                      primary = "Weekly off (Sunday)"; muted = true;
+                    } else if (!d.row) {
+                      pillText = "NO RECORD"; pillBg = c.dangerBg; pillFg = c.dangerText;
+                      primary = "No check-in recorded";
+                    } else if (b === "leave") {
+                      pillText = "LEAVE"; pillBg = c.infoBg; pillFg = c.infoText;
+                      primary = "On approved leave";
+                    } else if (b === "holiday") {
+                      pillText = "HOLIDAY"; pillBg = c.surfaceMuted; pillFg = c.textMuted;
+                      primary = "Holiday"; muted = true;
+                    } else {
+                      pillText = d.row.status;
+                      pillBg = col?.bg || c.surfaceMuted;
+                      pillFg = col?.fg || c.text;
+                      primary = `In ${fmtTime(d.row.checkIn)} · Out ${fmtTime(d.row.checkOut)}`;
+                      const type =
+                        d.row.attendanceType && d.row.attendanceType !== "OFFICE"
+                          ? d.row.attendanceType
+                          : "";
+                      const hrs = fmtHours(d.row.hoursWorked);
+                      secondary = [hrs !== "—" ? hrs : "", type].filter(Boolean).join(" · ");
+                    }
+                    return (
+                      <View key={d.key} style={[styles.weekDayRow, i === 0 && { borderTopWidth: 0 }]}>
+                        <View style={[styles.dateChip, d.isToday && styles.dateChipToday]}>
+                          <Text style={[styles.dateChipDow, d.isToday && { color: "#fff" }]}>
+                            {d.dayShort}
+                          </Text>
+                          <Text style={[styles.dateChipNum, d.isToday && { color: "#fff" }]}>
+                            {d.dayNum}
+                          </Text>
+                        </View>
+                        <View style={{ flex: 1 }}>
+                          <Text
+                            style={[styles.weekDayPrimary, muted && styles.weekDayPrimaryMuted]}
+                            numberOfLines={1}
+                          >
+                            {primary}
+                          </Text>
+                          {!!secondary && (
+                            <Text style={styles.weekDaySecondary}>{secondary}</Text>
+                          )}
+                          {!!d.row?.workNotes?.trim() && (
+                            <Text style={styles.weekDayNotes} numberOfLines={3}>
+                              {d.row.workNotes.trim()}
+                            </Text>
+                          )}
+                        </View>
+                        <View style={[styles.weekPill, { backgroundColor: pillBg }]}>
+                          <Text style={[styles.weekPillText, { color: pillFg }]}>{pillText}</Text>
+                        </View>
+                      </View>
+                    );
+                  })}
+                </View>
+              )}
             </View>
           )}
 
           {attTab === "month" && (
             <View style={styles.tabBody}>
-              <View style={styles.rateRow}>
-                <View>
-                  <Text style={styles.rateValue}>{monthStats.rate}%</Text>
-                  <Text style={styles.mutedLabel}>Attendance rate</Text>
-                </View>
-                <View style={styles.rateSide}>
-                  <Text style={styles.rateHours}>
-                    {Math.round(monthStats.hours * 10) / 10}h
+              <Text style={styles.periodCaption}>{monthRangeLabel}</Text>
+
+              {/* hero: three headline numbers */}
+              <View style={styles.mHero}>
+                <View style={styles.mHeroCell}>
+                  <Text style={[styles.mHeroValue, { color: rateColor(monthStats.rate) }]}>
+                    {monthStats.rate}%
                   </Text>
-                  <Text style={styles.mutedLabel}>Hours this month</Text>
+                  <Text style={styles.mHeroLabel}>Attendance</Text>
+                </View>
+                <View style={styles.mHeroDivider} />
+                <View style={styles.mHeroCell}>
+                  <Text style={styles.mHeroValue}>
+                    {monthStats.attended}
+                    <Text style={styles.mHeroValueSub}>/{monthStats.workingDays}</Text>
+                  </Text>
+                  <Text style={styles.mHeroLabel}>Days present</Text>
+                </View>
+                <View style={styles.mHeroDivider} />
+                <View style={styles.mHeroCell}>
+                  <Text style={styles.mHeroValue}>{Math.round(monthStats.hours * 10) / 10}h</Text>
+                  <Text style={styles.mHeroLabel}>Hours worked</Text>
                 </View>
               </View>
-              <View style={styles.statRow}>
-                <StatBlock c={c} label="Present" value={monthStats.present} tone="ok" />
-                <StatBlock c={c} label="Late" value={monthStats.late} tone="warn" />
-                <StatBlock c={c} label="Absent" value={monthStats.absent} tone="bad" />
-                <StatBlock c={c} label="Half" value={monthStats.halfDay} />
+
+              {/* stacked composition bar */}
+              <View style={styles.compBar}>
+                {monthCompTotal === 0 ? (
+                  <View style={{ flex: 1, backgroundColor: c.surfaceMuted }} />
+                ) : (
+                  monthComp.map(
+                    (s) =>
+                      s.value > 0 && (
+                        <View
+                          key={s.key}
+                          style={{ flex: s.value, backgroundColor: s.color }}
+                        />
+                      )
+                  )
+                )}
+              </View>
+
+              {/* legend */}
+              <View style={styles.legendWrap}>
+                {monthCompTotal === 0 ? (
+                  <Text style={styles.mutedLabel}>No attendance recorded yet this month.</Text>
+                ) : (
+                  monthComp.map(
+                    (s) =>
+                      s.value > 0 && (
+                        <View key={s.key} style={styles.legendChip}>
+                          <View style={[styles.legendChipDot, { backgroundColor: s.color }]} />
+                          <Text style={styles.legendChipText}>
+                            {s.label} <Text style={styles.legendChipNum}>{s.value}</Text>
+                          </Text>
+                        </View>
+                      )
+                  )
+                )}
+              </View>
+
+              <Text style={styles.periodNote}>
+                Attendance = days present ÷ {monthStats.workingDays} recorded working day
+                {monthStats.workingDays === 1 ? "" : "s"}
+                {monthStats.leave > 0 || monthStats.holiday > 0
+                  ? `. Leave (${monthStats.leave}) & holidays (${monthStats.holiday}) don't count against it.`
+                  : "."}
+              </Text>
+
+              {/* Month calendar — tap a day to see that day's attendance */}
+              <View style={styles.calWrap}>
+                <Text style={styles.calHeading}>Day-by-day calendar</Text>
+                <AttendanceCalendar
+                  monthStr={monthKey(now)}
+                  rows={attendance as any}
+                  holidayMap={holidayMap}
+                />
               </View>
             </View>
           )}
@@ -987,12 +1345,125 @@ const makeStyles = (c: any) =>
     mutedLabel: { color: c.textMuted, fontSize: 12 },
     timeCards: { flexDirection: "row", gap: 8 },
 
-    weekStrip: { flexDirection: "row", justifyContent: "space-between" },
-    weekCol: { alignItems: "center", gap: 6, flex: 1 },
-    weekLabel: { color: c.textMuted, fontSize: 11, fontWeight: "700" },
-    weekDot: { width: 18, height: 18, borderRadius: 9, borderWidth: 2 },
+    // week navigator
+    weekNav: {
+      flexDirection: "row",
+      alignItems: "center",
+      justifyContent: "space-between",
+    },
+    weekNavBtn: {
+      width: 36,
+      height: 36,
+      borderRadius: 12,
+      backgroundColor: c.surfaceMuted,
+      alignItems: "center",
+      justifyContent: "center",
+    },
+    weekRangeText: { color: c.text, fontSize: 14, fontWeight: "800" },
+    thisWeekLink: { color: c.accent, fontSize: 11, fontWeight: "700", marginTop: 2 },
+
+    // compact week strip
+    strip: { flexDirection: "row", justifyContent: "space-between" },
+    stripCol: { alignItems: "center", gap: 5, flex: 1 },
+    stripDow: { color: c.textMuted, fontSize: 11, fontWeight: "700" },
+    stripDot: { width: 18, height: 18, borderRadius: 9, borderWidth: 2 },
+    stripNum: { color: c.textMuted, fontSize: 11, fontWeight: "700" },
+
+    // expand toggle
+    expandBtn: {
+      flexDirection: "row",
+      alignItems: "center",
+      justifyContent: "center",
+      gap: 5,
+      paddingVertical: 8,
+    },
+    expandBtnText: { color: c.accent, fontSize: 13, fontWeight: "800" },
+
+    // week day-by-day list (Keka-style)
+    weekList: {
+      backgroundColor: c.surfaceMuted,
+      borderRadius: 14,
+      paddingHorizontal: 12,
+    },
+    weekDayRow: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 12,
+      paddingVertical: 10,
+      borderTopWidth: StyleSheet.hairlineWidth,
+      borderTopColor: c.surfaceBorder,
+    },
+    dateChip: {
+      width: 44,
+      paddingVertical: 6,
+      borderRadius: 10,
+      backgroundColor: c.surface,
+      borderWidth: 1,
+      borderColor: c.surfaceBorder,
+      alignItems: "center",
+    },
+    dateChipToday: { backgroundColor: c.accent, borderColor: c.accent },
+    dateChipDow: { color: c.textMuted, fontSize: 10, fontWeight: "800", letterSpacing: 0.5 },
+    dateChipNum: { color: c.text, fontSize: 16, fontWeight: "800", marginTop: 1 },
+    weekDayPrimary: { color: c.text, fontSize: 13, fontWeight: "700" },
+    weekDayPrimaryMuted: { color: c.textMuted, fontWeight: "600" },
+    weekDaySecondary: { color: c.textMuted, fontSize: 11, marginTop: 2 },
+    weekDayNotes: { color: c.textMuted, fontSize: 11, fontStyle: "italic", marginTop: 4, lineHeight: 15 },
+    weekPill: { paddingHorizontal: 9, paddingVertical: 4, borderRadius: 999 },
+    weekPillText: { fontSize: 10, fontWeight: "800", letterSpacing: 0.3 },
+    weekSummary: {
+      flexDirection: "row",
+      marginTop: 4,
+      paddingTop: 14,
+      borderTopWidth: StyleSheet.hairlineWidth,
+      borderTopColor: c.surfaceBorder,
+    },
 
     statRow: { flexDirection: "row" },
+
+    // period context (month / week captions)
+    periodCaption: {
+      color: c.textMuted,
+      fontSize: 12,
+      fontWeight: "700",
+      textAlign: "center",
+    },
+    periodNote: { color: c.textMuted, fontSize: 11, lineHeight: 16, marginTop: 2 },
+    calWrap: {
+      marginTop: 16,
+      paddingTop: 16,
+      borderTopWidth: StyleSheet.hairlineWidth,
+      borderTopColor: c.surfaceBorder,
+    },
+    calHeading: { color: c.text, fontSize: 13, fontWeight: "800", marginBottom: 10 },
+
+    // month hero row
+    mHero: {
+      flexDirection: "row",
+      alignItems: "center",
+      backgroundColor: c.surfaceMuted,
+      borderRadius: 14,
+      paddingVertical: 16,
+    },
+    mHeroCell: { flex: 1, alignItems: "center" },
+    mHeroDivider: { width: StyleSheet.hairlineWidth, alignSelf: "stretch", backgroundColor: c.surfaceBorder, marginVertical: 6 },
+    mHeroValue: { color: c.text, fontSize: 24, fontWeight: "800" },
+    mHeroValueSub: { color: c.textMuted, fontSize: 15, fontWeight: "700" },
+    mHeroLabel: { color: c.textMuted, fontSize: 11, marginTop: 3 },
+
+    // stacked composition bar + legend
+    compBar: {
+      flexDirection: "row",
+      height: 14,
+      borderRadius: 7,
+      overflow: "hidden",
+      backgroundColor: c.surfaceMuted,
+    },
+    legendWrap: { flexDirection: "row", flexWrap: "wrap", gap: 10 },
+    legendChip: { flexDirection: "row", alignItems: "center", gap: 6 },
+    legendChipDot: { width: 9, height: 9, borderRadius: 3 },
+    legendChipText: { color: c.textMuted, fontSize: 12, fontWeight: "600" },
+    legendChipNum: { color: c.text, fontWeight: "800" },
 
     rateRow: {
       flexDirection: "row",

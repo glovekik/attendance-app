@@ -9,7 +9,6 @@ import {
   ActivityIndicator,
   RefreshControl,
   TextInput,
-  Alert,
   Platform } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { WebModal, ModalActions } from "../src/components/WebModal";
@@ -30,6 +29,7 @@ import { DatePickerField } from "../src/components/DatePickerField";
 
 import { useTheme } from "../src/theme/ThemeProvider";
 import { offerStatusColor } from "../src/theme/statusColors";
+import { confirmAction, notify } from "../src/utils/confirm";
 
 const fmtMoney = (n?: number) =>
   n != null
@@ -82,7 +82,7 @@ export default function HrOffers() {
       setItems(offers || []);
       setCandidates(cands || []);
     } catch (err: any) {
-      Alert.alert(
+      notify(
         "Couldn't load offers",
         err?.message || "Pull down to retry."
       );
@@ -111,8 +111,8 @@ export default function HrOffers() {
   };
 
   const onSave = async () => {
-    if (!candidateId) return Alert.alert("Pick a candidate");
-    if (!position.trim()) return Alert.alert("Position is required");
+    if (!candidateId) return notify("Pick a candidate");
+    if (!position.trim()) return notify("Position is required");
     setSaving(true);
     try {
       const token = await AsyncStorage.getItem("token");
@@ -128,51 +128,51 @@ export default function HrOffers() {
       resetForm();
       load();
     } catch (err: any) {
-      Alert.alert("Save failed", err?.message || "");
+      notify("Save failed", err?.message || "");
     } finally {
       setSaving(false);
     }
   };
 
   const onSend = async (o: Offer) => {
-    Alert.alert(
-      "Send offer?",
-      "This emails the candidate the offer link.",
-      [
-        { text: "Cancel", style: "cancel" },
-        {
-          text: "Send",
-          onPress: async () => {
-            try {
-              const token = await AsyncStorage.getItem("token");
-              if (!token) return;
-              await sendOffer(token, o.id);
-              load();
-            } catch (err: any) {
-              Alert.alert("Send failed", err?.message || "");
-            }
-          } },
-      ]
-    );
+    if (
+      await confirmAction({
+        title: "Send offer?",
+        message: "This emails the candidate the offer link.",
+        confirmLabel: "Send",
+        cancelLabel: "Cancel",
+      })
+    ) {
+      try {
+        const token = await AsyncStorage.getItem("token");
+        if (!token) return;
+        await sendOffer(token, o.id);
+        load();
+      } catch (err: any) {
+        notify("Send failed", err?.message || "");
+      }
+    }
   };
 
-  const onRevoke = (o: Offer) => {
-    Alert.alert("Revoke offer?", "This cancels the outstanding offer.", [
-      { text: "Cancel", style: "cancel" },
-      {
-        text: "Revoke",
-        style: "destructive",
-        onPress: async () => {
-          try {
-            const token = await AsyncStorage.getItem("token");
-            if (!token) return;
-            await revokeOffer(token, o.id);
-            load();
-          } catch (err: any) {
-            Alert.alert("Revoke failed", err?.message || "");
-          }
-        } },
-    ]);
+  const onRevoke = async (o: Offer) => {
+    if (
+      await confirmAction({
+        title: "Revoke offer?",
+        message: "This cancels the outstanding offer.",
+        confirmLabel: "Revoke",
+        cancelLabel: "Cancel",
+        destructive: true,
+      })
+    ) {
+      try {
+        const token = await AsyncStorage.getItem("token");
+        if (!token) return;
+        await revokeOffer(token, o.id);
+        load();
+      } catch (err: any) {
+        notify("Revoke failed", err?.message || "");
+      }
+    }
   };
 
   const openDecision = (o: Offer, action: "ACCEPTED" | "REJECTED") => {
@@ -196,7 +196,7 @@ export default function HrOffers() {
       setDecisionTarget(null);
       load();
     } catch (err: any) {
-      Alert.alert("Record failed", err?.message || "");
+      notify("Record failed", err?.message || "");
     } finally {
       setDeciding(false);
     }

@@ -13,6 +13,7 @@ import {
   Platform } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { WebModal, ModalActions } from "../src/components/WebModal";
+import { Avatar } from "../src/components/Avatar";
 
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useRouter } from "expo-router";
@@ -27,6 +28,7 @@ import { listUsers } from "../src/services/users";
 import { Department, User } from "../src/types";
 
 import { useTheme } from "../src/theme/ThemeProvider";
+import { notify } from "../src/utils/confirm";
 export default function HrDepartments() {
   const router = useRouter();
   const { theme } = useTheme();
@@ -63,7 +65,7 @@ export default function HrDepartments() {
       setItems(depts || []);
       setUsers(allUsers || []);
     } catch (err: any) {
-      Alert.alert(
+      notify(
         "Couldn't load departments",
         err?.message || "Pull down to retry."
       );
@@ -106,7 +108,7 @@ export default function HrDepartments() {
 
   const onSave = async () => {
     if (!name.trim()) {
-      Alert.alert("Name is required");
+      notify("Name is required");
       return;
     }
     setSaving(true);
@@ -125,7 +127,7 @@ export default function HrDepartments() {
       closeForm();
       load();
     } catch (err: any) {
-      Alert.alert("Save failed", err?.message || "");
+      notify("Save failed", err?.message || "");
       setSaving(false);
     }
   };
@@ -392,11 +394,14 @@ export default function HrDepartments() {
                     setShowHeadPicker(false);
                   }}
                 >
-                  <View style={styles.avatar}>
-                    <Text style={styles.avatarText}>
-                      {item.name.charAt(0).toUpperCase()}
-                    </Text>
-                  </View>
+                  <Avatar
+                    name={item.name}
+                    uri={item.profilePictureUrl}
+                    size={36}
+                    fontSize={14}
+                    bg={c.surfaceMuted}
+                    fg={c.text}
+                  />
                   <View style={{ flex: 1 }}>
                     <Text style={styles.pickerName}>{item.name}</Text>
                     <Text style={styles.pickerSub}>
@@ -539,14 +544,6 @@ const makeStyles = (c: any) => StyleSheet.create({
     gap: 12,
     borderBottomWidth: 1,
     borderBottomColor: c.surfaceBorder },
-  avatar: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    backgroundColor: c.surfaceMuted,
-    alignItems: "center",
-    justifyContent: "center" },
-  avatarText: { color: c.text, fontWeight: "700" },
   pickerName: { color: c.text, fontSize: 14, fontWeight: "700" },
   pickerSub: { color: c.textMuted, fontSize: 11, marginTop: 2 } });
 

@@ -10,8 +10,7 @@ import {
   ActivityIndicator,
   RefreshControl,
   Platform,
-  Share,
-  Alert } from "react-native";
+  Share } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 
 import AsyncStorage from "@react-native-async-storage/async-storage";
@@ -25,8 +24,11 @@ import {
   TeamMember } from "../src/services/managerTeam";
 import { dateToYMD, WebDateField } from "../src/components/WebDateField";
 import { WebModal, ModalActions } from "../src/components/WebModal";
+import { Avatar } from "../src/components/Avatar";
 import { useTheme } from "../src/theme/ThemeProvider";
 import { attendanceStatusColor } from "../src/theme/statusColors";
+import { ATT, ATT_BG } from "../src/theme/attendanceColors";
+import { notify } from "../src/utils/confirm";
 
 const isWeb = Platform.OS === "web";
 const PRESENT = new Set(["PRESENT", "CHECKED_IN", "COMPLETED", "LATE", "HALF_DAY"]);
@@ -34,8 +36,9 @@ type Cat = "office" | "wfh" | "client" | "leave" | "absent";
 type Mode = "day" | "month";
 type StatusFilter = "all" | Cat;
 // Distinct tone for the client-location category (kept off the accent hue).
-const CLIENT_FG = "#7c3aed";
-const CLIENT_BG = "rgba(124,58,237,0.12)";
+// Client days share the teal "Attended" tone (legend collapses attended types).
+const CLIENT_FG = ATT.present;
+const CLIENT_BG = ATT_BG.present;
 
 // Attendance times are stored and served as IST wall-clock (see backend
 // utils/ist.py), so we render them as-is — no timezone conversion.
@@ -48,17 +51,19 @@ const formatHM = (iso?: string | null) => {
   const d = parseServerDate(iso);
   return d ? d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) : "-";
 };
+const todayYMD = () => dateToYMD(new Date());
 // Hours worked: the stored value once checked out, else live elapsed since
-// check-in (so "hours done" is visible before checkout too).
+// check-in (so "hours done" is visible before checkout too). Live-elapsed is
+// only meaningful for a session still open TODAY — for a past day left open
+// (missed checkout) Date.now() - checkIn would be wildly inflated, so use 0.
 const hoursOf = (row?: TeamAttendanceRow): number => {
   if (row?.hoursWorked) return row.hoursWorked;
   const inAt = parseServerDate(row?.checkIn);
-  if (inAt && !row?.checkOut) {
+  if (inAt && !row?.checkOut && row?.date === todayYMD()) {
     return Math.max(0, (Date.now() - inAt.getTime()) / 3600000);
   }
   return 0;
 };
-const todayYMD = () => dateToYMD(new Date());
 const todayMonth = () => {
   const d = new Date();
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
@@ -125,7 +130,7 @@ export default function ManagerAttendance() {
           .sort((a, b) => b.date.localeCompare(a.date))
       );
     } catch (err: any) {
-      Alert.alert("Couldn't load notes", err?.message || "");
+      notify("Couldn't load notes", err?.message || "");
     } finally {
       setNotesLoading(false);
     }
@@ -135,7 +140,7 @@ export default function ManagerAttendance() {
     try {
       const Clip = require("expo-clipboard");
       await Clip.setStringAsync(text);
-      Alert.alert("Copied", "Ready to paste into chat.");
+      notify("Copied", "Ready to paste into chat.");
       return;
     } catch {
       // native module not in this build — try web, else share
@@ -143,7 +148,7 @@ export default function ManagerAttendance() {
     if (typeof navigator !== "undefined" && (navigator as any).clipboard) {
       try {
         await (navigator as any).clipboard.writeText(text);
-        Alert.alert("Copied", "Ready to paste into chat.");
+        notify("Copied", "Ready to paste into chat.");
         return;
       } catch {
         // fall through to share
@@ -171,7 +176,7 @@ export default function ManagerAttendance() {
       setRows(list || []);
       setTeam(members || []);
     } catch (err: any) {
-      Alert.alert("Couldn't load team attendance", err?.message || "Pull down to retry.");
+      notify("Couldn't load team attendance", err?.message || "Pull down to retry.");
     } finally {
       setLoading(false);
       setRefreshing(false);
@@ -292,17 +297,17 @@ export default function ManagerAttendance() {
       meta = `${where}In ${formatHM(row?.checkIn)} · Out ${formatHM(row?.checkOut)}${hStr}`;
     } else if (cat === "leave") {
       pill = "ON LEAVE";
-      tone = { bg: c.infoBg, fg: c.infoText };
+      tone = { bg: ATT_BG.leave, fg: ATT.leave };
       meta = "Approved leave";
     } else if (cat === "absent") {
       pill = "NOT IN";
-      tone = { bg: c.surfaceMuted, fg: c.textMuted };
+      tone = { bg: ATT_BG.absent, fg: ATT.absent };
       meta = "No check-in yet";
     } else {
       const late = !!row?.isLate;
       if (cat === "wfh") {
         pill = "WFH";
-        tone = { bg: c.accentSoft, fg: c.accent };
+        tone = { bg: ATT_BG.wfh, fg: ATT.wfh };
       } else {
         pill = late ? "LATE" : row?.status || "PRESENT";
         tone = late ? { bg: c.warningBg, fg: c.warningText } : attendanceStatusColor(row?.status, c);
@@ -315,9 +320,7 @@ export default function ManagerAttendance() {
     }
     return (
       <TouchableOpacity style={styles.row} activeOpacity={0.7} onPress={() => setDetail(e)}>
-        <View style={styles.avatar}>
-          <Text style={styles.avatarText}>{member.name.charAt(0).toUpperCase()}</Text>
-        </View>
+        <Avatar name={member.name} uri={member.profilePictureUrl} size={38} bg={c.accentSoft} fg={c.accentText} />
         <View style={{ flex: 1 }}>
           <Text style={styles.rowName} numberOfLines={1}>{member.name}</Text>
           <Text style={styles.rowMeta}>{meta}</Text>
@@ -425,8 +428,8 @@ export default function ManagerAttendance() {
             value={kpis.office}
             label="In office"
             icon="business"
-            tint={c.successText}
-            tintBg={c.successBg}
+            tint={ATT.present}
+            tintBg={ATT_BG.present}
           />
           <Kpi
             c={c}
@@ -435,8 +438,8 @@ export default function ManagerAttendance() {
             value={kpis.wfh}
             label="WFH"
             icon="home"
-            tint={c.accent}
-            tintBg={c.accentSoft}
+            tint={ATT.wfh}
+            tintBg={ATT_BG.wfh}
           />
           <Kpi
             c={c}
@@ -455,8 +458,8 @@ export default function ManagerAttendance() {
             value={kpis.leave}
             label="On leave"
             icon="airplane"
-            tint={c.infoText}
-            tintBg={c.infoBg}
+            tint={ATT.leave}
+            tintBg={ATT_BG.leave}
           />
           <Kpi
             c={c}
@@ -465,8 +468,8 @@ export default function ManagerAttendance() {
             value={kpis.absent}
             label="Not in"
             icon="alert-circle"
-            tint={c.dangerText}
-            tintBg={c.dangerBg}
+            tint={ATT.absent}
+            tintBg={ATT_BG.absent}
           />
         </View>
       )}
@@ -503,6 +506,7 @@ export default function ManagerAttendance() {
         <FlatList
           data={dayList}
           keyExtractor={(e) => e.member.id}
+          style={styles.list}
           contentContainerStyle={dayList.length === 0 ? styles.emptyWrap : { padding: 16, paddingTop: 8, paddingBottom: 40 }}
           refreshControl={
             <RefreshControl refreshing={refreshing} onRefresh={() => { setRefreshing(true); load(); }} tintColor={c.accent} colors={[c.accent]} />
@@ -514,6 +518,7 @@ export default function ManagerAttendance() {
         <FlatList
           data={monthList}
           keyExtractor={(e) => e.member.id}
+          style={styles.list}
           contentContainerStyle={monthList.length === 0 ? styles.emptyWrap : { padding: 16, paddingTop: 8, paddingBottom: 40 }}
           refreshControl={
             <RefreshControl refreshing={refreshing} onRefresh={() => { setRefreshing(true); load(); }} tintColor={c.accent} colors={[c.accent]} />
@@ -531,22 +536,41 @@ export default function ManagerAttendance() {
           renderItem={({ item }) => {
             const rc = rateColor(item.rate);
             return (
-              <View style={styles.row}>
-                <View style={styles.avatar}>
-                  <Text style={styles.avatarText}>{item.member.name.charAt(0).toUpperCase()}</Text>
-                </View>
-                <View style={{ flex: 1 }}>
-                  <Text style={styles.rowName} numberOfLines={1}>{item.member.name}</Text>
-                  <Text style={styles.rowMeta}>
-                    {item.hasData
-                      ? `${item.office} office · ${item.wfh} WFH · ${item.client} client · ${item.absent} absent · ${item.leave} leave`
-                      : "No records this month"}
-                  </Text>
-                  <View style={styles.barTrack}>
-                    <View style={[styles.barFill, { width: `${item.rate}%`, backgroundColor: rc }]} />
+              <View style={styles.mCard}>
+                <View style={styles.mTop}>
+                  <Avatar name={item.member.name} uri={item.member.profilePictureUrl} size={38} bg={c.accentSoft} fg={c.accentText} />
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.rowName} numberOfLines={1}>{item.member.name}</Text>
+                    <Text style={styles.mSub}>
+                      {item.hasData
+                        ? `Present ${item.present} of ${item.recorded} recorded ${item.recorded === 1 ? "day" : "days"}`
+                        : "No records this month"}
+                    </Text>
                   </View>
+                  <Text style={[styles.ratePct, { color: rc }]}>{item.hasData ? `${item.rate}%` : "—"}</Text>
                 </View>
-                <Text style={[styles.ratePct, { color: rc }]}>{item.hasData ? `${item.rate}%` : "—"}</Text>
+                {item.hasData && (
+                  <>
+                    <View style={styles.barTrack}>
+                      <View style={[styles.barFill, { width: `${item.rate}%`, backgroundColor: rc }]} />
+                    </View>
+                    <View style={styles.chipRow}>
+                      <StatChip c={c} icon="business" tint={ATT.present} label="Office" value={item.office} />
+                      <StatChip c={c} icon="home" tint={ATT.wfh} label="WFH" value={item.wfh} />
+                      <StatChip c={c} icon="navigate" tint={ATT.present} label="Client" value={item.client} />
+                      <StatChip c={c} icon="alert-circle" tint={ATT.absent} label="No record" value={item.absent} />
+                      <StatChip c={c} icon="airplane" tint={ATT.leave} label="Leave" value={item.leave} />
+                    </View>
+                    {item.late > 0 && (
+                      <View style={styles.lateRow}>
+                        <Ionicons name="time-outline" size={13} color={c.warningText} />
+                        <Text style={styles.lateText}>
+                          {item.late} late arrival{item.late === 1 ? "" : "s"} this month
+                        </Text>
+                      </View>
+                    )}
+                  </>
+                )}
               </View>
             );
           }}
@@ -578,9 +602,7 @@ export default function ManagerAttendance() {
           const checked = draftIds.includes(m.id);
           return (
             <TouchableOpacity key={m.id} style={styles.pplRow} onPress={() => toggleDraft(m.id)} activeOpacity={0.7}>
-              <View style={styles.pplAvatar}>
-                <Text style={styles.pplAvatarText}>{m.name.charAt(0).toUpperCase()}</Text>
-              </View>
+              <Avatar name={m.name} uri={m.profilePictureUrl} size={36} bg={c.accent} fg="#fff" fontSize={15} />
               <View style={{ flex: 1 }}>
                 <Text style={styles.pplName}>{m.name}</Text>
                 {!!m.email && <Text style={styles.pplEmail} numberOfLines={1}>{m.email}</Text>}
@@ -622,9 +644,7 @@ export default function ManagerAttendance() {
           return (
             <View>
               <View style={styles.dHead}>
-                <View style={styles.dAvatar}>
-                  <Text style={styles.dAvatarText}>{member.name.charAt(0).toUpperCase()}</Text>
-                </View>
+                <Avatar name={member.name} uri={member.profilePictureUrl} size={44} bg={c.accent} fg="#fff" fontSize={18} />
                 <View style={{ flex: 1 }}>
                   <Text style={styles.dName}>{member.name}</Text>
                   <Text style={styles.dState}>{label}{row?.date ? ` · ${row.date}` : ""}</Text>
@@ -772,6 +792,27 @@ export default function ManagerAttendance() {
   );
 }
 
+function StatChip({ c, icon, tint, label, value }: { c: any; icon: any; tint: string; label: string; value: number }) {
+  const on = value > 0;
+  return (
+    <View
+      style={{
+        flex: 1,
+        alignItems: "center",
+        gap: 2,
+        paddingVertical: 8,
+        borderRadius: 10,
+        backgroundColor: c.surfaceMuted,
+        opacity: on ? 1 : 0.55,
+      }}
+    >
+      <Ionicons name={icon} size={14} color={on ? tint : c.textFaint} />
+      <Text style={{ color: on ? c.text : c.textMuted, fontSize: 15, fontWeight: "800" }}>{value}</Text>
+      <Text style={{ color: c.textMuted, fontSize: 9.5, fontWeight: "600" }} numberOfLines={1}>{label}</Text>
+    </View>
+  );
+}
+
 function DetailStat({ c, icon, label, value }: { c: any; icon: any; label: string; value: string }) {
   return (
     <View style={{ flex: 1, backgroundColor: c.surfaceMuted, borderRadius: 12, padding: 12, alignItems: "center", gap: 4 }}>
@@ -898,7 +939,23 @@ const makeStyles = (c: any) =>
     },
     avgText: { flex: 1, color: c.text, fontSize: 13, fontWeight: "700" },
     avgValue: { fontSize: 18, fontWeight: "800" },
-    barTrack: { height: 5, borderRadius: 3, backgroundColor: c.surfaceMuted, marginTop: 7, overflow: "hidden" },
+
+    // month per-person card
+    mCard: {
+      backgroundColor: c.surface,
+      padding: 14,
+      borderRadius: 14,
+      marginBottom: 10,
+      borderWidth: 1,
+      borderColor: c.surfaceBorder,
+    },
+    mTop: { flexDirection: "row", alignItems: "center", gap: 12 },
+    mSub: { color: c.textMuted, fontSize: 12, marginTop: 3 },
+    chipRow: { flexDirection: "row", gap: 6, marginTop: 12 },
+    lateRow: { flexDirection: "row", alignItems: "center", gap: 5, marginTop: 10 },
+    lateText: { color: c.warningText, fontSize: 12, fontWeight: "600" },
+
+    barTrack: { height: 5, borderRadius: 3, backgroundColor: c.surfaceMuted, marginTop: 10, overflow: "hidden" },
     barFill: { height: 5, borderRadius: 3 },
     ratePct: { fontSize: 17, fontWeight: "800", minWidth: 44, textAlign: "right" },
 
@@ -946,5 +1003,8 @@ const makeStyles = (c: any) =>
       marginTop: 8,
     },
 
+    // On web a FlatList needs a bounded flex:1 host to become scrollable;
+    // without it the list grows to its content and no scrollbar appears.
+    list: { flex: 1 },
     emptyWrap: { flex: 1, justifyContent: "center" },
   });

@@ -315,8 +315,35 @@ export default function MyLeaves() {
           <View style={styles.balanceGrid}>
             {balances.map((b, idx) => {
               const tint = balanceTints[idx % balanceTints.length];
-              // Show the monthly entitlement only (not the cumulative total).
               const perMonth = Number(b.leaveType?.daysPerMonth ?? 0);
+              const perYear = Number(b.leaveType?.daysPerYear ?? 0);
+              const fmt = (n: number) =>
+                Number.isInteger(n) ? String(n) : Number(n).toFixed(1);
+              const used = Number(b.used ?? 0);
+              const pending = Number(b.pending ?? 0);
+              // Accrual-type leaves (e.g. Earned 0.5/mo, Sick 1/mo) accrue each
+              // month and lapse at year end, so we show what's been EARNED so
+              // far this year — capped at the yearly cap. Accrual starts at the
+              // JOIN month (not January) so a mid-year joiner isn't credited for
+              // months before they joined. Full-upfront types (daysPerMonth 0,
+              // e.g. Casual Leave) keep their allocated quota as-is.
+              const nowD = new Date();
+              const curMonth = nowD.getMonth() + 1; // Jan=1 … current
+              let startMonth = 1; // joined a prior year → accrue from January
+              if (me?.joiningDate) {
+                const jd = new Date(`${me.joiningDate}T00:00:00`);
+                if (!isNaN(jd.getTime())) {
+                  if (jd.getFullYear() > nowD.getFullYear()) startMonth = curMonth + 1; // not joined yet
+                  else if (jd.getFullYear() === nowD.getFullYear()) startMonth = jd.getMonth() + 1;
+                }
+              }
+              const monthsElapsed = Math.max(0, curMonth - startMonth + 1);
+              const cap = perYear > 0 ? perYear : perMonth * 12;
+              const earned =
+                perMonth > 0
+                  ? Math.min(cap, perMonth * monthsElapsed)
+                  : Number(b.allocated ?? 0);
+              const available = Math.max(0, earned - used - pending);
               return (
                 <View
                   key={b.leaveTypeCode}
@@ -347,12 +374,25 @@ export default function MyLeaves() {
                     {b.leaveType?.name || b.leaveTypeCode}
                   </Text>
                   <Text style={[styles.balanceValue, { color: tint.fg }]}>
-                    {perMonth}
+                    {fmt(available)}
                   </Text>
                   <Text style={[styles.balanceSub, { color: c.textMuted }]}>
-                    {perMonth === 1 ? "day / month" : "days / month"}
+                    {available === 1 ? "day available" : "days available"}
                   </Text>
-                  {!!b.accruedThisMonth && (
+
+                  <View style={styles.balanceBreakdown}>
+                    <Text style={[styles.breakItem, { color: c.textMuted }]}>
+                      Earned{" "}
+                      <Text style={{ color: c.text, fontWeight: "800" }}>{fmt(earned)}</Text>
+                      {" "}since Jan 1
+                    </Text>
+                    <Text style={[styles.breakItem, { color: c.textMuted }]}>
+                      Used <Text style={{ color: c.text, fontWeight: "800" }}>{fmt(used)}</Text>
+                      {pending > 0 ? ` · ${fmt(pending)} pending` : ""}
+                    </Text>
+                  </View>
+
+                  {(!!b.accruedThisMonth || perMonth > 0) && (
                     <View
                       style={[
                         styles.monthlyRow,
@@ -361,7 +401,8 @@ export default function MyLeaves() {
                     >
                       <Ionicons name="trending-up" size={12} color={tint.fg} />
                       <Text style={[styles.monthlyText, { color: tint.fg }]}>
-                        +{b.accruedThisMonth} this month
+                        {b.accruedThisMonth ? `+${fmt(b.accruedThisMonth)} this month · ` : ""}
+                        {fmt(perMonth)}/mo
                       </Text>
                     </View>
                   )}
@@ -369,6 +410,13 @@ export default function MyLeaves() {
               );
             })}
           </View>
+        )}
+
+        {balances.length > 0 && (
+          <Text style={[styles.lapseNote, { color: c.textFaint }]}>
+            Balances accrue monthly and lapse on Dec 31 — unused days don't carry
+            to next year.
+          </Text>
         )}
 
         {/* HISTORY */}
@@ -774,6 +822,9 @@ const makeStyles = (c: any, isDesktop: boolean) =>
     balanceName: { fontSize: isDesktop ? 14 : 13, fontWeight: "700", marginBottom: 6 },
     balanceValue: { fontSize: isDesktop ? 36 : 30, fontWeight: "800" },
     balanceSub: { fontSize: isDesktop ? 13 : 12, marginTop: 2 },
+    balanceBreakdown: { marginTop: 10, gap: 2 },
+    breakItem: { fontSize: isDesktop ? 12.5 : 11.5, lineHeight: isDesktop ? 18 : 16 },
+    lapseNote: { fontSize: isDesktop ? 12 : 11, marginTop: 10, fontStyle: "italic" },
     balanceFooter: {
       flexDirection: "row",
       justifyContent: "space-between",

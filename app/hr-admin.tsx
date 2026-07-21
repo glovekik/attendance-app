@@ -266,16 +266,6 @@ export default function HRAdmin() {
             styles={styles}
           />
           <Tile
-            icon="rocket-outline"
-            label="Onboardings"
-            tint={c.pastelMint}
-            iconColor="#15803d"
-            count={dash?.pendingOnboardings}
-            onPress={() => router.push("/onboardings")}
-            theme={theme}
-            styles={styles}
-          />
-          <Tile
             icon="exit-outline"
             label="Exits"
             tint={c.pastelPeach}

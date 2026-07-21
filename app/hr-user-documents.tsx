@@ -8,10 +8,7 @@ import {
   ActivityIndicator,
   RefreshControl,
   TextInput,
-  Alert,
-  ScrollView,
-  Platform,
-  Linking } from "react-native";
+  ScrollView } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 
 import AsyncStorage from "@react-native-async-storage/async-storage";
@@ -20,6 +17,7 @@ import { Ionicons } from "@expo/vector-icons";
 
 import { FilePickButton } from "../src/components/FilePickButton";
 import { WebModal, ModalActions } from "../src/components/WebModal";
+import { openMedia } from "../src/utils/media";
 import {
   listUserDocuments,
   addUserDocument,
@@ -31,6 +29,7 @@ import { getUser } from "../src/services/users";
 import { EmployeeDocument } from "../src/types";
 
 import { useTheme } from "../src/theme/ThemeProvider";
+import { confirmAction, notify } from "../src/utils/confirm";
 
 const COMMON_CATEGORIES = [
   "PAN",
@@ -94,7 +93,7 @@ export default function HrUserDocuments() {
       setRequired(req || []);
       if (u && !userName) setUserName(u.name);
     } catch (err: any) {
-      Alert.alert(
+      notify(
         "Couldn't load documents",
         err?.message || "Pull down to retry."
       );
@@ -169,30 +168,32 @@ export default function HrUserDocuments() {
         }
         load();
       } catch (err: any) {
-        Alert.alert("Upload failed", err?.message || "");
+        notify("Upload failed", err?.message || "");
       }
     },
     [id, latestByCategory, pendingNotes, load]
   );
 
-  const onDelete = (d: EmployeeDocument) => {
+  const onDelete = async (d: EmployeeDocument) => {
     if (!id) return;
-    Alert.alert("Delete document?", d.fileName, [
-      { text: "Cancel", style: "cancel" },
-      {
-        text: "Delete",
-        style: "destructive",
-        onPress: async () => {
-          try {
-            const token = await AsyncStorage.getItem("token");
-            if (!token) return;
-            await deleteUserDocument(token, id, d.id);
-            setItems((prev) => prev.filter((x) => x.id !== d.id));
-          } catch (err: any) {
-            Alert.alert("Delete failed", err?.message || "");
-          }
-        } },
-    ]);
+    if (
+      await confirmAction({
+        title: "Delete document?",
+        message: d.fileName,
+        confirmLabel: "Delete",
+        cancelLabel: "Cancel",
+        destructive: true,
+      })
+    ) {
+      try {
+        const token = await AsyncStorage.getItem("token");
+        if (!token) return;
+        await deleteUserDocument(token, id, d.id);
+        setItems((prev) => prev.filter((x) => x.id !== d.id));
+      } catch (err: any) {
+        notify("Delete failed", err?.message || "");
+      }
+    }
   };
 
   const onVerify = async (category: string) => {
@@ -203,7 +204,7 @@ export default function HrUserDocuments() {
       await verifyUserRequiredDocument(token, id, category);
       load();
     } catch (err: any) {
-      Alert.alert("Verify failed", err?.message || "");
+      notify("Verify failed", err?.message || "");
     }
   };
 
@@ -406,11 +407,11 @@ export default function HrUserDocuments() {
                     <>
                       <TouchableOpacity
                         style={[styles.actionBtn, styles.actionBtnGhost]}
-                        onPress={() =>
-                          doc.fileUrl
-                            ? Linking.openURL(doc.fileUrl).catch(() => {})
-                            : Alert.alert("No file URL on record")
-                        }
+                        onPress={() => {
+                          if (!doc.fileUrl || !openMedia(doc.fileUrl)) {
+                            notify("No file URL on record");
+                          }
+                        }}
                       >
                         <Ionicons name="eye-outline" size={16} color={c.text} />
                         <Text style={styles.actionBtnGhostText}>View</Text>

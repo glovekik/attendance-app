@@ -22,6 +22,7 @@ import { AnimatedSplash } from "../src/components/AnimatedSplash";
 import { toastConfig } from "../src/components/toast";
 import { checkForOtaUpdate } from "../src/utils/otaUpdates";
 import { ensureFreshToken } from "../src/services/session";
+import { logDeviceTokenForDev } from "../src/services/notifications";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { getMe } from "../src/services/api";
 import { SidebarNav } from "../src/components/SidebarNav";
@@ -84,6 +85,13 @@ export default function RootLayout() {
   // Apply any published OTA update on launch (no-op in dev / Expo Go).
   useEffect(() => {
     checkForOtaUpdate();
+  }, []);
+
+  // Dev-only: print this device's push/FCM token to the console on launch so
+  // it can be copied for a Firebase test send (no login required). No-op in
+  // production.
+  useEffect(() => {
+    logDeviceTokenForDev();
   }, []);
 
   // Keep the access token fresh so the user never gets a silent logout
@@ -299,6 +307,8 @@ const ThemedStack = () => {
         topOffset={sidebarVisible ? 20 : 60}
       />
 
+      {/* Branded animated splash — plays over the (now logo-less) native
+          splash on launch, then fades to reveal the app. */}
       {!splashDone && (
         <AnimatedSplash onFinish={() => setSplashDone(true)} />
       )}

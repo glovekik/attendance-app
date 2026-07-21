@@ -42,14 +42,58 @@ import {
 
 import { downloadPdfWithAuth } from "../../src/utils/download";
 
-import { PayrollRun, Payslip } from "../../src/types";
+import { PayrollRun, Payslip, LeaveRequest } from "../../src/types";
+import { hrListAttendance } from "../../src/services/hrAttendance";
+import { listHolidays } from "../../src/services/holidays";
+import { hrListLeaveRequests } from "../../src/services/leaves";
+import { AttendanceCalendar } from "../../src/components/AttendanceCalendar";
 
 import { useTheme } from "../../src/theme/ThemeProvider";
+import { ATT, ATT_BG } from "../../src/theme/attendanceColors";
 const monthLabel = (year: number, month: number) =>
   new Date(year, month - 1, 1).toLocaleDateString("en-US", {
     month: "long",
     year: "numeric",
   });
+
+// Friendly names for the leave codes stored on leave attendance rows
+// (workNotes are written as "<CODE> leave", e.g. "SL leave").
+const LEAVE_NAMES: Record<string, string> = {
+  SL: "Sick", SICK: "Sick",
+  EL: "Earned", EARNED: "Earned",
+  CL: "Casual", CASUAL: "Casual",
+  ML: "Maternity", PL: "Paternity",
+  COMP: "Comp-off", LOP: "Loss of pay",
+};
+
+const pad2 = (n: number) => String(n).padStart(2, "0");
+const ymdOf = (d: Date) =>
+  `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`;
+
+// The WORKING dates of a leave that fall within the given year/month
+// (inclusive) — Sundays (weekly off) and declared holidays are skipped so a
+// leave spanning a weekend/holiday isn't over-counted.
+const leaveDatesInMonth = (
+  l: LeaveRequest,
+  year: number,
+  month: number,
+  holidayMap: Record<string, string> = {}
+): string[] => {
+  const monthStart = new Date(year, month - 1, 1);
+  const monthEnd = new Date(year, month, 0);
+  const from = new Date(`${l.fromDate}T00:00:00`);
+  const to = new Date(`${l.toDate || l.fromDate}T00:00:00`);
+  const start = from > monthStart ? from : monthStart;
+  const end = to < monthEnd ? to : monthEnd;
+  const out: string[] = [];
+  for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
+    if (d.getDay() === 0) continue; // Sunday = weekly off
+    const key = ymdOf(d);
+    if (holidayMap[key]) continue; // declared holiday
+    out.push(key);
+  }
+  return out;
+};
 
 export default function HRPayrollRun() {
 
@@ -76,6 +120,13 @@ export default function HRPayrollRun() {
   const [editWorkingDays, setEditWorkingDays] = useState("");
   const [editAttendedDays, setEditAttendedDays] = useState("");
   const [savingEdit, setSavingEdit] = useState(false);
+
+  // The opened employee's attendance for the payroll month — powers the
+  // calendar HR reviews alongside the days figures.
+  const [calRows, setCalRows] = useState<any[]>([]);
+  const [calLoading, setCalLoading] = useState(false);
+  const [holidayMap, setHolidayMap] = useState<Record<string, string>>({});
+  const [monthLeaves, setMonthLeaves] = useState<LeaveRequest[]>([]);
 
   const [popup, setPopup] = useState({
     visible: false,
@@ -255,7 +306,79 @@ export default function HRPayrollRun() {
     setEditPayslip(p);
     setEditWorkingDays(String(p.workingDays ?? ""));
     setEditAttendedDays(String(p.attendedDays ?? ""));
+    loadEmployeeCalendar(p);
   };
+
+  // Fetch the employee's day-by-day attendance for the payroll month so HR
+  // can see exactly which days back the "attended" figure.
+  const loadEmployeeCalendar = async (p: Payslip) => {
+    setCalRows([]);
+    setMonthLeaves([]);
+    setCalLoading(true);
+    try {
+      const token = await AsyncStorage.getItem("token");
+      if (!token) return;
+      const monthStr = `${p.year}-${String(p.month).padStart(2, "0")}`;
+      const [att, hols, leaves] = await Promise.all([
+        hrListAttendance(token, { userId: p.userId, month: monthStr }),
+        listHolidays(token, { year: p.year }).catch(() => []),
+        hrListLeaveRequests(token, "APPROVED").catch(() => [] as LeaveRequest[]),
+      ]);
+      const map: Record<string, string> = {};
+      (hols || []).forEach((h: any) => { if (h?.date) map[h.date] = h.name || "Holiday"; });
+      setHolidayMap(map);
+
+      // This employee's approved leaves that fall in the payroll month.
+      const mine = (leaves || []).filter(
+        (l) => l.userId === p.userId && leaveDatesInMonth(l, p.year, p.month, map).length > 0
+      );
+      setMonthLeaves(mine);
+
+      // Merge synthetic LEAVE rows for leave dates missing an attendance row,
+      // so the calendar paints them "On leave" instead of "No record".
+      const rows: any[] = [...(att || [])];
+      const seen = new Set(rows.map((r: any) => r.date));
+      mine.forEach((l) => {
+        leaveDatesInMonth(l, p.year, p.month, map).forEach((date) => {
+          if (seen.has(date)) return;
+          seen.add(date);
+          rows.push({
+            id: `leave-${l.id}-${date}`,
+            userId: p.userId,
+            date,
+            attendanceType: "LEAVE",
+            status: "ON_LEAVE",
+            checkIn: null,
+            checkOut: null,
+            workNotes: l.leaveType?.name || l.leaveTypeCode || "Leave",
+          });
+        });
+      });
+      setCalRows(rows);
+    } catch {
+      setCalRows([]);
+    } finally {
+      setCalLoading(false);
+    }
+  };
+
+  // Leave taken in the payroll month, from the approved leave requests:
+  // total days + a per-type breakdown (accurate names & half-day handling).
+  const leaveSummary = useMemo(() => {
+    const byType: Record<string, number> = {};
+    let total = 0;
+    if (!editPayslip) return { total, byType };
+    monthLeaves.forEach((l) => {
+      const dates = leaveDatesInMonth(l, editPayslip.year, editPayslip.month, holidayMap);
+      if (!dates.length) return;
+      const days = l.halfDay && dates.length === 1 ? 0.5 : dates.length;
+      total += days;
+      const name =
+        l.leaveType?.name || LEAVE_NAMES[l.leaveTypeCode] || l.leaveTypeCode || "Leave";
+      byType[name] = (byType[name] || 0) + days;
+    });
+    return { total, byType };
+  }, [monthLeaves, editPayslip, holidayMap]);
 
   const saveEditDays = async () => {
     if (!editPayslip || savingEdit) return;
@@ -570,7 +693,7 @@ export default function HRPayrollRun() {
       <WebModal
         visible={!!editPayslip}
         onClose={() => setEditPayslip(null)}
-        title="Edit working days"
+        title="Attendance & working days"
         subtitle={
           editPayslip
             ? `${editPayslip.user?.name ?? ""}${
@@ -580,7 +703,7 @@ export default function HRPayrollRun() {
               }`
             : undefined
         }
-        size="md"
+        size="lg"
         footer={
           <ModalActions align="spread">
             <TouchableOpacity
@@ -663,6 +786,57 @@ export default function HRPayrollRun() {
               The payslip&apos;s gross and LOP deduction are recalculated
               from these numbers when you save.
             </Text>
+
+            {/* Employee attendance for this payroll month */}
+            <View style={s.calSection}>
+              <View style={s.calSummaryRow}>
+                <Ionicons name="calendar-outline" size={16} color={c.accent} />
+                <Text style={s.calSummaryText}>Attendance this month</Text>
+              </View>
+
+              {editPayslip && (
+                <View style={s.payStatsRow}>
+                  <View style={s.payStat}>
+                    <Text style={[s.payStatValue, { color: ATT.present }]}>
+                      {editPayslip.attendedDays}
+                      <Text style={s.payStatDenom}>/{editPayslip.workingDays}</Text>
+                    </Text>
+                    <Text style={s.payStatLabel}>Days worked</Text>
+                  </View>
+                  <View style={s.payStat}>
+                    <Text style={[s.payStatValue, { color: ATT.leave }]}>{leaveSummary.total}</Text>
+                    <Text style={s.payStatLabel}>Leave taken</Text>
+                  </View>
+                  <View style={s.payStat}>
+                    <Text style={[s.payStatValue, { color: ATT.unpaid }]}>{editPayslip.lopDays}</Text>
+                    <Text style={s.payStatLabel}>LOP</Text>
+                  </View>
+                </View>
+              )}
+
+              {leaveSummary.total > 0 && (
+                <View style={s.leaveTypesRow}>
+                  {Object.entries(leaveSummary.byType).map(([name, n]) => (
+                    <View key={name} style={s.leaveTypeChip}>
+                      <Ionicons name="airplane-outline" size={12} color={ATT.leave} />
+                      <Text style={s.leaveTypeText}>
+                        {name} · {n}d
+                      </Text>
+                    </View>
+                  ))}
+                </View>
+              )}
+
+              {calLoading ? (
+                <ActivityIndicator color={c.accent} style={{ paddingVertical: 20 }} />
+              ) : editPayslip ? (
+                <AttendanceCalendar
+                  monthStr={`${editPayslip.year}-${String(editPayslip.month).padStart(2, "0")}`}
+                  rows={calRows}
+                  holidayMap={holidayMap}
+                />
+              ) : null}
+            </View>
       </WebModal>
 
     </SafeAreaView>
@@ -723,6 +897,36 @@ const makeStyles = (c: any) => StyleSheet.create({
   modalLabel: { color: c.textMuted, fontSize: 12, fontWeight: "600", marginTop: 14, marginBottom: 6 },
   modalInput: { backgroundColor: c.surfaceMuted, color: c.text, borderRadius: 10, padding: 12, borderWidth: 1, borderColor: c.surfaceBorder, fontSize: 14 },
   modalHint: { color: c.textMuted, fontSize: 11, marginTop: 10, lineHeight: 16 },
+  calSection: {
+    marginTop: 18,
+    paddingTop: 16,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: c.surfaceBorder,
+  },
+  calSummaryRow: { flexDirection: "row", alignItems: "center", gap: 8, marginBottom: 12 },
+  calSummaryText: { flex: 1, color: c.text, fontSize: 13, fontWeight: "800" },
+  calSummaryDays: { color: c.accent, fontSize: 13, fontWeight: "800" },
+  payStatsRow: {
+    flexDirection: "row",
+    backgroundColor: c.surfaceMuted,
+    borderRadius: 12,
+    paddingVertical: 12,
+  },
+  payStat: { flex: 1, alignItems: "center" },
+  payStatValue: { fontSize: 20, fontWeight: "800" },
+  payStatDenom: { color: c.textMuted, fontSize: 13, fontWeight: "700" },
+  payStatLabel: { color: c.textMuted, fontSize: 11, fontWeight: "600", marginTop: 2 },
+  leaveTypesRow: { flexDirection: "row", flexWrap: "wrap", gap: 8, marginTop: 10 },
+  leaveTypeChip: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 5,
+    backgroundColor: ATT_BG.leave,
+    borderRadius: 999,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+  },
+  leaveTypeText: { color: ATT.leave, fontSize: 12, fontWeight: "700" },
   modalActions: { flexDirection: "row", gap: 10, marginTop: 18 },
   modalCancel: { flex: 1, backgroundColor: c.surfaceMuted, padding: 13, borderRadius: 11, alignItems: "center" },
   modalSave: { flex: 1, backgroundColor: "#16a34a", padding: 13, borderRadius: 11, alignItems: "center" },

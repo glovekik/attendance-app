@@ -9,11 +9,11 @@ import {
   ActivityIndicator,
   RefreshControl,
   TextInput,
-  Alert,
   Switch,
   Platform } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { WebModal, ModalActions } from "../src/components/WebModal";
+import { Avatar } from "../src/components/Avatar";
 
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useRouter } from "expo-router";
@@ -34,6 +34,7 @@ import {
   Project,
   ProjectStatus,
   User } from "../src/types";
+import { confirmAction, notify } from "../src/utils/confirm";
 
 const STATUSES: ProjectStatus[] = ["Active", "OnHold", "Completed"];
 
@@ -85,7 +86,7 @@ export default function HrProjects() {
       setDepartments(depts || []);
       setUsers(allUsers || []);
     } catch (err: any) {
-      Alert.alert(
+      notify(
         "Couldn't load projects",
         err?.message || "Pull down to retry."
       );
@@ -146,7 +147,7 @@ export default function HrProjects() {
 
   const onSave = async () => {
     if (!name.trim() || !code.trim()) {
-      Alert.alert("Name and code are required");
+      notify("Name and code are required");
       return;
     }
     setSaving(true);
@@ -172,28 +173,30 @@ export default function HrProjects() {
       closeForm();
       load();
     } catch (err: any) {
-      Alert.alert("Save failed", err?.message || "");
+      notify("Save failed", err?.message || "");
       setSaving(false);
     }
   };
 
-  const onDelete = (p: Project) => {
-    Alert.alert("Delete project?", p.name, [
-      { text: "Cancel", style: "cancel" },
-      {
-        text: "Delete",
-        style: "destructive",
-        onPress: async () => {
-          try {
-            const token = await AsyncStorage.getItem("token");
-            if (!token) return;
-            await deleteProject(token, p.id);
-            setItems((prev) => prev.filter((x) => x.id !== p.id));
-          } catch (err: any) {
-            Alert.alert("Delete failed", err?.message || "");
-          }
-        } },
-    ]);
+  const onDelete = async (p: Project) => {
+    if (
+      await confirmAction({
+        title: "Delete project?",
+        message: p.name,
+        confirmLabel: "Delete",
+        cancelLabel: "Cancel",
+        destructive: true,
+      })
+    ) {
+      try {
+        const token = await AsyncStorage.getItem("token");
+        if (!token) return;
+        await deleteProject(token, p.id);
+        setItems((prev) => prev.filter((x) => x.id !== p.id));
+      } catch (err: any) {
+        notify("Delete failed", err?.message || "");
+      }
+    }
   };
 
   const toggleUserInList = (
@@ -570,11 +573,14 @@ export default function HrProjects() {
                       size={22}
                       color={selected ? "#3b82f6" : "#64748b"}
                     />
-                    <View style={styles.avatar}>
-                      <Text style={styles.avatarText}>
-                        {item.name.charAt(0).toUpperCase()}
-                      </Text>
-                    </View>
+                    <Avatar
+                      name={item.name}
+                      uri={item.profilePictureUrl}
+                      size={36}
+                      fontSize={14}
+                      bg={c.surfaceMuted}
+                      fg={c.text}
+                    />
                     <View style={{ flex: 1 }}>
                       <Text style={styles.pickerName}>
                         {item.name}
@@ -735,14 +741,6 @@ const makeStyles = (c: any) => StyleSheet.create({
     gap: 10,
     borderBottomWidth: 1,
     borderBottomColor: c.surfaceBorder },
-  avatar: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    backgroundColor: c.surfaceMuted,
-    alignItems: "center",
-    justifyContent: "center" },
-  avatarText: { color: c.text, fontWeight: "700" },
   pickerName: { color: c.text, fontSize: 14, fontWeight: "700" },
   pickerSub: { color: c.textMuted, fontSize: 11, marginTop: 2 } });
 

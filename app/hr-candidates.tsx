@@ -14,6 +14,7 @@ import {
   Platform } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { WebModal, ModalActions } from "../src/components/WebModal";
+import { Avatar } from "../src/components/Avatar";
 
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useRouter } from "expo-router";
@@ -280,11 +281,14 @@ export default function HrCandidates() {
             return (
               <View style={styles.card}>
                 <View style={styles.cardTop}>
-                  <View style={styles.avatar}>
-                    <Text style={styles.avatarText}>
-                      {item.name.charAt(0).toUpperCase()}
-                    </Text>
-                  </View>
+                  <Avatar
+                    name={item.name}
+                    uri={undefined}
+                    size={40}
+                    fontSize={14}
+                    bg={c.surfaceMuted}
+                    fg={c.text}
+                  />
                   <View style={{ flex: 1 }}>
                     <Text style={styles.cardName}>{item.name}</Text>
                     <Text style={styles.cardSub}>{item.email}</Text>
@@ -628,14 +632,6 @@ const makeStyles = (c: any) => StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     gap: 12 },
-  avatar: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: c.surfaceMuted,
-    alignItems: "center",
-    justifyContent: "center" },
-  avatarText: { color: c.text, fontSize: 14, fontWeight: "800" },
   cardName: { color: c.text, fontSize: 15, fontWeight: "700" },
   cardSub: { color: c.textMuted, fontSize: 12, marginTop: 2 },
   cardJob: { color: "#0ea5e9", fontSize: 11, marginTop: 2 },

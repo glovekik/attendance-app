@@ -17,6 +17,7 @@ import { Ionicons } from "@expo/vector-icons";
 
 import { listMyTeam, TeamMember } from "../src/services/managerTeam";
 import { useTheme } from "../src/theme/ThemeProvider";
+import { Avatar } from "../src/components/Avatar";
 
 export default function ManagerTeam() {
   const router = useRouter();
@@ -119,11 +120,7 @@ export default function ManagerTeam() {
             activeOpacity={0.7}
             onPress={() => openMember(item)}
           >
-            <View style={styles.avatar}>
-              <Text style={styles.avatarText}>
-                {item.name.charAt(0).toUpperCase()}
-              </Text>
-            </View>
+            <Avatar name={item.name} uri={item.profilePictureUrl} size={42} bg={c.accent} fg="#fff" fontSize={15} />
             <View style={{ flex: 1 }}>
               <Text style={styles.cardName}>{item.name}</Text>
               <Text style={styles.cardSub}>

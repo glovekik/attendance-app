@@ -7,8 +7,7 @@ import {
   ScrollView,
   TouchableOpacity,
   ActivityIndicator,
-  RefreshControl,
-  Alert } from "react-native";
+  RefreshControl } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 
 import AsyncStorage from "@react-native-async-storage/async-storage";
@@ -22,6 +21,7 @@ import { useTheme } from "../src/theme/ThemeProvider";
 import {
   BottomTabBar,
   BOTTOM_BAR_RESERVED_HEIGHT } from "../src/components/BottomTabBar";
+import { notify } from "../src/utils/confirm";
 
 const COLLAPSE_KEY = "managerConsoleCollapsed";
 
@@ -54,7 +54,7 @@ export default function ManagerHub() {
       if (d) setDash(d);
       setMe(meRes);
     } catch (err: any) {
-      Alert.alert("Couldn't load manager hub", err?.message || "");
+      notify("Couldn't load manager hub", err?.message || "");
     } finally {
       setLoading(false);
       setRefreshing(false);

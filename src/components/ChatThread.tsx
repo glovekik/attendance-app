@@ -22,6 +22,8 @@ import {
 import { KeyboardAvoidingView } from "react-native-keyboard-controller";
 import { Image } from "expo-image";
 import * as DocumentPicker from "expo-document-picker";
+import { mediaUrl } from "../utils/media";
+import { Avatar } from "./Avatar";
 
 import { Ionicons } from "@expo/vector-icons";
 
@@ -100,6 +102,8 @@ const ChatThreadInner = ({
   const [error, setError] = useState<string | null>(null);
   const [editing, setEditing] = useState<ChatMessage | null>(null);
   const [actionMsg, setActionMsg] = useState<ChatMessage | null>(null);
+  // Fullscreen image viewer (lightbox) for tapped image attachments.
+  const [viewerUri, setViewerUri] = useState<string | null>(null);
   const [emojiOpen, setEmojiOpen] = useState(false);
   const [attaching, setAttaching] = useState(false);
   const [inputHeight, setInputHeight] = useState(0);
@@ -299,21 +303,17 @@ const ChatThreadInner = ({
     }
   };
 
-  // ===== IMAGE (gallery / camera) =====
-  const pickImage = async (fromCamera: boolean) => {
+  // ===== IMAGE (gallery) =====
+  const pickImage = async () => {
     if (!uploadAttachment || attaching) return;
     try {
       const ImagePicker = require("expo-image-picker");
-      const perm = fromCamera
-        ? await ImagePicker.requestCameraPermissionsAsync()
-        : await ImagePicker.requestMediaLibraryPermissionsAsync();
+      const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
       if (!perm.granted) {
         flash("Permission denied");
         return;
       }
-      const res = fromCamera
-        ? await ImagePicker.launchCameraAsync({ quality: 0.7 })
-        : await ImagePicker.launchImageLibraryAsync({ mediaTypes: ["images"], quality: 0.7 });
+      const res = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ["images"], quality: 0.7 });
       if (res.canceled || !res.assets?.length) return;
       const a = res.assets[0];
       setAttaching(true);
@@ -402,7 +402,9 @@ const ChatThreadInner = ({
   }
 
   const mineAction = actionMsg && actionMsg.userId === me?.id;
-  const canModify = mineAction && !actionMsg?.readByOthers;
+  // Authors can edit / delete-for-everyone their own messages even after
+  // others have read them (still bounded server-side by the edit/delete window).
+  const canModify = mineAction;
 
   return (
     <KeyboardAvoidingView style={{ flex: 1 }} behavior="padding">
@@ -436,15 +438,31 @@ const ChatThreadInner = ({
           return (
             <View
               key={m.id}
-              style={[styles.bubbleRow, mine ? { alignItems: "flex-end" } : { alignItems: "flex-start" }]}
+              style={[
+                styles.bubbleRow,
+                { flexDirection: "row", justifyContent: mine ? "flex-end" : "flex-start" },
+              ]}
             >
-              {showHead && !mine && <Text style={styles.author}>{m.user?.name || "User"}</Text>}
+              {!mine &&
+                (showHead ? (
+                  <Avatar
+                    name={m.user?.name}
+                    uri={m.user?.profilePictureUrl}
+                    size={28}
+                    style={styles.msgAvatar}
+                  />
+                ) : (
+                  <View style={styles.msgAvatarSpacer} />
+                ))}
 
-              <TouchableOpacity
-                activeOpacity={0.7}
-                onLongPress={() => openActions(m)}
-                style={[styles.bubble, mine ? styles.mine : styles.theirs]}
-              >
+              <View style={[styles.bubbleCol, { alignItems: mine ? "flex-end" : "flex-start" }]}>
+                {showHead && !mine && <Text style={styles.author}>{m.user?.name || "User"}</Text>}
+
+                <TouchableOpacity
+                  activeOpacity={0.7}
+                  onLongPress={() => openActions(m)}
+                  style={[styles.bubble, mine ? styles.mine : styles.theirs]}
+                >
                 {m.deleted ? (
                   <Text style={[styles.deletedText, mine && { color: "rgba(255,255,255,0.7)" }]}>
                     🚫 This message was deleted
@@ -452,7 +470,13 @@ const ChatThreadInner = ({
                 ) : (
                   <>
                     {(m.attachments || []).map((att, idx) => (
-                      <Attachment key={idx} att={att} c={c} styles={styles} />
+                      <Attachment
+                        key={idx}
+                        att={att}
+                        c={c}
+                        styles={styles}
+                        onImagePress={setViewerUri}
+                      />
                     ))}
                     {!!m.text && (
                       <Text style={[styles.bubbleText, mine && { color: "#fff" }]}>{m.text}</Text>
@@ -476,8 +500,24 @@ const ChatThreadInner = ({
                       color={m.readByOthers ? "#7dd3fc" : "rgba(255,255,255,0.75)"}
                     />
                   )}
+                  {/* Visible actions affordance (delete / edit) — long-press
+                      also works, but this makes it discoverable, esp. on web. */}
+                  {!m.deleted && !m.id.startsWith("temp-") && (
+                    <TouchableOpacity
+                      onPress={() => openActions(m)}
+                      hitSlop={8}
+                      style={styles.moreBtn}
+                    >
+                      <Ionicons
+                        name="ellipsis-horizontal"
+                        size={15}
+                        color={mine ? "rgba(255,255,255,0.75)" : c.textFaint}
+                      />
+                    </TouchableOpacity>
+                  )}
                 </View>
-              </TouchableOpacity>
+                </TouchableOpacity>
+              </View>
             </View>
           );
         })}
@@ -497,9 +537,7 @@ const ChatThreadInner = ({
                   setMentionQuery(null);
                 }}
               >
-                <View style={styles.mentionAvatar}>
-                  <Text style={styles.mentionAvatarText}>{(u.name || "?").charAt(0).toUpperCase()}</Text>
-                </View>
+                <Avatar name={u.name} uri={undefined} size={34} />
                 <View style={{ flex: 1 }}>
                   <Text style={styles.mentionName}>{u.name}</Text>
                   {!!u.email && <Text style={styles.mentionEmail}>{u.email}</Text>}
@@ -561,13 +599,8 @@ const ChatThreadInner = ({
           {!editing && (
             <>
               {uploadAttachment && (
-                <TouchableOpacity style={styles.inBtn} onPress={() => pickImage(false)} disabled={attaching}>
+                <TouchableOpacity style={styles.inBtn} onPress={() => pickImage()} disabled={attaching}>
                   <Ionicons name="image-outline" size={22} color={c.textMuted} />
-                </TouchableOpacity>
-              )}
-              {uploadAttachment && (
-                <TouchableOpacity style={styles.inBtn} onPress={() => pickImage(true)} disabled={attaching}>
-                  <Ionicons name="camera-outline" size={22} color={c.textMuted} />
                 </TouchableOpacity>
               )}
               {uploadAttachment && (
@@ -622,16 +655,68 @@ const ChatThreadInner = ({
           </View>
         </TouchableOpacity>
       </Modal>
+
+      {/* Fullscreen image viewer (lightbox) */}
+      <Modal
+        visible={!!viewerUri}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setViewerUri(null)}
+      >
+        <TouchableOpacity
+          style={styles.viewerBackdrop}
+          activeOpacity={1}
+          onPress={() => setViewerUri(null)}
+        >
+          {!!viewerUri && (
+            <Image source={{ uri: viewerUri }} style={styles.viewerImage} contentFit="contain" />
+          )}
+        </TouchableOpacity>
+        <TouchableOpacity style={styles.viewerClose} onPress={() => setViewerUri(null)} hitSlop={12}>
+          <Ionicons name="close" size={28} color="#fff" />
+        </TouchableOpacity>
+        <TouchableOpacity style={styles.viewerOpen} onPress={() => openExternal(viewerUri || undefined)} hitSlop={12}>
+          <Ionicons name="open-outline" size={22} color="#fff" />
+        </TouchableOpacity>
+      </Modal>
     </KeyboardAvoidingView>
   );
 };
 
-function Attachment({ att, c, styles }: { att: ChatAttachment; c: any; styles: any }) {
-  const open = () => Linking.openURL(att.url).catch(() => {});
+// Open a URL externally without going through expo-router. On web,
+// Linking.openURL gets intercepted by the router and lands on the "unmatched
+// route" screen, so use window.open there and Linking only on native.
+const openExternal = (uri?: string) => {
+  if (!uri) return;
+  if (Platform.OS === "web") {
+    try {
+      window.open(uri, "_blank", "noopener");
+      return;
+    } catch {
+      /* fall through to Linking */
+    }
+  }
+  Linking.openURL(uri).catch(() => {});
+};
+
+function Attachment({
+  att,
+  c,
+  styles,
+  onImagePress,
+}: {
+  att: ChatAttachment;
+  c: any;
+  styles: any;
+  onImagePress: (uri: string) => void;
+}) {
+  const uri = mediaUrl(att.url);
   if (att.type === "image") {
+    // Tap opens an in-app fullscreen viewer (lightbox) rather than navigating —
+    // routing an image URL through the app produced an "unmatched route".
     return (
-      <TouchableOpacity onPress={open} activeOpacity={0.9}>
-        <Image source={{ uri: att.url }} style={styles.imageAtt} contentFit="cover" />
+      <TouchableOpacity onPress={() => uri && onImagePress(uri)} activeOpacity={0.9}>
+        <Image source={{ uri }} style={styles.imageAtt} contentFit="cover" />
       </TouchableOpacity>
     );
   }
@@ -640,7 +725,7 @@ function Attachment({ att, c, styles }: { att: ChatAttachment; c: any; styles: a
   }
   const icon = att.type === "voice" ? "mic-outline" : "document-outline";
   return (
-    <TouchableOpacity onPress={open} style={styles.fileAtt} activeOpacity={0.8}>
+    <TouchableOpacity onPress={() => openExternal(uri)} style={styles.fileAtt} activeOpacity={0.8}>
       <Ionicons name={icon as any} size={20} color={c.accent} />
       <Text style={styles.fileName} numberOfLines={1}>
         {att.type === "voice" ? "Voice message" : att.name || "Attachment"}
@@ -729,9 +814,14 @@ const makeStyles = (c: any) =>
     emptyText: { color: c.textMuted, fontSize: 14 },
 
     bubbleRow: { marginBottom: 6 },
-    author: { color: c.textMuted, fontSize: 11, fontWeight: "600", marginLeft: 12, marginBottom: 3 },
+    bubbleCol: { flexShrink: 1, maxWidth: "80%" },
+    // Author avatar sits at the bottom of the group, WhatsApp-style; grouped
+    // follow-up messages get a same-width spacer so bubbles stay aligned.
+    msgAvatar: { marginRight: 8, alignSelf: "flex-end" },
+    msgAvatarSpacer: { width: 28, marginRight: 8 },
+    author: { color: c.textMuted, fontSize: 11, fontWeight: "600", marginLeft: 4, marginBottom: 3 },
 
-    bubble: { maxWidth: "80%", paddingHorizontal: 12, paddingVertical: 8, borderRadius: 16 },
+    bubble: { maxWidth: "100%", paddingHorizontal: 12, paddingVertical: 8, borderRadius: 16 },
     mine: { backgroundColor: c.accent, borderBottomRightRadius: 4 },
     theirs: { backgroundColor: c.surfaceMuted, borderBottomLeftRadius: 4 },
     bubbleText: { color: c.text, fontSize: 15, lineHeight: 20 },
@@ -740,6 +830,39 @@ const makeStyles = (c: any) =>
     metaRow: { flexDirection: "row", alignItems: "center", gap: 4, alignSelf: "flex-end", marginTop: 3 },
     time: { color: c.textMuted, fontSize: 10 },
     edited: { color: c.textMuted, fontSize: 10, fontStyle: "italic" },
+    moreBtn: { paddingHorizontal: 2, marginLeft: 2, ...(Platform.OS === "web" ? { cursor: "pointer" } as any : {}) },
+
+    // Fullscreen image viewer (lightbox)
+    viewerBackdrop: {
+      flex: 1,
+      backgroundColor: "rgba(0,0,0,0.92)",
+      alignItems: "center",
+      justifyContent: "center",
+      padding: 16,
+    },
+    viewerImage: { width: "100%", height: "100%" },
+    viewerClose: {
+      position: "absolute",
+      top: 40,
+      right: 20,
+      width: 44,
+      height: 44,
+      borderRadius: 22,
+      backgroundColor: "rgba(255,255,255,0.15)",
+      alignItems: "center",
+      justifyContent: "center",
+    },
+    viewerOpen: {
+      position: "absolute",
+      top: 40,
+      left: 20,
+      width: 44,
+      height: 44,
+      borderRadius: 22,
+      backgroundColor: "rgba(255,255,255,0.15)",
+      alignItems: "center",
+      justifyContent: "center",
+    },
 
     imageAtt: { width: 210, height: 210, borderRadius: 12, marginBottom: 4, backgroundColor: c.surfaceBorder },
     fileAtt: {
@@ -753,11 +876,6 @@ const makeStyles = (c: any) =>
       backgroundColor: c.surface, borderTopWidth: 1, borderTopColor: c.surfaceBorder,
     },
     mentionRow: { flexDirection: "row", alignItems: "center", gap: 10, padding: 10 },
-    mentionAvatar: {
-      width: 34, height: 34, borderRadius: 17, backgroundColor: c.accentSoft,
-      alignItems: "center", justifyContent: "center",
-    },
-    mentionAvatarText: { color: c.accentText, fontWeight: "700" },
     mentionName: { color: c.text, fontSize: 14, fontWeight: "600" },
     mentionEmail: { color: c.textMuted, fontSize: 11 },
 

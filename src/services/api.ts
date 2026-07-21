@@ -359,6 +359,17 @@ export const checkIn =
     const result = await safeParse(response);
 
     if (!response.ok) {
+      // A coded object detail (e.g. the unfinished-previous-day block)
+      // carries structured info the UI needs; surface it on the error
+      // instead of collapsing it to "[object Object]".
+      const detail = result?.detail;
+      if (detail && typeof detail === "object" && detail.code) {
+        const err: any = new Error(detail.message || "Check in blocked");
+        err.code = detail.code;
+        err.detail = detail;
+        err.status = response.status;
+        throw err;
+      }
       throw friendlyHttpError(
         response.status,
         result,
@@ -368,6 +379,41 @@ export const checkIn =
 
     return result;
   };
+
+
+// ============ UNFINISHED PREVIOUS DAYS ============
+// Previous days the user forgot to check out of and hasn't filed a correction
+// for yet. Drives the next-day "send a correction request" prompt.
+export interface UnfinishedRecord {
+  id: string;
+  date: string;
+  checkIn?: string | null;
+  checkOut?: string | null;
+  attendanceType?: string | null;
+}
+
+export const getUnfinished = async (
+  token: string,
+  date?: string
+): Promise<UnfinishedRecord[]> => {
+  const qs = date ? `?date=${encodeURIComponent(date)}` : "";
+  const response = await fetch(
+    `${API_URL}/attendance/unfinished${qs}`,
+    {
+      method: "GET",
+      headers: { Authorization: `Bearer ${token}` },
+    }
+  );
+  const result = await safeParse(response);
+  if (!response.ok) {
+    throw friendlyHttpError(
+      response.status,
+      result,
+      "Could not load unfinished days"
+    );
+  }
+  return (result?.records || []) as UnfinishedRecord[];
+};
 
 
 // ================= CHECK OUT =================

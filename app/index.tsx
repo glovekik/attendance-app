@@ -22,6 +22,7 @@ import { Ionicons } from "@expo/vector-icons";
 import { useResponsive, getResponsiveSpacing } from "../src/utils/responsive";
 
 import { getMe, getToday } from "../src/services/api";
+import { mediaUrl } from "../src/utils/media";
 import { getDashboardMe } from "../src/services/dashboard";
 import { getUnreadCount } from "../src/services/inbox";
 import { getChatUnreadCount } from "../src/services/chat";
@@ -126,30 +127,25 @@ export default function Home() {
       }
       setLoadError(false);
       setUser(meRes);
-      try {
-        const todayRes = await getToday(token, dateToYMD(new Date()));
-        setToday(todayRes);
-      } catch {
-        setToday(null);
-      }
-      try {
-        const { count } = await getUnreadCount(token);
-        setUnreadCount(count || 0);
-      } catch {
-        setUnreadCount(0);
-      }
-      try {
-        const chat = await getChatUnreadCount(token);
-        setChatUnread(chat.count || 0);
-      } catch {
-        setChatUnread(0);
-      }
-      try {
-        const d = await getDashboardMe(token);
-        setDash(d);
-      } catch {
-        // KPI strip just won't render — non-fatal.
-      }
+      // These four are independent of each other — fire them together instead
+      // of awaiting one after another. Each keeps its own fallback so one
+      // failing doesn't sink the others.
+      await Promise.all([
+        getToday(token, dateToYMD(new Date()))
+          .then((r) => setToday(r))
+          .catch(() => setToday(null)),
+        getUnreadCount(token)
+          .then(({ count }) => setUnreadCount(count || 0))
+          .catch(() => setUnreadCount(0)),
+        getChatUnreadCount(token)
+          .then((chat) => setChatUnread(chat.count || 0))
+          .catch(() => setChatUnread(0)),
+        getDashboardMe(token)
+          .then((d) => setDash(d))
+          .catch(() => {
+            // KPI strip just won't render — non-fatal.
+          }),
+      ]);
       setLoading(false);
     } catch (err) {
       // The token check above already handled auth. Anything reaching here
@@ -167,9 +163,9 @@ export default function Home() {
     setRefreshing(false);
   };
 
-  useEffect(() => {
-    loadEverything();
-  }, []);
+  // NOTE: the initial load is driven by useFocusEffect below (which fires on
+  // first focus too), so there's no separate mount useEffect here — having
+  // both made the dashboard fetch its entire payload twice on every open.
 
   // Update "5m ago" labels every minute.
   useEffect(() => {
@@ -410,7 +406,7 @@ export default function Home() {
           >
             {user.profilePictureUrl ? (
               <Image
-                source={{ uri: user.profilePictureUrl }}
+                source={{ uri: mediaUrl(user.profilePictureUrl) }}
                 style={styles.avatarSmall}
               />
             ) : (

@@ -27,6 +27,7 @@ import { Ionicons } from "@expo/vector-icons";
 import DateTimePicker from "@react-native-community/datetimepicker";
 
 import { useTheme } from "../src/theme/ThemeProvider";
+import { notify } from "../src/utils/confirm";
 import {
   WebDateField,
   dateToYMD,
@@ -110,7 +111,7 @@ export default function ManualRequest() {
       const data = await listMyManualRequests(token);
       setItems(data || []);
     } catch (err: any) {
-      Alert.alert(
+      notify(
         "Couldn't load requests",
         err?.message || "Pull down to retry."
       );

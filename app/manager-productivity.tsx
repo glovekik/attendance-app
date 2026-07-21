@@ -20,6 +20,7 @@ import { teamProductivityReport } from "../src/services/reports";
 import { TeamProductivityRow } from "../src/types";
 
 import { useTheme } from "../src/theme/ThemeProvider";
+import { Avatar } from "../src/components/Avatar";
 export default function ManagerProductivity() {
   const router = useRouter();
   const { theme } = useTheme();
@@ -129,11 +130,11 @@ export default function ManagerProductivity() {
           return (
           <View style={styles.card}>
             <View style={styles.cardTop}>
-              <View style={styles.avatar}>
-                <Text style={styles.avatarText}>
-                  {name.charAt(0).toUpperCase()}
-                </Text>
-              </View>
+              <Avatar
+                name={name}
+                uri={(item as any).profilePictureUrl}
+                size={42}
+              />
               <Text style={styles.cardName} numberOfLines={1}>
                 {name}
               </Text>
@@ -204,14 +205,6 @@ const makeStyles = (c: any) => StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     gap: 12 },
-  avatar: {
-    width: 42,
-    height: 42,
-    borderRadius: 21,
-    backgroundColor: c.accentSoft,
-    alignItems: "center",
-    justifyContent: "center" },
-  avatarText: { color: c.accentText, fontWeight: "700", fontSize: 15 },
   cardName: { color: c.text, fontSize: 14, fontWeight: "700" },
   metricRow: {
     flexDirection: "row",
