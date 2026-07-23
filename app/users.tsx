@@ -632,9 +632,14 @@ export default function Users() {
                     : "No terminated employees"}
                 </Text>
                 {!search && tab === "ACTIVE" && (
-                  <Text style={[styles.emptySub, { color: c.textMuted }]}>
-                    Tap + to create your first employee.
-                  </Text>
+                  <TouchableOpacity
+                    style={styles.emptyAddBtn}
+                    onPress={openCreate}
+                    activeOpacity={0.85}
+                  >
+                    <Ionicons name="add" size={18} color="#fff" />
+                    <Text style={styles.emptyAddBtnText}>Add Employee</Text>
+                  </TouchableOpacity>
                 )}
               </View>
             ) : (
@@ -1166,6 +1171,17 @@ const makeStyles = (c: any, isDesktop: boolean) =>
     },
     emptyText: { fontSize: 14, fontWeight: "700" },
     emptySub: { fontSize: 12 },
+    emptyAddBtn: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 8,
+      backgroundColor: c.accent,
+      paddingHorizontal: 18,
+      paddingVertical: 11,
+      borderRadius: 12,
+      marginTop: 6,
+    },
+    emptyAddBtnText: { color: "#fff", fontWeight: "800", fontSize: 14 },
 
     // DataTable cell styles
     employeeCell: {

@@ -9,8 +9,10 @@
     "userInterfaceStyle": "automatic",
     "newArchEnabled": true,
     "ios": {
+      "bundleIdentifier": "com.4sightai.attendanceapp",
       "supportsTablet": true,
       "infoPlist": {
+        "ITSAppUsesNonExemptEncryption": false,
         "NSLocationWhenInUseUsageDescription": "We use your location to verify office check-in.",
         "NSLocationAlwaysAndWhenInUseUsageDescription": "We use your location to verify office check-in.",
         "NSCameraUsageDescription": "Take photos to share in chat.",
@@ -90,7 +92,9 @@
           "photosPermission": "Attach photos from your library in chat.",
           "cameraPermission": "Take photos to share in chat."
         }
-      ]
+      ],
+      "expo-asset",
+      "expo-font"
     ],
     "experiments": {
       "typedRoutes": true,

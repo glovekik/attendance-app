@@ -203,7 +203,7 @@ export default function Manual() {
       );
 
       setTimeout(() => {
-        router.replace("/history");
+        router.replace("/attendance");
       }, 800);
 
     } catch (err: any) {

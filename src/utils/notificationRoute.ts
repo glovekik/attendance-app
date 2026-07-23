@@ -31,12 +31,15 @@ export const resolveNotificationRoute = (
       return "/reimbursements";
     case "correction_decision":
       // The recipient is the employee whose correction was decided — send them
-      // to their attendance history (where they raised it), NOT /corrections
-      // which is the HR/manager approval queue (403 for a plain user).
-      return "/history";
+      // to Attendance, which now carries the history + correction flow, NOT
+      // /corrections which is the HR/manager queue (403 for a plain user).
+      return "/attendance";
     case "manual_attendance_decision":
       return "/manual-request";
     case "timesheet_decision":
+    // The weekly reminder is addressed to the employee, so it lands on
+    // their own sheet — not on any approval queue.
+    case "timesheet_reminder":
       return "/my-timesheet";
     case "resignation_decision":
       return "/exit";
@@ -52,7 +55,7 @@ export const resolveNotificationRoute = (
     case "asset_issue_resolved":
       return "/assets";
     case "attendance_edited":
-      return "/history";
+      return "/attendance";
     case "document_verified":
     case "documents_required":
       return "/my-documents";
@@ -69,9 +72,9 @@ export const resolveNotificationRoute = (
     case "checkout_8h":
       return "/attendance";
     case "auto_checkout":
-      // Employee's record was auto-closed — send them to history to review /
-      // request a correction on it.
-      return "/history";
+      // Employee's record was auto-closed — send them to Attendance to review
+      // it and request a correction.
+      return "/attendance";
     case "todo_reminder":
       return "/todos";
     case "chat_mention":
@@ -92,6 +95,7 @@ export const resolveNotificationRoute = (
       if (!isManagerial) return null;
       return isHrOrCeo ? "/hr-manual-requests" : "/manager-manual-requests";
     case "timesheet_submitted":
+    case "timesheet_pending":
       if (!isManagerial) return null;
       return isHrOrCeo ? "/hr-timesheets" : "/manager-timesheets";
     case "correction_requests":

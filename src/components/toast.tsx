@@ -102,13 +102,21 @@ const styles = StyleSheet.create({
     paddingVertical: 12,
     borderRadius: 14,
     borderWidth: 1,
-    // Subtle elevation so the toast floats over content without a heavy
-    // drop-shadow that competes with the bottom-tab shadow.
+    // Float above everything — including open modals. Without a high
+    // zIndex/elevation, error toasts fired from inside a WebModal render
+    // BEHIND the modal. zIndex fixes the web/JS stacking; a high elevation
+    // keeps it on top on Android within the same window.
+    zIndex: 99999,
     shadowColor: "#000",
     shadowOpacity: 0.18,
     shadowRadius: 14,
     shadowOffset: { width: 0, height: 6 },
-    elevation: 6,
+    elevation: 24,
+    ...(Platform.OS === "web" && {
+      // Ensure the toast sits above modal overlays on web.
+      position: "relative" as any,
+      zIndex: 99999 as any,
+    }),
     ...(isDesktopWeb && {
       // Web-specific shadow for cleaner appearance
       boxShadow: "0 4px 12px rgba(0,0,0,0.15)" as any,

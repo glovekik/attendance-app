@@ -1,4 +1,5 @@
 import { API_URL } from "../config";
+import { endDeadSession } from "./http";
 
 
 // ================= SIGNUP =================
@@ -257,6 +258,14 @@ export const getMe =
         await response.json();
 
       if (!response.ok) {
+
+        // This call is hand-rolled rather than going through apiCall, so it
+        // has to end a dead session itself — otherwise a 401 here just
+        // throws and every screen renders its own dead end ("Could not load
+        // profile.") with no way back to login.
+        if (response.status === 401) {
+          await endDeadSession();
+        }
 
         // Attach the HTTP status so callers can tell a genuine auth
         // failure (401 → session is actually invalid) apart from a

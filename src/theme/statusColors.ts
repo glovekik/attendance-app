@@ -368,8 +368,11 @@ export const attendanceStatusColor = (
     case "PRESENT":
     case "CHECKED_IN":
     case "LATE":
-    case "HALF_DAY":
       return attColor("present");
+    // Its own hue — a half day is materially different from a full one and
+    // shouldn't have to be read off the hours column to be noticed.
+    case "HALF_DAY":
+      return attColor("halfday");
     case "ON_LEAVE":
       return attColor("leave");
     case "ABSENT":

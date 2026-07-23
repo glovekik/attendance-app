@@ -111,6 +111,15 @@ export default function HRAdmin() {
       icon: "card" as const,
       color: "#0369a1",
       route: "/hr-reimbursements" },
+    {
+      // HR can't approve these — only the reporting manager can — but HR
+      // still needs to see the backlog, and the screen carries the total
+      // hours worked and the download.
+      label: "Time Sheets",
+      count: dash?.pendingTimesheetApprovals || 0,
+      icon: "time" as const,
+      color: "#be185d",
+      route: "/hr-timesheets" },
   ];
   const activeQueues = pendingQueues.filter((q) => q.count > 0);
   const totalPending = activeQueues.reduce((s, q) => s + q.count, 0);
@@ -314,6 +323,25 @@ export default function HRAdmin() {
             iconColor="#0369a1"
             count={dash?.pendingReimbursementApprovals}
             onPress={() => router.push("/hr-reimbursements" as any)}
+            theme={theme}
+            styles={styles}
+          />
+          <Tile
+            icon="time-outline"
+            label="Time Sheets"
+            tint={c.pastelPink}
+            iconColor="#be185d"
+            count={dash?.pendingTimesheetApprovals}
+            onPress={() => router.push("/hr-timesheets" as any)}
+            theme={theme}
+            styles={styles}
+          />
+          <Tile
+            icon="id-card-outline"
+            label="ID Cards"
+            tint={c.pastelLavender}
+            iconColor="#6d28d9"
+            onPress={() => router.push("/hr-id-cards" as any)}
             theme={theme}
             styles={styles}
           />

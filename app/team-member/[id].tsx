@@ -525,31 +525,35 @@ export default function TeamMemberDetail() {
           />
         }
       >
-        {/* HERO */}
+        {/* HERO — compact horizontal identity card */}
         <View style={styles.hero}>
           <Avatar
             name={name}
             uri={photoUrl}
-            size={68}
+            size={52}
             bg="rgba(255,255,255,0.22)"
             fg="#fff"
-            fontSize={26}
-            style={styles.heroAvatar}
+            fontSize={20}
+            zoomable
           />
-          <Text style={styles.heroName}>{name}</Text>
-          {!!email && <Text style={styles.heroEmail}>{email}</Text>}
-          <View style={styles.heroPills}>
-            {!!employeeCode && (
-              <View style={styles.heroPill}>
-                <Ionicons name="id-card-outline" size={12} color="#fff" />
-                <Text style={styles.heroPillText}>{employeeCode}</Text>
-              </View>
+          <View style={{ flex: 1 }}>
+            <Text style={styles.heroName} numberOfLines={1}>{name}</Text>
+            {!!email && (
+              <Text style={styles.heroEmail} numberOfLines={1}>{email}</Text>
             )}
-            {!!tag && (
-              <View style={styles.heroPill}>
-                <Text style={styles.heroPillText}>{tag}</Text>
-              </View>
-            )}
+            <View style={styles.heroPills}>
+              {!!employeeCode && (
+                <View style={styles.heroPill}>
+                  <Ionicons name="id-card-outline" size={12} color="#fff" />
+                  <Text style={styles.heroPillText}>{employeeCode}</Text>
+                </View>
+              )}
+              {!!tag && (
+                <View style={styles.heroPill}>
+                  <Text style={styles.heroPillText}>{tag}</Text>
+                </View>
+              )}
+            </View>
           </View>
         </View>
 
@@ -1272,15 +1276,17 @@ const makeStyles = (c: any) =>
 
     // hero
     hero: {
-      backgroundColor: c.accent,
-      borderRadius: 22,
-      padding: 22,
+      flexDirection: "row",
       alignItems: "center",
+      gap: 14,
+      backgroundColor: c.accent,
+      borderRadius: 18,
+      padding: 16,
       shadowColor: c.accent,
-      shadowOpacity: 0.35,
-      shadowRadius: 18,
-      shadowOffset: { width: 0, height: 8 },
-      elevation: 5,
+      shadowOpacity: 0.22,
+      shadowRadius: 12,
+      shadowOffset: { width: 0, height: 6 },
+      elevation: 4,
     },
     heroAvatar: {
       width: 68,
@@ -1292,9 +1298,9 @@ const makeStyles = (c: any) =>
       marginBottom: 10,
     },
     heroAvatarText: { color: "#fff", fontSize: 26, fontWeight: "800" },
-    heroName: { color: "#fff", fontSize: 20, fontWeight: "800" },
-    heroEmail: { color: "rgba(255,255,255,0.85)", fontSize: 13, marginTop: 2 },
-    heroPills: { flexDirection: "row", flexWrap: "wrap", gap: 6, marginTop: 12, justifyContent: "center" },
+    heroName: { color: "#fff", fontSize: 17, fontWeight: "800" },
+    heroEmail: { color: "rgba(255,255,255,0.85)", fontSize: 12.5, marginTop: 2 },
+    heroPills: { flexDirection: "row", flexWrap: "wrap", gap: 6, marginTop: 8, justifyContent: "flex-start" },
     heroPill: {
       flexDirection: "row",
       alignItems: "center",

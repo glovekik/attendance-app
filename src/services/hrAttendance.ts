@@ -14,6 +14,7 @@ export interface HrAttendanceRow {
   date: string;
   attendanceType?: "OFFICE" | "WFH" | "CLIENT" | "LEAVE" | "HOLIDAY";
   clientAddress?: string | null;
+  clientName?: string | null;
   status: AttendanceStatus;
   isLate?: boolean;
   hoursWorked?: number;

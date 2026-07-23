@@ -348,6 +348,9 @@ export default function LeaveTypes() {
               !lt.isActive && { opacity: 0.55 },
             ]}
           >
+            <View style={styles.ltIcon}>
+              <Ionicons name="calendar-outline" size={18} color={c.accent} />
+            </View>
             <View style={{ flex: 1 }}>
               <View style={styles.cardTopRow}>
                 <Text style={styles.cardName}>{lt.name}</Text>
@@ -364,11 +367,24 @@ export default function LeaveTypes() {
                 </View>
               </View>
 
-              <Text style={styles.cardMeta}>
-                {lt.daysPerMonth}/mo  ·  {lt.daysPerYear}/yr
-                {lt.allowHalfDay ? "  ·  half-day" : ""}
-                {lt.requiresAttachment ? "  ·  attach req" : ""}
-              </Text>
+              <View style={styles.metaPills}>
+                <View style={styles.metaPill}>
+                  <Text style={styles.metaPillText}>{lt.daysPerMonth}/mo</Text>
+                </View>
+                <View style={styles.metaPill}>
+                  <Text style={styles.metaPillText}>{lt.daysPerYear}/yr</Text>
+                </View>
+                {lt.allowHalfDay ? (
+                  <View style={styles.metaPill}>
+                    <Text style={styles.metaPillText}>Half-day</Text>
+                  </View>
+                ) : null}
+                {lt.requiresAttachment ? (
+                  <View style={styles.metaPill}>
+                    <Text style={styles.metaPillText}>Attachment</Text>
+                  </View>
+                ) : null}
+              </View>
 
               {lt.description ? (
                 <Text style={styles.cardDesc}>
@@ -649,6 +665,27 @@ const makeStyles = (c: any) => StyleSheet.create({
     fontWeight: "800",
     letterSpacing: 0.5 },
   cardMeta: { color: c.textMuted, fontSize: 12 },
+  ltIcon: {
+    width: 38,
+    height: 38,
+    borderRadius: 11,
+    backgroundColor: c.accentSoft,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  metaPills: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 6,
+    marginTop: 8,
+  },
+  metaPill: {
+    backgroundColor: c.surfaceMuted,
+    paddingHorizontal: 9,
+    paddingVertical: 4,
+    borderRadius: 8,
+  },
+  metaPillText: { color: c.textMuted, fontSize: 11, fontWeight: "700" },
   cardDesc: {
     color: c.text,
     fontSize: 12,

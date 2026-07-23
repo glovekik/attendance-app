@@ -30,6 +30,7 @@ import {
 import { LeaveRequest } from "../src/types";
 
 import { useTheme } from "../src/theme/ThemeProvider";
+import { StatusTabs } from "../src/components/StatusTabs";
 import { useResponsive, getResponsiveSpacing } from "../src/utils/responsive";
 import { PageHeader } from "../src/components/PageHeader";
 import { WebModal, ModalActions } from "../src/components/WebModal";
@@ -53,6 +54,10 @@ export default function LeaveRequests() {
   const styles = useMemo(() => makeStyles(c, isDesktop), [c, isDesktop]);
 
   const [items, setItems] = useState<LeaveRequest[]>([]);
+  // Approvers need their history, not just the inbox.
+  const [tab, setTab] = useState<
+    "PENDING" | "APPROVED" | "REJECTED"
+  >("PENDING");
   const [loading, setLoading] = useState(true);
   const [busyId, setBusyId] = useState<string | null>(null);
 
@@ -83,7 +88,7 @@ export default function LeaveRequests() {
         router.replace("/login");
         return;
       }
-      const res = await hrListLeaveRequests(token, "PENDING");
+      const res = await hrListLeaveRequests(token, tab);
       setItems(res || []);
     } catch (err: any) {
       showPopup(err?.message || "Failed to load", "error");
@@ -187,6 +192,16 @@ export default function LeaveRequests() {
           <Text style={styles.popupText}>{popup.message}</Text>
         </View>
       )}
+        <StatusTabs
+          tabs={[
+            { key: "PENDING", label: "Pending", tone: "#b45309" },
+            { key: "APPROVED", label: "Approved", tone: "#16a34a" },
+            { key: "REJECTED", label: "Rejected", tone: "#dc2626" },
+          ]}
+          value={tab}
+          onChange={setTab as any}
+          style={{ paddingHorizontal: 12, marginTop: 12 }}
+        />
 
       <ScrollView
         style={styles.container}

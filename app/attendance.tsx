@@ -25,14 +25,13 @@ import {
   getToday,
   getMe,
   getUnfinished,
-  getHistory,
   UnfinishedRecord,
 } from "../src/services/api";
-import { listHolidays } from "../src/services/holidays";
-import { AttendanceCalendar } from "../src/components/AttendanceCalendar";
+import { AttendanceHistorySection } from "../src/components/AttendanceHistorySection";
 import { getMyTasks } from "../src/services/tasks";
 import { listTodos } from "../src/services/todos";
-import { dateToYMD } from "../src/components/WebDateField";
+import { dateToYMD, WebDateField } from "../src/components/WebDateField";
+import { requestCorrection } from "../src/services/corrections";
 import {
   OFFICE,
   ALLOWED_RADIUS,
@@ -75,9 +74,6 @@ export default function Attendance() {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [todayAtt, setTodayAtt] = useState<any>(null);
-  // This month's attendance for the embedded calendar.
-  const [monthRows, setMonthRows] = useState<any[]>([]);
-  const [holidayMap, setHolidayMap] = useState<Record<string, string>>({});
   const [me, setMe] = useState<User | null>(null);
   const [attType, setAttType] = useState<AttType>("OFFICE");
   const [workNotes, setWorkNotes] = useState("");
@@ -93,6 +89,7 @@ export default function Attendance() {
     longitude: number;
   } | null>(null);
   const [clientAddress, setClientAddress] = useState("");
+  const [clientName, setClientName] = useState("");
   const [clientSubmitting, setClientSubmitting] = useState(false);
 
   // "Unfinished previous day" prompt: previous days the user forgot to check
@@ -100,6 +97,10 @@ export default function Attendance() {
   // Resolved by sending a correction request (see openCorrectionFor).
   const [blockRecords, setBlockRecords] =
     useState<UnfinishedRecord[] | null>(null);
+  // Inline forgot-checkout correction (filed right here, no jump to History).
+  const [coTime, setCoTime] = useState("");
+  const [coReason, setCoReason] = useState("");
+  const [coSubmitting, setCoSubmitting] = useState(false);
 
   const load = useCallback(async () => {
     try {
@@ -109,13 +110,10 @@ export default function Attendance() {
         return;
       }
       const today = dateToYMD(new Date());
-      const monthPrefix = today.slice(0, 7); // YYYY-MM
-      const [t, meRes, unfinished, history, holidays] = await Promise.all([
+      const [t, meRes, unfinished] = await Promise.all([
         getToday(token, today),
         getMe(token).catch(() => null),
         getUnfinished(token, today).catch(() => [] as UnfinishedRecord[]),
-        getHistory(token, { limit: 200 }).catch(() => [] as any[]),
-        listHolidays(token, { year: Number(monthPrefix.slice(0, 4)) }).catch(() => [] as any[]),
       ]);
       setTodayAtt(t || null);
       setMe(meRes);
@@ -123,11 +121,6 @@ export default function Attendance() {
       if (t?.workNotes) setWorkNotes(t.workNotes);
       // Proactively prompt if a previous day was left un-checked-out.
       setBlockRecords(unfinished.length ? unfinished : null);
-      // This month's rows for the calendar.
-      setMonthRows((history || []).filter((r: any) => (r?.date || "").startsWith(monthPrefix)));
-      const hmap: Record<string, string> = {};
-      (holidays || []).forEach((h: any) => { if (h?.date) hmap[h.date] = h.name || "Holiday"; });
-      setHolidayMap(hmap);
     } catch (err: any) {
       notify("Couldn't load attendance", err?.message || "");
     } finally {
@@ -291,8 +284,10 @@ export default function Attendance() {
         latitude: clientCoords.latitude,
         longitude: clientCoords.longitude,
         clientAddress: clientAddress.trim() || undefined,
+        clientName: clientName.trim() || undefined,
       });
       setClientOpen(false);
+      setClientName("");
       notify(
         "Checked in from client",
         "You're checked in at a client location — check out here when you're done."
@@ -310,23 +305,38 @@ export default function Attendance() {
     }
   };
 
-  // Send the user to the correction form for the earliest forgotten day,
-  // pre-filled for that record so they only need to add the real check-out
-  // time and a reason. Filing the request clears the check-in gate.
-  const sendCorrectionForUnfinished = () => {
+  // File the forgot-checkout correction INLINE (right on this screen) — the
+  // user enters the real check-out time + an optional reason and we submit it
+  // via requestCorrection, no navigation to History.
+  const submitForgotCheckout = async () => {
     const rec = (blockRecords || [])[0];
-    if (!rec) return;
-    setBlockRecords(null);
-    router.push({
-      pathname: "/history",
-      params: {
-        correctId: rec.id,
-        correctDate: rec.date,
-        correctCheckIn: rec.checkIn || "",
-        correctCheckOut: rec.checkOut || "",
-        correctType: rec.attendanceType || "OFFICE",
-      },
-    } as any);
+    if (!rec || coSubmitting) return;
+    if (!coTime) {
+      notify("Enter your actual check-out time");
+      return;
+    }
+    try {
+      setCoSubmitting(true);
+      const token = await AsyncStorage.getItem("token");
+      if (!token) return;
+      const [y, m, d] = rec.date.split("-").map(Number);
+      const [hh, mm] = coTime.split(":").map(Number);
+      // Combine the record's date with the entered time as local wall-clock
+      // (same convention History's correction form uses).
+      const iso = new Date(y, m - 1, d, hh, mm, 0).toISOString();
+      await requestCorrection(token, rec.id, {
+        requestedCheckOut: iso,
+        reason: coReason.trim() || "Forgot to check out",
+      });
+      notify("Correction sent", "Your manager or HR will review it.");
+      setBlockRecords(null);
+      setCoTime("");
+      setCoReason("");
+    } catch (err: any) {
+      notify("Couldn't send", err?.message || "");
+    } finally {
+      setCoSubmitting(false);
+    }
   };
 
   const pullFromTasks = async () => {
@@ -743,25 +753,8 @@ export default function Attendance() {
           </TouchableOpacity>
         )}
 
-        {/* THIS MONTH'S CALENDAR (replaces the old history link) */}
-        <View
-          style={[
-            styles.calCard,
-            { backgroundColor: c.surface, borderColor: c.surfaceBorder, shadowColor: c.shadow },
-          ]}
-        >
-          <View style={styles.calHead}>
-            <Text style={[styles.calTitle, { color: c.text }]}>This month</Text>
-            <Pressable onPress={() => router.push("/history")} hitSlop={8}>
-              <Text style={[styles.calLink, { color: c.accent }]}>Full history & corrections ›</Text>
-            </Pressable>
-          </View>
-          <AttendanceCalendar
-            monthStr={dateToYMD(new Date()).slice(0, 7)}
-            rows={monthRows}
-            holidayMap={holidayMap}
-          />
-        </View>
+        {/* ATTENDANCE HISTORY + CORRECTIONS (former standalone History page) */}
+        <AttendanceHistorySection onChanged={load} />
 
         {/* QUICK LINK to leaves */}
         <Pressable
@@ -838,6 +831,25 @@ export default function Attendance() {
           </ModalActions>
         }
       >
+        <Text style={{ color: c.textMuted, fontSize: 12, fontWeight: "700", marginBottom: 6 }}>
+          Client / location name
+        </Text>
+        <TextInput
+          style={{
+            borderWidth: 1,
+            borderColor: c.surfaceBorder,
+            borderRadius: 10,
+            paddingHorizontal: 12,
+            paddingVertical: 10,
+            color: c.text,
+            backgroundColor: c.surface,
+            marginBottom: 14,
+          }}
+          value={clientName}
+          onChangeText={setClientName}
+          placeholder="e.g. Acme Corp — Bandra office"
+          placeholderTextColor={c.textFaint}
+        />
         <View
           style={[
             styles.locBox,
@@ -881,11 +893,16 @@ export default function Attendance() {
               </Text>
             </TouchableOpacity>
             <TouchableOpacity
-              style={[styles.modalBtn, { backgroundColor: c.accent }]}
-              onPress={sendCorrectionForUnfinished}
+              style={[
+                styles.modalBtn,
+                { backgroundColor: c.accent },
+                coSubmitting && { opacity: 0.6 },
+              ]}
+              onPress={submitForgotCheckout}
+              disabled={coSubmitting}
             >
               <Text style={[styles.modalBtnText, { color: "#fff" }]}>
-                Send correction request
+                {coSubmitting ? "Sending…" : "Submit correction"}
               </Text>
             </TouchableOpacity>
           </ModalActions>
@@ -910,7 +927,35 @@ export default function Attendance() {
             </Text>
           </View>
         </View>
-        <Text style={[styles.locHelp, { color: c.textMuted }]}>
+
+        <Text style={{ color: c.textMuted, fontSize: 12, fontWeight: "700", marginTop: 14, marginBottom: 6 }}>
+          Actual check-out time
+        </Text>
+        {isWeb ? (
+          <WebDateField mode="time" value={coTime} onChange={(v) => setCoTime(v || "")} />
+        ) : (
+          <TextInput
+            style={{ borderWidth: 1, borderColor: c.surfaceBorder, borderRadius: 10, paddingHorizontal: 12, paddingVertical: 10, color: c.text, backgroundColor: c.surface }}
+            value={coTime}
+            onChangeText={setCoTime}
+            placeholder="HH:MM (e.g. 18:30)"
+            placeholderTextColor={c.textFaint}
+          />
+        )}
+
+        <Text style={{ color: c.textMuted, fontSize: 12, fontWeight: "700", marginTop: 12, marginBottom: 6 }}>
+          Reason (optional)
+        </Text>
+        <TextInput
+          style={{ borderWidth: 1, borderColor: c.surfaceBorder, borderRadius: 10, paddingHorizontal: 12, paddingVertical: 10, color: c.text, backgroundColor: c.surface, minHeight: 44 }}
+          value={coReason}
+          onChangeText={setCoReason}
+          placeholder="e.g. Forgot to check out"
+          placeholderTextColor={c.textFaint}
+          multiline
+        />
+
+        <Text style={[styles.locHelp, { color: c.textMuted, marginTop: 12 }]}>
           Your manager or HR will review and approve the corrected check-out.
         </Text>
       </WebModal>

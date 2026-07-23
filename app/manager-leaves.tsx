@@ -24,12 +24,17 @@ import {
 import { LeaveRequest } from "../src/types";
 
 import { useTheme } from "../src/theme/ThemeProvider";
+import { StatusTabs } from "../src/components/StatusTabs";
 export default function ManagerLeaves() {
   const router = useRouter();
   const { theme } = useTheme();
   const c = theme.colors;
   const styles = useMemo(() => makeStyles(c), [c]);
   const [items, setItems] = useState<LeaveRequest[]>([]);
+  // Approvers need their history, not just the inbox.
+  const [tab, setTab] = useState<
+    "PENDING" | "APPROVED" | "REJECTED"
+  >("PENDING");
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [selected, setSelected] = useState<LeaveRequest | null>(null);
@@ -43,7 +48,7 @@ export default function ManagerLeaves() {
         router.replace("/login");
         return;
       }
-      const data = await listManagerLeaves(token, "PENDING");
+      const data = await listManagerLeaves(token, tab);
       setItems(data || []);
     } catch (err: any) {
       Alert.alert(
@@ -54,7 +59,7 @@ export default function ManagerLeaves() {
       setLoading(false);
       setRefreshing(false);
     }
-  }, [router]);
+  }, [router, tab]);
 
   useEffect(() => {
     load();
@@ -118,6 +123,16 @@ export default function ManagerLeaves() {
         <Text style={styles.title}>Leave Requests</Text>
         <View style={{ width: 24 }} />
       </View>
+        <StatusTabs
+          tabs={[
+            { key: "PENDING", label: "Pending", tone: "#b45309" },
+            { key: "APPROVED", label: "Approved", tone: "#16a34a" },
+            { key: "REJECTED", label: "Rejected", tone: "#dc2626" },
+          ]}
+          value={tab}
+          onChange={setTab as any}
+          style={{ paddingHorizontal: 12, marginTop: 12 }}
+        />
 
       <FlatList
         data={items}

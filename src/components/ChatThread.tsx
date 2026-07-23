@@ -450,6 +450,7 @@ const ChatThreadInner = ({
                     uri={m.user?.profilePictureUrl}
                     size={28}
                     style={styles.msgAvatar}
+                    zoomable
                   />
                 ) : (
                   <View style={styles.msgAvatarSpacer} />

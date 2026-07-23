@@ -17,6 +17,7 @@ import { KeyboardAvoidingView } from "react-native-keyboard-controller";
 import { SafeAreaView } from "react-native-safe-area-context";
 
 import { WebModal } from "../src/components/WebModal";
+import { FullScreenImage } from "../src/components/FullScreenImage";
 import { Avatar } from "../src/components/Avatar";
 import { openMedia, mediaUrl } from "../src/utils/media";
 
@@ -540,6 +541,7 @@ export default function HrUserProfile() {
   // Profile picture
   const [profilePictureUrl, setProfilePictureUrl] = useState("");
   const [photoModalOpen, setPhotoModalOpen] = useState(false);
+  const [photoZoom, setPhotoZoom] = useState(false);
   const [savingPhoto, setSavingPhoto] = useState(false);
 
   // Editable basics — these are entered at create time in users.tsx
@@ -1370,6 +1372,12 @@ export default function HrUserProfile() {
       onPress: () => router.push(`/hr-user-leave-balance?id=${id}` as any),
     },
     {
+      key: "idcard",
+      label: "ID Card",
+      icon: "card-outline",
+      onPress: () => router.push(`/id-card?userId=${id}` as any),
+    },
+    {
       key: "pw",
       label: "Set password",
       icon: "key-outline",
@@ -1605,6 +1613,15 @@ export default function HrUserProfile() {
           HR Admin · Employees ·{" "}
           <Text style={styles.crumbsStrong}>{displayName}</Text>
         </Text>
+        {isDesktop && (
+          <TouchableOpacity
+            style={styles.ghostBtn}
+            onPress={() => router.push(`/id-card?userId=${id}` as any)}
+          >
+            <Ionicons name="card-outline" size={14} color={c.text} />
+            <Text style={styles.ghostBtnText}>ID card</Text>
+          </TouchableOpacity>
+        )}
         {isDesktop && (
           <TouchableOpacity style={styles.ghostBtn} onPress={openSetPassword}>
             <Ionicons name="key-outline" size={14} color={c.text} />
@@ -2739,43 +2756,66 @@ export default function HrUserProfile() {
           Sets {user?.name || "this user"}'s password directly — no email is
           sent. Share it with them securely.
         </Text>
-        <View style={[styles.searchBox, { marginTop: 12 }]}>
-          <Ionicons name="lock-closed-outline" size={16} color={c.textMuted} />
+
+        <Text style={styles.pwLabel}>New password</Text>
+        <View style={styles.pwField}>
+          <Ionicons name="lock-closed-outline" size={17} color={c.textMuted} />
           <TextInput
-            style={styles.searchInput}
+            style={styles.pwInput}
             value={newPw}
             onChangeText={setNewPw}
-            placeholder="New password"
+            placeholder="Enter a new password"
             placeholderTextColor={c.textFaint}
             autoCapitalize="none"
             secureTextEntry={!showPw}
             editable={!savingPw}
           />
-          <TouchableOpacity onPress={() => setShowPw((v) => !v)}>
+          <TouchableOpacity onPress={() => setShowPw((v) => !v)} hitSlop={8}>
             <Ionicons
               name={showPw ? "eye-off-outline" : "eye-outline"}
-              size={16}
+              size={18}
               color={c.textMuted}
             />
           </TouchableOpacity>
         </View>
-        <View style={styles.searchBox}>
-          <Ionicons name="lock-closed-outline" size={16} color={c.textMuted} />
+
+        <Text style={styles.pwLabel}>Confirm password</Text>
+        <View
+          style={[
+            styles.pwField,
+            !!confirmPw && confirmPw !== newPw && { borderColor: c.dangerText },
+          ]}
+        >
+          <Ionicons name="lock-closed-outline" size={17} color={c.textMuted} />
           <TextInput
-            style={styles.searchInput}
+            style={styles.pwInput}
             value={confirmPw}
             onChangeText={setConfirmPw}
-            placeholder="Confirm password"
+            placeholder="Re-enter the password"
             placeholderTextColor={c.textFaint}
             autoCapitalize="none"
             secureTextEntry={!showPw}
             editable={!savingPw}
           />
+          {!!confirmPw && confirmPw === newPw && (
+            <Ionicons name="checkmark-circle" size={18} color={c.successText} />
+          )}
         </View>
+
+        <Text style={styles.pwHelp}>
+          {confirmPw && confirmPw !== newPw
+            ? "Passwords don't match yet."
+            : "Use at least 6 characters."}
+        </Text>
+
         <TouchableOpacity
-          style={[styles.pwSubmit, savingPw && { opacity: 0.7 }]}
+          style={[
+            styles.pwSubmit,
+            { marginTop: 16 },
+            (savingPw || newPw.length < 6 || newPw !== confirmPw) && { opacity: 0.5 },
+          ]}
           onPress={submitSetPassword}
-          disabled={savingPw}
+          disabled={savingPw || newPw.length < 6 || newPw !== confirmPw}
         >
           {savingPw ? (
             <ActivityIndicator color="#fff" />
@@ -2798,17 +2838,28 @@ export default function HrUserProfile() {
           <View style={styles.photoLeft}>
             <View style={styles.photoCard}>
               {profilePictureUrl ? (
-                <Image
-                  source={{ uri: mediaUrl(profilePictureUrl) }}
-                  style={styles.photoCardImg}
-                  resizeMode="contain"
-                />
+                <TouchableOpacity
+                  activeOpacity={0.9}
+                  onPress={() => setPhotoZoom(true)}
+                  style={{ width: "100%", height: "100%" }}
+                >
+                  <Image
+                    source={{ uri: mediaUrl(profilePictureUrl) }}
+                    style={styles.photoCardImg}
+                    resizeMode="contain"
+                  />
+                </TouchableOpacity>
               ) : (
                 <View style={styles.photoCardEmpty}>
                   <Ionicons name="image-outline" size={34} color={c.textFaint} />
                   <Text style={styles.photoCardEmptyText}>No image uploaded</Text>
                 </View>
               )}
+              <FullScreenImage
+                uri={profilePictureUrl}
+                visible={photoZoom}
+                onClose={() => setPhotoZoom(false)}
+              />
               {savingPhoto && (
                 <View style={styles.photoBusy}>
                   <ActivityIndicator color="#fff" />
@@ -2832,6 +2883,7 @@ export default function HrUserProfile() {
               <FilePickButton
                 label={profilePictureUrl ? "Upload new image" : "Upload image"}
                 mimeType="image/*"
+                crop
                 style={styles.photoChangeBtn}
                 onUploaded={(url) => savePhoto(url)}
               />
@@ -3441,6 +3493,26 @@ const makeStyles = (c: any, isDesktop: boolean) => StyleSheet.create({
     marginTop: 14,
     ...(Platform.OS === "web" ? { cursor: "pointer" } : {}) },
   pwSubmitText: { color: "#fff", fontSize: 15, fontWeight: "700" },
+  pwLabel: {
+    color: c.textMuted,
+    fontSize: 12,
+    fontWeight: "700",
+    marginTop: 14,
+    marginBottom: 6,
+  },
+  pwField: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+    borderWidth: 1,
+    borderColor: c.surfaceBorder,
+    backgroundColor: c.surface,
+    borderRadius: 12,
+    paddingHorizontal: 14,
+    height: 48,
+  },
+  pwInput: { flex: 1, color: c.text, fontSize: 15, padding: 0 },
+  pwHelp: { color: c.textFaint, fontSize: 12, marginTop: 8 },
 
   // ===== TABS (underline indicator) =====
   tabsBar: {

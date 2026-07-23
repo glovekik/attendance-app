@@ -392,20 +392,6 @@ export default function MyLeaves() {
                     </Text>
                   </View>
 
-                  {(!!b.accruedThisMonth || perMonth > 0) && (
-                    <View
-                      style={[
-                        styles.monthlyRow,
-                        { backgroundColor: tint.bg },
-                      ]}
-                    >
-                      <Ionicons name="trending-up" size={12} color={tint.fg} />
-                      <Text style={[styles.monthlyText, { color: tint.fg }]}>
-                        {b.accruedThisMonth ? `+${fmt(b.accruedThisMonth)} this month · ` : ""}
-                        {fmt(perMonth)}/mo
-                      </Text>
-                    </View>
-                  )}
                 </View>
               );
             })}

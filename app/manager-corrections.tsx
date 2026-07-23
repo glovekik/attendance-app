@@ -26,6 +26,7 @@ import { AttendanceCorrection } from "../src/types";
 import { notify } from "../src/utils/confirm";
 
 import { useTheme } from "../src/theme/ThemeProvider";
+import { StatusTabs } from "../src/components/StatusTabs";
 const fmtTime = (iso?: string | null): string => {
   if (!iso) return "—";
   try {
@@ -53,6 +54,10 @@ export default function ManagerCorrections() {
   const c = theme.colors;
   const styles = useMemo(() => makeStyles(c), [c]);
   const [items, setItems] = useState<AttendanceCorrection[]>([]);
+  // Approvers need their history, not just the inbox.
+  const [tab, setTab] = useState<
+    "PENDING" | "APPROVED" | "REJECTED"
+  >("PENDING");
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [selected, setSelected] =
@@ -72,7 +77,7 @@ export default function ManagerCorrections() {
         router.replace("/login");
         return;
       }
-      const data = await listManagerCorrections(token, "PENDING");
+      const data = await listManagerCorrections(token, tab);
       const list = data || [];
       setItems(list);
       const valid = new Set(list.map((i) => i.id));
@@ -86,7 +91,7 @@ export default function ManagerCorrections() {
       setLoading(false);
       setRefreshing(false);
     }
-  }, [router]);
+  }, [router, tab]);
 
   useEffect(() => {
     load();
@@ -130,10 +135,17 @@ export default function ManagerCorrections() {
       setItems((prev) => prev.filter((x) => x.id !== selected.id));
       close();
     } catch (err: any) {
+      const msg = err?.message || "";
       notify(
         action === "APPROVE" ? "Approve failed" : "Reject failed",
-        err?.message || ""
+        msg
       );
+      // If HR (the other approver) already decided this one, it's no longer
+      // actionable — drop it from the list and close.
+      if (err?.status === 409 || /already decided/i.test(msg)) {
+        setItems((prev) => prev.filter((x) => x.id !== selected.id));
+        close();
+      }
     } finally {
       setActing(null);
     }
@@ -261,6 +273,16 @@ export default function ManagerCorrections() {
           </View>
         </View>
       )}
+        <StatusTabs
+          tabs={[
+            { key: "PENDING", label: "Pending", tone: "#b45309" },
+            { key: "APPROVED", label: "Approved", tone: "#16a34a" },
+            { key: "REJECTED", label: "Rejected", tone: "#dc2626" },
+          ]}
+          value={tab}
+          onChange={setTab as any}
+          style={{ paddingHorizontal: 12, marginTop: 12 }}
+        />
 
       <FlatList
         data={items}
@@ -317,7 +339,8 @@ export default function ManagerCorrections() {
               )}
             </View>
             <Text style={styles.row}>
-              Requested check-out: {fmtTime(item.requestedCheckOut)}
+              In: {fmtTime(item.requestedCheckIn ?? item.attendance?.checkIn)}
+              {"   ·   "}Out: {fmtTime(item.requestedCheckOut ?? item.attendance?.checkOut)}
             </Text>
             {!!item.reason && (
               <Text style={styles.reason} numberOfLines={2}>
@@ -388,22 +411,22 @@ export default function ManagerCorrections() {
                     {fmtRaised(selected.requestedAt)}
                   </Text>
                 </View>
-                {!!selected.requestedCheckIn && (
-                  <View style={styles.detailRow}>
-                    <Text style={styles.detailValueLabel}>
-                      Requested check-in
-                    </Text>
-                    <Text style={styles.detailValue}>
-                      {fmtTime(selected.requestedCheckIn)}
-                    </Text>
-                  </View>
-                )}
+                {/* Always show BOTH times; fall back to the current record's
+                    time when a field wasn't part of the request. */}
                 <View style={styles.detailRow}>
                   <Text style={styles.detailValueLabel}>
-                    Requested check-out
+                    {selected.requestedCheckIn ? "Requested check-in" : "Check-in"}
                   </Text>
                   <Text style={styles.detailValue}>
-                    {fmtTime(selected.requestedCheckOut)}
+                    {fmtTime(selected.requestedCheckIn ?? selected.attendance?.checkIn)}
+                  </Text>
+                </View>
+                <View style={styles.detailRow}>
+                  <Text style={styles.detailValueLabel}>
+                    {selected.requestedCheckOut ? "Requested check-out" : "Check-out"}
+                  </Text>
+                  <Text style={styles.detailValue}>
+                    {fmtTime(selected.requestedCheckOut ?? selected.attendance?.checkOut)}
                   </Text>
                 </View>
                 {!!selected.requestedAttendanceType && (

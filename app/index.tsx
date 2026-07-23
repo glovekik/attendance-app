@@ -531,7 +531,7 @@ export default function Home() {
                 icon="time-outline"
                 tint={c.pastelMint}
                 iconColor="#15803d"
-                onPress={() => router.push("/history")}
+                onPress={() => router.push("/attendance")}
                 theme={theme}
             styles={styles}
               />
@@ -542,7 +542,7 @@ export default function Home() {
                 icon="stopwatch-outline"
                 tint={c.pastelPeach}
                 iconColor="#c2410c"
-                onPress={() => router.push("/history")}
+                onPress={() => router.push("/attendance")}
                 theme={theme}
             styles={styles}
               />
@@ -582,6 +582,33 @@ export default function Home() {
             tint={c.pastelPink}
             iconColor="#be185d"
             onPress={() => router.push("/todos" as any)}
+            theme={theme}
+            styles={styles}
+          />
+          <CategoryTile
+            icon="airplane-outline"
+            label="Leaves"
+            tint={c.pastelSky}
+            iconColor="#2563eb"
+            onPress={() => router.push("/leaves" as any)}
+            theme={theme}
+            styles={styles}
+          />
+          <CategoryTile
+            icon="time-outline"
+            label="Timesheet"
+            tint={c.pastelPink}
+            iconColor="#be185d"
+            onPress={() => router.push("/my-timesheet" as any)}
+            theme={theme}
+            styles={styles}
+          />
+          <CategoryTile
+            icon="card-outline"
+            label="ID Card"
+            tint={c.pastelLavender}
+            iconColor="#6d28d9"
+            onPress={() => router.push("/id-card" as any)}
             theme={theme}
             styles={styles}
           />

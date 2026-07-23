@@ -12,7 +12,7 @@
  */
 
 import { Dimensions, Platform } from "react-native";
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 
 const { width, height } = Dimensions.get("window");
 
@@ -72,38 +72,45 @@ export const useResponsive = () => {
     return () => subscription.remove();
   }, []);
 
-  const breakpoint = getBreakpoint(dimensions.width);
+  const { width, height } = dimensions;
 
-  return {
-    width: dimensions.width,
-    height: dimensions.height,
-    breakpoint,
-    isMobile: breakpoint === "mobile",
-    isTablet: breakpoint === "tablet",
-    isDesktop: breakpoint === "desktop" || breakpoint === "wide",
-    isWide: breakpoint === "wide",
-    // Show sidebar navigation instead of bottom tabs
-    showSidebar: Platform.OS === "web" && dimensions.width >= BREAKPOINTS.tablet,
-    // Show collapsed sidebar (icons only) on tablet
-    sidebarCollapsed: breakpoint === "tablet",
-  };
+  // Memoised on the actual numbers. Returning a fresh object literal made
+  // every consumer see a "changed" value on every render, which defeats
+  // useMemo/React.memo downstream — and this hook is used by 26 screens.
+  // Dimensions also fire on keyboard show/hide on mobile, so an unmemoised
+  // object re-rendered whole screens every time someone typed.
+  return useMemo(() => {
+    const breakpoint = getBreakpoint(width);
+    return {
+      width,
+      height,
+      breakpoint,
+      isMobile: breakpoint === "mobile",
+      isTablet: breakpoint === "tablet",
+      isDesktop: breakpoint === "desktop" || breakpoint === "wide",
+      isWide: breakpoint === "wide",
+      // Show sidebar navigation instead of bottom tabs
+      showSidebar: Platform.OS === "web" && width >= BREAKPOINTS.tablet,
+      // Show collapsed sidebar (icons only) on tablet
+      sidebarCollapsed: breakpoint === "tablet",
+    };
+  }, [width, height]);
 };
 
 /**
  * Get responsive spacing values based on breakpoint.
  */
-export const getResponsiveSpacing = (breakpoint: Breakpoint) => {
-  switch (breakpoint) {
-    case "wide":
-      return { padding: 32, gap: 24, maxWidth: 1400 };
-    case "desktop":
-      return { padding: 24, gap: 20, maxWidth: 1200 };
-    case "tablet":
-      return { padding: 20, gap: 16, maxWidth: 900 };
-    default:
-      return { padding: 16, gap: 12, maxWidth: undefined };
-  }
-};
+// Frozen singletons: callers pass these straight into style props, so a new
+// object per call would invalidate every memo that depends on them.
+const SPACING = {
+  wide: { padding: 32, gap: 24, maxWidth: 1400 },
+  desktop: { padding: 24, gap: 20, maxWidth: 1200 },
+  tablet: { padding: 20, gap: 16, maxWidth: 900 },
+  mobile: { padding: 16, gap: 12, maxWidth: undefined },
+} as const;
+
+export const getResponsiveSpacing = (breakpoint: Breakpoint) =>
+  SPACING[breakpoint] ?? SPACING.mobile;
 
 /**
  * Sidebar width constants for layout calculations.

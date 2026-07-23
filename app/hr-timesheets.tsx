@@ -19,7 +19,9 @@ import { useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 
 import { listHrTimesheets } from "../src/services/timesheets";
+import { TimesheetSummaryBox } from "../src/components/TimesheetSummaryBox";
 import { useTheme } from "../src/theme/ThemeProvider";
+import { StatusTabs } from "../src/components/StatusTabs";
 import { timesheetStatusColor } from "../src/theme/statusColors";
 import {
   Timesheet,
@@ -89,27 +91,21 @@ export default function HrTimesheets() {
         <View style={{ width: 24 }} />
       </View>
 
-      <View style={styles.tabs}>
-        {TABS.map((t) => (
-          <TouchableOpacity
-            key={t.key}
-            style={[styles.tab, tab === t.key && styles.tabActive]}
-            onPress={() => {
-              setTab(t.key);
-              setLoading(true);
-            }}
-          >
-            <Text
-              style={[
-                styles.tabText,
-                tab === t.key && styles.tabTextActive,
-              ]}
-            >
-              {t.label}
-            </Text>
-          </TouchableOpacity>
-        ))}
-      </View>
+      {/* Shared control, so this queue matches every other approval screen. */}
+      <StatusTabs
+        tabs={[
+          { key: "PENDING", label: "Pending", tone: "#b45309" },
+          { key: "APPROVED", label: "Approved", tone: "#16a34a" },
+          { key: "REJECTED", label: "Rejected", tone: "#dc2626" },
+          { key: "ALL", label: "All" },
+        ]}
+        value={tab}
+        onChange={(k) => {
+          setTab(k as any);
+          setLoading(true);
+        }}
+        style={{ paddingHorizontal: 12, marginTop: 12 }}
+      />
 
       <View style={styles.filterBar}>
         <Ionicons name="calendar-outline" size={16} color={c.textMuted} />
@@ -140,6 +136,15 @@ export default function HrTimesheets() {
           }
           contentContainerStyle={
             items.length === 0 ? styles.emptyWrap : { padding: 12 }
+          }
+          ListHeaderComponent={
+            <TimesheetSummaryBox
+              scope="hr"
+              filters={{
+                status: tab === "ALL" ? undefined : tab,
+                weekStart: weekFilter.trim() || undefined,
+              }}
+            />
           }
           refreshControl={
             <RefreshControl

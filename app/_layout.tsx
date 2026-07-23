@@ -22,6 +22,7 @@ import { AnimatedSplash } from "../src/components/AnimatedSplash";
 import { toastConfig } from "../src/components/toast";
 import { checkForOtaUpdate } from "../src/utils/otaUpdates";
 import { ensureFreshToken } from "../src/services/session";
+import { setSessionExpiredHandler } from "../src/services/http";
 import { logDeviceTokenForDev } from "../src/services/notifications";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { getMe } from "../src/services/api";
@@ -81,6 +82,13 @@ const handleNotificationData = async (
 export default function RootLayout() {
 
   const router = useRouter();
+
+  // Give the API layer a way to end a dead session. It can't import the
+  // router itself (services are imported by the router's own tree), so the
+  // navigation is injected here instead.
+  useEffect(() => {
+    setSessionExpiredHandler(() => router.replace("/login"));
+  }, [router]);
 
   // Apply any published OTA update on launch (no-op in dev / Expo Go).
   useEffect(() => {

@@ -293,7 +293,9 @@ export default function ManagerAttendance() {
       tone = { bg: CLIENT_BG, fg: CLIENT_FG };
       const h = hoursOf(row);
       const hStr = h > 0 ? ` · ${h.toFixed(1)}h${!row?.checkOut ? " so far" : ""}` : "";
-      const where = row?.clientAddress ? `${row.clientAddress} · ` : "";
+      const where = row?.clientName
+        ? `${row.clientName} · `
+        : row?.clientAddress ? `${row.clientAddress} · ` : "";
       meta = `${where}In ${formatHM(row?.checkIn)} · Out ${formatHM(row?.checkOut)}${hStr}`;
     } else if (cat === "leave") {
       pill = "ON LEAVE";
@@ -661,7 +663,9 @@ export default function ManagerAttendance() {
                   <View style={styles.dInfoRow}>
                     <Ionicons name="navigate-outline" size={18} color={CLIENT_FG} />
                     <Text style={styles.dInfoText}>
-                      {row?.clientAddress || "Working from a client location."}
+                      {row?.clientName
+                        ? `${row.clientName}${row?.clientAddress ? ` — ${row.clientAddress}` : ""}`
+                        : row?.clientAddress || "Working from a client location."}
                     </Text>
                   </View>
                   <View style={styles.dGrid}>

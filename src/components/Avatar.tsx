@@ -1,12 +1,20 @@
-import React from "react";
+import React, { useState } from "react";
 
 // Use React Native's Image (react-native-web renders it as a plain <img>) —
 // it's the same path the profile screens use and loads reliably on web,
 // whereas expo-image can silently fail to render cross-origin URLs on web.
-import { View, Text, Image, StyleProp, ViewStyle } from "react-native";
+import {
+  View,
+  Text,
+  Image,
+  TouchableOpacity,
+  StyleProp,
+  ViewStyle,
+} from "react-native";
 
 import { mediaUrl } from "../utils/media";
 import { useTheme } from "../theme/ThemeProvider";
+import { FullScreenImage } from "./FullScreenImage";
 
 interface Props {
   /** Display name — its first letter is the fallback when there's no photo. */
@@ -25,6 +33,8 @@ interface Props {
   square?: boolean;
   /** Explicit border radius (wins over `square`/circle default). */
   borderRadius?: number;
+  /** When true, tapping the avatar (if it has a photo) opens it full-screen. */
+  zoomable?: boolean;
   style?: StyleProp<ViewStyle>;
 }
 
@@ -43,17 +53,20 @@ export const Avatar = ({
   fg,
   square,
   borderRadius,
+  zoomable,
   style,
 }: Props) => {
   const { theme } = useTheme();
   const c = theme.colors;
+  const [zoomed, setZoomed] = useState(false);
 
   const resolved = mediaUrl(uri || undefined);
   const radius =
     borderRadius != null ? borderRadius : square ? Math.round(size * 0.28) : size / 2;
   const initial = (name || "").trim().charAt(0).toUpperCase() || "?";
+  const canZoom = zoomable && !!resolved;
 
-  return (
+  const circle = (
     <View
       style={[
         {
@@ -86,5 +99,20 @@ export const Avatar = ({
         </Text>
       )}
     </View>
+  );
+
+  if (!canZoom) return circle;
+
+  return (
+    <>
+      <TouchableOpacity activeOpacity={0.8} onPress={() => setZoomed(true)}>
+        {circle}
+      </TouchableOpacity>
+      <FullScreenImage
+        uri={uri}
+        visible={zoomed}
+        onClose={() => setZoomed(false)}
+      />
+    </>
   );
 };

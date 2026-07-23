@@ -79,7 +79,7 @@ const employeeTabs: TabDef[] = [
     icon: "calendar-outline",
     iconActive: "calendar",
     route: "/attendance",
-    matchPrefixes: ["/attendance", "/history"],
+    matchPrefixes: ["/attendance"],
     section: "main",
   },
   {

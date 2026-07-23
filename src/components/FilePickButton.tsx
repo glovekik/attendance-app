@@ -28,6 +28,18 @@ const tryGetPicker = async () => {
   }
 };
 
+// Image picker (has the built-in cropper via allowsEditing) — used for
+// profile photos so the user can crop before uploading.
+const tryGetImagePicker = async () => {
+  try {
+    // @ts-ignore — optional until `npx expo install expo-image-picker`
+    const mod = await import("expo-image-picker");
+    return mod as any;
+  } catch {
+    return null;
+  }
+};
+
 interface Props {
   // Called with the uploaded URL on success.
   onUploaded: (url: string, fileName: string) => void;
@@ -35,6 +47,10 @@ interface Props {
   label?: string;
   // Restrict accepted MIME types (e.g. "image/*", "application/pdf").
   mimeType?: string | string[];
+  // Open the image cropper (expo-image-picker's editor) instead of the plain
+  // file picker — for profile photos. `aspect` defaults to a square [1,1].
+  crop?: boolean;
+  aspect?: [number, number];
   // Compact mode — small icon-only button.
   compact?: boolean;
   // Override container styles (e.g. to stretch the button to fill a
@@ -46,6 +62,8 @@ export const FilePickButton = ({
   onUploaded,
   label,
   mimeType,
+  crop,
+  aspect,
   compact,
   style,
 }: Props) => {
@@ -56,16 +74,61 @@ export const FilePickButton = ({
 
   const onPress = async () => {
     if (uploading) return;
-    const picker = await tryGetPicker();
-    if (!picker) {
-      Alert.alert(
-        "File picker not installed",
-        "Run this in the project root, then rebuild:\n\n" +
-          "npx expo install expo-document-picker"
-      );
-      return;
-    }
     try {
+      // CROP path — pick + crop an image with expo-image-picker's editor.
+      // (Native shows a crop UI; web has no native cropper so it just picks.)
+      if (crop) {
+        const ip = await tryGetImagePicker();
+        if (ip) {
+          const perm = await ip.requestMediaLibraryPermissionsAsync?.();
+          if (perm && perm.granted === false) {
+            Alert.alert(
+              "Permission needed",
+              "Allow photo access to choose and crop a picture."
+            );
+            return;
+          }
+          const res = await ip.launchImageLibraryAsync({
+            mediaTypes: ip.MediaTypeOptions ? ip.MediaTypeOptions.Images : ["images"],
+            allowsEditing: true, // ← the built-in cropper
+            aspect: aspect || [1, 1],
+            quality: 0.85,
+          });
+          if (res.canceled) return;
+          const asset = res.assets?.[0];
+          if (!asset) return;
+
+          setUploading(true);
+          const token = await AsyncStorage.getItem("token");
+          if (!token) {
+            Alert.alert("Not signed in");
+            return;
+          }
+          const webFile: any =
+            (asset as any).file && typeof File !== "undefined"
+              ? (asset as any).file
+              : undefined;
+          const result = await uploadFile(token, {
+            uri: asset.uri,
+            name: asset.fileName || `photo-${Date.now()}.jpg`,
+            mimeType: asset.mimeType || "image/jpeg",
+            webFile,
+          });
+          onUploaded(result.url, result.fileName);
+          return;
+        }
+        // image-picker unavailable → fall through to the document picker
+      }
+
+      const picker = await tryGetPicker();
+      if (!picker) {
+        Alert.alert(
+          "File picker not installed",
+          "Run this in the project root, then rebuild:\n\n" +
+            "npx expo install expo-document-picker"
+        );
+        return;
+      }
       const res = await picker.getDocumentAsync({
         type: mimeType || "*/*",
         copyToCacheDirectory: true,

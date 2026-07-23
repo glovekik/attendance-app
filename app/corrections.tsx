@@ -124,6 +124,9 @@ export default function Corrections() {
       await load();
     } catch (err: any) {
       showPopup(err?.message || "Failed to approve", "error");
+      // The other approver (manager/HR) may have just decided it — refresh so
+      // the now-stale request disappears from the list.
+      await load();
     } finally {
       setBusyId(null);
     }
@@ -214,6 +217,8 @@ export default function Corrections() {
       await load();
     } catch (err: any) {
       showPopup(err?.message || "Failed to reject", "error");
+      setRejectVisible(false);
+      await load();
     } finally {
       setBusyId(null);
     }
@@ -373,6 +378,7 @@ export default function Corrections() {
                 bg={c.accent}
                 fg="#fff"
                 fontSize={15}
+                zoomable
               />
               <View style={{ flex: 1 }}>
                 <Text style={styles.cardName}>
@@ -385,22 +391,23 @@ export default function Corrections() {
             </View>
 
             <View style={styles.timeBox}>
-              {corr.requestedCheckIn && (
-                <View style={styles.timeRow}>
-                  <Text style={styles.timeLabel}>
-                    Requested check-in
-                  </Text>
-                  <Text style={styles.timeValue}>
-                    {formatTime(corr.requestedCheckIn)}
-                  </Text>
-                </View>
-              )}
+              {/* Always show BOTH times so HR sees the full picture. When a
+                  field wasn't part of the request, fall back to the current
+                  record's time and label it plainly (not "Requested"). */}
               <View style={styles.timeRow}>
                 <Text style={styles.timeLabel}>
-                  Requested check-out
+                  {corr.requestedCheckIn ? "Requested check-in" : "Check-in"}
                 </Text>
                 <Text style={styles.timeValue}>
-                  {formatTime(corr.requestedCheckOut)}
+                  {formatTime(corr.requestedCheckIn ?? corr.attendance?.checkIn)}
+                </Text>
+              </View>
+              <View style={styles.timeRow}>
+                <Text style={styles.timeLabel}>
+                  {corr.requestedCheckOut ? "Requested check-out" : "Check-out"}
+                </Text>
+                <Text style={styles.timeValue}>
+                  {formatTime(corr.requestedCheckOut ?? corr.attendance?.checkOut)}
                 </Text>
               </View>
             </View>

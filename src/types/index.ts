@@ -557,6 +557,14 @@ export interface AttendanceCorrection {
     email: string;
     profilePictureUrl?: string;
   };
+  // The current attendance record the request is against — so reviewers can
+  // see the existing check-in/out even when the request only changed a subset.
+  attendance?: {
+    id?: string;
+    date?: string;
+    checkIn?: string | null;
+    checkOut?: string | null;
+  } | null;
   // Requested changes — every field optional. Older records only have
   // requestedCheckOut populated; newer ones can carry the full set.
   requestedDate?: string;
@@ -723,11 +731,26 @@ export type TimesheetStatus =
 
 export interface TimesheetEntry {
   date: string;
+  /** ISO 8601. Required on a working day — the server rejects submit without it. */
+  checkIn?: string | null;
+  checkOut?: string | null;
+  /** Derived server-side from checkIn/checkOut; never trusted from the client. */
   hours: number;
+  attendanceType?: string | null;
   projectId?: string | null;
   notes?: string;
   billable?: boolean;
   attendanceStatus?: AttendanceStatus;
+
+  // Server-computed context for the UI (not persisted as truth):
+  /** Weekly off / holiday / approved leave — needs no times or notes. */
+  exempt?: boolean;
+  exemptReason?: string | null;
+  hasRecord?: boolean;
+  /** HR filled the times but left the work notes blank. */
+  needsNotes?: boolean;
+  /** Date is after today — nothing to log yet, and nothing may be logged. */
+  future?: boolean;
 }
 
 export interface Timesheet {
@@ -742,6 +765,23 @@ export interface Timesheet {
   decidedAt?: string;
   decidedBy?: string;
   decisionNote?: string;
+  /** Set once an approved week has been written back into attendance. */
+  appliedAt?: string | null;
+  daysApplied?: number | null;
+  daysCreated?: number | null;
+  /** date -> reason, for days that need no times/notes. */
+  exempt?: Record<string, string>;
+  incompleteDates?: string[];
+  /** Attached on the manager list so the approver sees a name, not an id. */
+  user?: {
+    id: string;
+    name?: string;
+    email?: string;
+    employeeCode?: string;
+    reportingManagerId?: string | null;
+  } | null;
+  /** Server's verdict on whether the CALLER may approve/reject this one. */
+  canDecide?: boolean;
 }
 
 // ===== REIMBURSEMENTS (Phase C) =====

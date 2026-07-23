@@ -1,4 +1,4 @@
-﻿import React, { useEffect, useState, useMemo} from "react";
+﻿import React, { useEffect, useState, useMemo, useCallback } from "react";
 
 import {
   View,
@@ -36,6 +36,7 @@ import {
   BOTTOM_BAR_RESERVED_HEIGHT,
 } from "../src/components/BottomTabBar";
 import { FilePickButton } from "../src/components/FilePickButton";
+import { FullScreenImage } from "../src/components/FullScreenImage";
 import { WebModal, ModalActions } from "../src/components/WebModal";
 import { confirmAction, notify } from "../src/utils/confirm";
 import { useResponsive, getResponsiveSpacing } from "../src/utils/responsive";
@@ -285,27 +286,31 @@ export default function Profile() {
     }
   };
 
-  useEffect(() => {
-    (async () => {
-      try {
-        const token = await AsyncStorage.getItem("token");
-        if (!token) {
-          router.replace("/login");
-          return;
-        }
-        const [me, prof] = await Promise.all([
-          getMe(token),
-          getMyProfile(token).catch(() => null),
-        ]);
-        if (me) setUser(me);
-        if (prof) setProfile(prof);
-      } catch (err) {
-        console.log("Profile error:", err);
-      } finally {
-        setLoading(false);
+  const reload = useCallback(async () => {
+    try {
+      const token = await AsyncStorage.getItem("token");
+      if (!token) {
+        router.replace("/login");
+        return;
       }
-    })();
+      const [me, prof] = await Promise.all([
+        getMe(token),
+        getMyProfile(token).catch(() => null),
+      ]);
+      if (me) setUser(me);
+      if (prof) setProfile(prof);
+    } catch (err) {
+      // getMe already ends the session and routes to /login on a 401, so
+      // anything landing here is a network/server problem, not auth.
+      console.log("Profile error:", err);
+    } finally {
+      setLoading(false);
+    }
   }, [router]);
+
+  useEffect(() => {
+    reload();
+  }, [reload]);
 
   // Save a single field. The backend rejects writes to non-blank fields,
   // so we only POST the one path the employee just filled in.
@@ -344,6 +349,7 @@ export default function Profile() {
   // user document so the avatar updates everywhere (dashboard, header,
   // etc.) on the next refresh.
   const [photoSaving, setPhotoSaving] = useState(false);
+  const [avatarZoom, setAvatarZoom] = useState(false);
   const onPhotoUploaded = async (url: string) => {
     try {
       setPhotoSaving(true);
@@ -413,9 +419,50 @@ export default function Profile() {
   }
 
   if (!user) {
+    // A dead session already redirects to /login from the API layer, so
+    // reaching here means the server was unreachable or errored. Say which,
+    // and always leave a way out — a bare "Could not load profile." with no
+    // action is a trap.
     return (
-      <View style={[styles.loader, { backgroundColor: c.bg }]}>
-        <Text style={{ color: c.text }}>Could not load profile.</Text>
+      <View style={[styles.loader, { backgroundColor: c.bg, gap: 14, padding: 28 }]}>
+        <Ionicons name="cloud-offline-outline" size={38} color={c.textMuted} />
+        <Text style={{ color: c.text, fontWeight: "700", fontSize: 15 }}>
+          Couldn&apos;t load your profile
+        </Text>
+        <Text
+          style={{
+            color: c.textMuted,
+            fontSize: 13,
+            textAlign: "center",
+            lineHeight: 19,
+          }}
+        >
+          The server didn&apos;t respond. Check your connection and try again.
+        </Text>
+        <TouchableOpacity
+          style={{
+            backgroundColor: c.accent,
+            paddingHorizontal: 22,
+            paddingVertical: 12,
+            borderRadius: 12,
+          }}
+          onPress={() => {
+            setLoading(true);
+            reload();
+          }}
+        >
+          <Text style={{ color: "#fff", fontWeight: "800" }}>Try again</Text>
+        </TouchableOpacity>
+        <TouchableOpacity
+          onPress={async () => {
+            await logoutSession();
+            router.replace("/login");
+          }}
+        >
+          <Text style={{ color: c.textMuted, fontWeight: "700", fontSize: 13 }}>
+            Sign in again
+          </Text>
+        </TouchableOpacity>
       </View>
     );
   }
@@ -512,10 +559,15 @@ export default function Profile() {
               opens the file picker directly. */}
           <View style={styles.avatarWrap}>
             {user.profilePictureUrl ? (
-              <Image
-                source={{ uri: mediaUrl(user.profilePictureUrl) }}
-                style={styles.avatarImg}
-              />
+              <TouchableOpacity
+                activeOpacity={0.85}
+                onPress={() => setAvatarZoom(true)}
+              >
+                <Image
+                  source={{ uri: mediaUrl(user.profilePictureUrl) }}
+                  style={styles.avatarImg}
+                />
+              </TouchableOpacity>
             ) : (
               <View
                 style={[
@@ -528,6 +580,11 @@ export default function Profile() {
                 </Text>
               </View>
             )}
+            <FullScreenImage
+              uri={user.profilePictureUrl}
+              visible={avatarZoom}
+              onClose={() => setAvatarZoom(false)}
+            />
             <View
               style={[
                 styles.avatarCamera,
@@ -540,6 +597,7 @@ export default function Profile() {
                 <FilePickButton
                   compact
                   mimeType="image/*"
+                  crop
                   style={[
                     styles.avatarCameraBtn,
                     { backgroundColor: c.accent },
@@ -825,6 +883,15 @@ export default function Profile() {
               padding: 0 },
           ]}
         >
+          <LinkRow
+            icon="card-outline"
+            tint={c.pastelSky}
+            iconColor="#2563eb"
+            label="My ID card"
+            onPress={() => router.push("/id-card" as any)}
+            theme={theme}
+            showDivider
+          />
           <LinkRow
             icon="folder-open-outline"
             tint={c.pastelLavender}
