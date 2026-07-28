@@ -57,6 +57,30 @@ export const teamProductivityReport = (
     { token }
   );
 
+// ===== WORK REPORT (daily / weekly / monthly) =====
+
+export interface WorkReportRow {
+  name: string;
+  employeeCode: string;
+  date: string;
+  day: string;
+  checkIn?: string | null;
+  checkOut?: string | null;
+  hours: number;
+  type: string;
+  status: string;
+  workNotes: string;
+}
+
+/** base is "/hr/reports" (whole company) or "/manager/reports" (direct reports). */
+export const getWorkReport = (
+  token: string,
+  base: "/hr/reports" | "/manager/reports",
+  fromDate: string,
+  toDate: string
+): Promise<WorkReportRow[]> =>
+  apiCall(`${base}/work?fromDate=${fromDate}&toDate=${toDate}`, { token });
+
 // ===== XLSX DOWNLOADS =====
 // Returns a blob and suggested filename. On RN we can't trigger a save
 // dialog, but we can return the blob URL for further handling (sharing,

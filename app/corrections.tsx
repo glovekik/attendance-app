@@ -21,13 +21,14 @@ import { useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 
 import {
-  listPendingCorrections,
+  listAllCorrections,
   decideCorrection,
   bulkDecideCorrections } from "../src/services/corrections";
 
-import { AttendanceCorrection } from "../src/types";
+import { AttendanceCorrection, CorrectionStatus } from "../src/types";
 
 import { useTheme } from "../src/theme/ThemeProvider";
+import { StatusTabs } from "../src/components/StatusTabs";
 import { WebModal, ModalActions } from "../src/components/WebModal";
 import { Avatar } from "../src/components/Avatar";
 export default function Corrections() {
@@ -41,6 +42,7 @@ export default function Corrections() {
   const styles = useMemo(() => makeStyles(c), [c]);
 
   const [items, setItems] = useState<AttendanceCorrection[]>([]);
+  const [tab, setTab] = useState<CorrectionStatus>("PENDING");
   const [loading, setLoading] = useState(true);
   const [busyId, setBusyId] = useState<string | null>(null);
   const [selected, setSelected] = useState<Set<string>>(new Set());
@@ -73,7 +75,7 @@ export default function Corrections() {
         router.replace("/login");
         return;
       }
-      const res = await listPendingCorrections(token);
+      const res = await listAllCorrections(token, tab);
       const list = res || [];
       setItems(list);
       const validIds = new Set(list.map((i) => i.id));
@@ -84,9 +86,12 @@ export default function Corrections() {
     setLoading(false);
   };
 
+  // Reload whenever the tab changes — the list is server-filtered by status.
   useEffect(() => {
+    setLoading(true);
     load();
-  }, []);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tab]);
 
   const confirmApprove = async (
     c: AttendanceCorrection
@@ -284,12 +289,30 @@ export default function Corrections() {
           <View style={{ flex: 1 }}>
             <Text style={styles.title}>Correction Requests</Text>
             <Text style={styles.subtitle}>
-              {items.length} pending
+              {items.length}{" "}
+              {tab === "PENDING"
+                ? "pending"
+                : tab === "APPROVED"
+                ? "approved"
+                : "rejected"}
             </Text>
           </View>
         </View>
 
-        {items.length > 0 && (
+        {/* Filter under the title — Pending is the queue; Approved / Rejected
+            are read-only history (no bulk bar, no row actions). */}
+        <StatusTabs
+          tabs={[
+            { key: "PENDING", label: "Pending", tone: "#b45309" },
+            { key: "APPROVED", label: "Approved", tone: "#16a34a" },
+            { key: "REJECTED", label: "Rejected", tone: "#dc2626" },
+          ]}
+          value={tab}
+          onChange={setTab as any}
+          style={{ marginBottom: 4 }}
+        />
+
+        {tab === "PENDING" && items.length > 0 && (
           <View style={styles.bulkBar}>
             <TouchableOpacity
               style={styles.selectAllBtn}
@@ -345,9 +368,17 @@ export default function Corrections() {
               size={48}
               color={c.textFaint}
             />
-            <Text style={styles.emptyTitle}>All clear</Text>
+            <Text style={styles.emptyTitle}>
+              {tab === "PENDING" ? "All clear" : "Nothing here"}
+            </Text>
             <Text style={styles.emptySub}>
-              No pending corrections.
+              No{" "}
+              {tab === "PENDING"
+                ? "pending"
+                : tab === "APPROVED"
+                ? "approved"
+                : "rejected"}{" "}
+              corrections.
             </Text>
           </View>
         )}
@@ -359,18 +390,20 @@ export default function Corrections() {
           >
 
             <View style={styles.cardHead}>
-              <TouchableOpacity
-                style={styles.checkbox}
-                onPress={() => toggleSelect(corr.id)}
-                disabled={bulkBusy}
-                hitSlop={8}
-              >
-                <Ionicons
-                  name={selected.has(corr.id) ? "checkbox" : "square-outline"}
-                  size={22}
-                  color={selected.has(corr.id) ? c.accent : c.textMuted}
-                />
-              </TouchableOpacity>
+              {tab === "PENDING" && (
+                <TouchableOpacity
+                  style={styles.checkbox}
+                  onPress={() => toggleSelect(corr.id)}
+                  disabled={bulkBusy}
+                  hitSlop={8}
+                >
+                  <Ionicons
+                    name={selected.has(corr.id) ? "checkbox" : "square-outline"}
+                    size={22}
+                    color={selected.has(corr.id) ? c.accent : c.textMuted}
+                  />
+                </TouchableOpacity>
+              )}
               <Avatar
                 name={corr.user?.name || "U"}
                 uri={corr.user?.profilePictureUrl}
@@ -429,45 +462,66 @@ export default function Corrections() {
               </Text>
             </View>
 
-            <View style={styles.actions}>
-              <TouchableOpacity
-                style={[
-                  styles.rejectBtn,
-                  (busyId === corr.id || bulkBusy) && { opacity: 0.6 },
-                ]}
-                onPress={() => openReject(corr)}
-                disabled={busyId === corr.id || bulkBusy}
-              >
-                <Ionicons
-                  name="close-outline"
-                  size={18}
-                  color="#fff"
-                />
-                <Text style={styles.actionText}>Reject</Text>
-              </TouchableOpacity>
+            {tab === "PENDING" ? (
+              <View style={styles.actions}>
+                <TouchableOpacity
+                  style={[
+                    styles.rejectBtn,
+                    (busyId === corr.id || bulkBusy) && { opacity: 0.6 },
+                  ]}
+                  onPress={() => openReject(corr)}
+                  disabled={busyId === corr.id || bulkBusy}
+                >
+                  <Ionicons name="close-outline" size={18} color="#fff" />
+                  <Text style={styles.actionText}>Reject</Text>
+                </TouchableOpacity>
 
-              <TouchableOpacity
-                style={[
-                  styles.approveBtn,
-                  (busyId === corr.id || bulkBusy) && { opacity: 0.6 },
-                ]}
-                onPress={() => doApprove(corr)}
-                disabled={busyId === corr.id || bulkBusy}
-              >
-                {busyId === corr.id ? (
-                  <ActivityIndicator color="#fff" />
-                ) : (
-                  <>
-                    <Ionicons
-                      name="checkmark-outline"
-                      size={18}
-                      color="#fff"
-                    />
-                    <Text style={styles.actionText}>Approve</Text>
-                  </>
-                )}
-              </TouchableOpacity>
-            </View>
+                <TouchableOpacity
+                  style={[
+                    styles.approveBtn,
+                    (busyId === corr.id || bulkBusy) && { opacity: 0.6 },
+                  ]}
+                  onPress={() => doApprove(corr)}
+                  disabled={busyId === corr.id || bulkBusy}
+                >
+                  {busyId === corr.id ? (
+                    <ActivityIndicator color="#fff" />
+                  ) : (
+                    <>
+                      <Ionicons
+                        name="checkmark-outline"
+                        size={18}
+                        color="#fff"
+                      />
+                      <Text style={styles.actionText}>Approve</Text>
+                    </>
+                  )}
+                </TouchableOpacity>
+              </View>
+            ) : (
+              <View style={styles.decidedRow}>
+                <Ionicons
+                  name={
+                    tab === "APPROVED"
+                      ? "checkmark-circle"
+                      : "close-circle"
+                  }
+                  size={16}
+                  color={tab === "APPROVED" ? "#16a34a" : "#dc2626"}
+                />
+                <Text
+                  style={[
+                    styles.decidedText,
+                    { color: tab === "APPROVED" ? "#16a34a" : "#dc2626" },
+                  ]}
+                >
+                  {tab === "APPROVED" ? "Approved" : "Rejected"}
+                  {tab === "REJECTED" && corr.rejectionReason
+                    ? ` · ${corr.rejectionReason}`
+                    : ""}
+                </Text>
+              </View>
+            )}
 
           </View>
         ))}
@@ -685,6 +739,15 @@ const makeStyles = (c: any) => StyleSheet.create({
     flexDirection: "row",
     gap: 10,
     marginTop: 14 },
+  decidedRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    marginTop: 14 },
+  decidedText: {
+    fontSize: 13,
+    fontWeight: "700",
+    flexShrink: 1 },
   rejectBtn: {
     flex: 1,
     flexDirection: "row",

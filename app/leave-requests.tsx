@@ -96,9 +96,14 @@ export default function LeaveRequests() {
     setLoading(false);
   };
 
+  // Refetch whenever the tab changes — the list is server-filtered by status,
+  // so without `tab` here the Approved / Rejected tabs kept showing the
+  // Pending data they first loaded with (the "can't see history" bug).
   useEffect(() => {
+    setLoading(true);
     load();
-  }, []);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tab]);
 
   const confirmApprove = (
     r: LeaveRequest
@@ -192,16 +197,6 @@ export default function LeaveRequests() {
           <Text style={styles.popupText}>{popup.message}</Text>
         </View>
       )}
-        <StatusTabs
-          tabs={[
-            { key: "PENDING", label: "Pending", tone: "#b45309" },
-            { key: "APPROVED", label: "Approved", tone: "#16a34a" },
-            { key: "REJECTED", label: "Rejected", tone: "#dc2626" },
-          ]}
-          value={tab}
-          onChange={setTab as any}
-          style={{ paddingHorizontal: 12, marginTop: 12 }}
-        />
 
       <ScrollView
         style={styles.container}
@@ -209,14 +204,33 @@ export default function LeaveRequests() {
       >
 
         {isDesktop ? (
-          <PageHeader
-            title="Leave Requests"
-            subtitle={`${items.length} pending requests`}
-            breadcrumbs={[
-              { label: "Home", href: "/" },
-              { label: "Leave Requests" },
-            ]}
-          />
+          <View style={{ gap: 4 }}>
+            {/* Desktop keeps the sidebar for navigation, but an explicit Back
+                affordance was still expected here. */}
+            <TouchableOpacity
+              onPress={() =>
+                router.canGoBack() ? router.back() : router.replace("/")
+              }
+              style={styles.deskBack}
+            >
+              <Ionicons name="arrow-back" size={16} color={c.textMuted} />
+              <Text style={styles.deskBackText}>Back</Text>
+            </TouchableOpacity>
+            <PageHeader
+              title="Leave Requests"
+              subtitle={`${items.length} ${
+                tab === "PENDING"
+                  ? "pending"
+                  : tab === "APPROVED"
+                  ? "approved"
+                  : "rejected"
+              } requests`}
+              breadcrumbs={[
+                { label: "Home", href: "/" },
+                { label: "Leave Requests" },
+              ]}
+            />
+          </View>
         ) : (
           <View style={styles.header}>
             <TouchableOpacity
@@ -229,11 +243,29 @@ export default function LeaveRequests() {
             <View style={{ flex: 1 }}>
               <Text style={styles.title}>Leave Requests</Text>
               <Text style={styles.subtitle}>
-                {items.length} pending
+                {items.length}{" "}
+                {tab === "PENDING"
+                  ? "pending"
+                  : tab === "APPROVED"
+                  ? "approved"
+                  : "rejected"}
               </Text>
             </View>
           </View>
         )}
+
+        {/* Filter sits directly under the page title, as part of the content
+            — not floating above the header at the very top of the screen. */}
+        <StatusTabs
+          tabs={[
+            { key: "PENDING", label: "Pending", tone: "#b45309" },
+            { key: "APPROVED", label: "Approved", tone: "#16a34a" },
+            { key: "REJECTED", label: "Rejected", tone: "#dc2626" },
+          ]}
+          value={tab}
+          onChange={setTab as any}
+          style={{ marginBottom: 4 }}
+        />
 
         {items.length === 0 && (
           <View style={styles.emptyBox}>
@@ -244,7 +276,13 @@ export default function LeaveRequests() {
             />
             <Text style={styles.emptyTitle}>All clear</Text>
             <Text style={styles.emptySub}>
-              No pending leave requests.
+              No{" "}
+              {tab === "PENDING"
+                ? "pending"
+                : tab === "APPROVED"
+                ? "approved"
+                : "rejected"}{" "}
+              leave requests.
             </Text>
           </View>
         )}
@@ -378,6 +416,15 @@ const makeStyles = (c: any, isDesktop: boolean) => StyleSheet.create({
   safe: { flex: 1, backgroundColor: c.bg },
   container: { flex: 1 },
   content: { padding: 20, paddingBottom: 60 },
+  deskBack: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    alignSelf: "flex-start",
+    paddingVertical: 4,
+    ...(Platform.OS === "web" ? { cursor: "pointer" as any } : {}),
+  },
+  deskBackText: { color: c.textMuted, fontSize: 13, fontWeight: "700" },
   loader: {
     flex: 1,
     backgroundColor: c.bg,

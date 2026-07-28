@@ -443,6 +443,15 @@ export default function HRAdmin() {
             styles={styles}
           />
           <Tile
+            icon="reader-outline"
+            label="Work Reports"
+            tint={c.pastelMint || c.pastelSky}
+            iconColor="#0f766e"
+            onPress={() => router.push("/client-visits" as any)}
+            theme={theme}
+            styles={styles}
+          />
+          <Tile
             icon="shield-checkmark-outline"
             label="Audit Logs"
             tint={c.pastelLavender}

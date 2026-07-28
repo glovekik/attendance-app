@@ -35,6 +35,8 @@ export interface TeamAttendanceRow {
   attendanceType?: "OFFICE" | "WFH" | "CLIENT" | "LEAVE" | "HOLIDAY";
   clientAddress?: string | null;
   clientName?: string | null;
+  latitude?: number | null;
+  longitude?: number | null;
   status: AttendanceStatus;
   isLate?: boolean;
   hoursWorked?: number;

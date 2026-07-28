@@ -32,6 +32,7 @@ import { useTheme } from "../src/theme/ThemeProvider";
 import { attendanceStatusColor } from "../src/theme/statusColors";
 import { ATT, ATT_BG } from "../src/theme/attendanceColors";
 import { notify } from "../src/utils/confirm";
+import { openMaps } from "../src/utils/media";
 
 const isWeb = Platform.OS === "web";
 const PRESENT = new Set(["PRESENT", "CHECKED_IN", "COMPLETED", "LATE", "HALF_DAY"]);
@@ -465,14 +466,11 @@ export default function HrAttendance() {
           <Ionicons name="chevron-back" size={24} color={c.text} />
         </TouchableOpacity>
         <Text style={styles.title}>Daily Attendance</Text>
-        <View style={{ flexDirection: "row", alignItems: "center", gap: 16 }}>
-          <TouchableOpacity hitSlop={10} onPress={() => router.push("/client-visits" as any)}>
-            <Ionicons name="navigate-outline" size={22} color={c.accent} />
-          </TouchableOpacity>
-          <TouchableOpacity hitSlop={10} onPress={() => setTeamListOpen(true)}>
-            <Ionicons name="clipboard-outline" size={22} color={c.accent} />
-          </TouchableOpacity>
-        </View>
+        {/* Client location lives in the day-detail popup (with a map button)
+            — no separate page. */}
+        <TouchableOpacity hitSlop={10} onPress={() => setTeamListOpen(true)}>
+          <Ionicons name="clipboard-outline" size={22} color={c.accent} />
+        </TouchableOpacity>
       </View>
 
       {/* Day / Month segmented */}
@@ -825,6 +823,18 @@ export default function HrAttendance() {
                         : row?.clientAddress || "Working from a client location."}
                     </Text>
                   </View>
+                  {(row?.latitude != null || !!row?.clientAddress) && (
+                    <TouchableOpacity
+                      style={styles.mapBtn}
+                      activeOpacity={0.85}
+                      onPress={() =>
+                        openMaps(row?.latitude, row?.longitude, row?.clientAddress)
+                      }
+                    >
+                      <Ionicons name="map-outline" size={16} color="#fff" />
+                      <Text style={styles.mapBtnText}>View on map</Text>
+                    </TouchableOpacity>
+                  )}
                   <View style={styles.dGrid}>
                     <DetailStat c={c} icon="log-in-outline" label="Check in" value={formatHM(row?.checkIn)} />
                     <DetailStat c={c} icon="log-out-outline" label="Check out" value={row?.checkOut ? formatHM(row.checkOut) : "Open"} />
@@ -933,7 +943,7 @@ export default function HrAttendance() {
               <Text style={styles.mBtnGhostText}>Share</Text>
             </TouchableOpacity>
             <TouchableOpacity style={[styles.mBtn, styles.mBtnPrimary]} onPress={() => copyText(buildTeamWorkText())}>
-              <Text style={styles.mBtnPrimaryText}>Copy for CEO</Text>
+              <Text style={styles.mBtnPrimaryText}>Copy</Text>
             </TouchableOpacity>
           </ModalActions>
         }
@@ -1314,7 +1324,21 @@ const makeStyles = (c: any) =>
     dLabel: { color: c.textMuted, fontSize: 11, fontWeight: "700", letterSpacing: 1, textTransform: "uppercase", marginTop: 18, marginBottom: 6 },
     dNotes: { color: c.text, fontSize: 14, lineHeight: 20 },
     dInfoRow: { flexDirection: "row", alignItems: "center", gap: 8, marginTop: 18 },
-    dInfoText: { color: c.textMuted, fontSize: 14 },
+    dInfoText: { color: c.textMuted, fontSize: 14, flexShrink: 1 },
+    mapBtn: {
+      flexDirection: "row",
+      alignItems: "center",
+      justifyContent: "center",
+      gap: 6,
+      alignSelf: "flex-start",
+      marginTop: 12,
+      paddingHorizontal: 14,
+      paddingVertical: 9,
+      borderRadius: 10,
+      backgroundColor: CLIENT_FG,
+      ...(Platform.OS === "web" ? { cursor: "pointer" as any } : {}),
+    },
+    mapBtnText: { color: "#fff", fontSize: 13, fontWeight: "800" },
 
     noteItem: {
       paddingVertical: 12,

@@ -9,6 +9,8 @@ export type TimesheetScope = "hr" | "manager";
 export interface TimesheetFilters {
   status?: string;
   userId?: string;
+  /** Comma-separated user ids — download a chosen subset of people. */
+  userIds?: string;
   weekStart?: string;
 }
 
@@ -25,6 +27,7 @@ const filterQs = (f: TimesheetFilters = {}): string => {
   const p = new URLSearchParams();
   if (f.status) p.set("status", f.status);
   if (f.userId) p.set("userId", f.userId);
+  if (f.userIds) p.set("userIds", f.userIds);
   if (f.weekStart) p.set("weekStart", f.weekStart);
   const qs = p.toString();
   return qs ? `?${qs}` : "";

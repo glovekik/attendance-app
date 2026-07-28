@@ -235,7 +235,20 @@ export default function ManagerCorrections() {
         <View style={{ width: 24 }} />
       </View>
 
-      {items.length > 0 && (
+      {/* Filter first (directly under the title), then the bulk actions —
+          which only make sense for the Pending queue. */}
+      <StatusTabs
+        tabs={[
+          { key: "PENDING", label: "Pending", tone: "#b45309" },
+          { key: "APPROVED", label: "Approved", tone: "#16a34a" },
+          { key: "REJECTED", label: "Rejected", tone: "#dc2626" },
+        ]}
+        value={tab}
+        onChange={setTab as any}
+        style={{ paddingHorizontal: 12, marginTop: 12 }}
+      />
+
+      {tab === "PENDING" && items.length > 0 && (
         <View style={styles.bulkBar}>
           <TouchableOpacity onPress={toggleSelectAll} style={styles.selectAll}>
             <Ionicons
@@ -273,16 +286,6 @@ export default function ManagerCorrections() {
           </View>
         </View>
       )}
-        <StatusTabs
-          tabs={[
-            { key: "PENDING", label: "Pending", tone: "#b45309" },
-            { key: "APPROVED", label: "Approved", tone: "#16a34a" },
-            { key: "REJECTED", label: "Rejected", tone: "#dc2626" },
-          ]}
-          value={tab}
-          onChange={setTab as any}
-          style={{ paddingHorizontal: 12, marginTop: 12 }}
-        />
 
       <FlatList
         data={items}
@@ -367,26 +370,28 @@ export default function ManagerCorrections() {
         title="Decide correction"
         size="md"
         footer={
-          <ModalActions align="spread">
-            <TouchableOpacity
-              style={[styles.btn, styles.btnReject]}
-              onPress={() => onDecide("REJECT")}
-              disabled={acting !== null}
-            >
-              <Text style={styles.btnText}>
-                {acting === "REJECT" ? "..." : "Reject"}
-              </Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={[styles.btn, styles.btnApprove]}
-              onPress={() => onDecide("APPROVE")}
-              disabled={acting !== null}
-            >
-              <Text style={styles.btnText}>
-                {acting === "APPROVE" ? "..." : "Approve"}
-              </Text>
-            </TouchableOpacity>
-          </ModalActions>
+          tab === "PENDING" ? (
+            <ModalActions align="spread">
+              <TouchableOpacity
+                style={[styles.btn, styles.btnReject]}
+                onPress={() => onDecide("REJECT")}
+                disabled={acting !== null}
+              >
+                <Text style={styles.btnText}>
+                  {acting === "REJECT" ? "..." : "Reject"}
+                </Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.btn, styles.btnApprove]}
+                onPress={() => onDecide("APPROVE")}
+                disabled={acting !== null}
+              >
+                <Text style={styles.btnText}>
+                  {acting === "APPROVE" ? "..." : "Approve"}
+                </Text>
+              </TouchableOpacity>
+            </ModalActions>
+          ) : undefined
         }
       >
         {selected && (

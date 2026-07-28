@@ -1,4 +1,18 @@
 import { apiCall } from "./http";
+import { downloadAuthedFile } from "../utils/downloadFile";
+
+export type BadgeFormat = "pdf" | "jpg";
+
+/** Employee downloads their own issued ID card (server-rendered, image baked in). */
+export const downloadMyIdCard = (format: BadgeFormat) =>
+  downloadAuthedFile(`/id-card/me/badge?format=${format}`, `idcard.${format}`);
+
+/** HR downloads a given employee's ID card. */
+export const hrDownloadIdCard = (userId: string, format: BadgeFormat) =>
+  downloadAuthedFile(
+    `/hr/id-cards/${userId}/badge?format=${format}`,
+    `idcard.${format}`
+  );
 
 /**
  * Employee ID card (badge) issuance.
@@ -26,6 +40,11 @@ export interface IDCardState {
   reviewedBy?: string | null;
   rejectionReason?: string | null;
   framing?: IDCardFraming | null;
+  // The last photo/framing HR approved, kept even after the employee uploads a
+  // new one. Lets us keep showing the issued card while the new photo is
+  // PENDING/REJECTED, instead of the card vanishing the moment they re-submit.
+  approvedPhotoUrl?: string | null;
+  approvedFraming?: IDCardFraming | null;
   // Present on the HR-facing endpoints only.
   userId?: string;
   user?: {

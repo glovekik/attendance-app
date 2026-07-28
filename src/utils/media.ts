@@ -39,3 +39,35 @@ export const openMedia = (u?: string | null): boolean => {
   Linking.openURL(uri).catch(() => {});
   return true;
 };
+
+/**
+ * Open a location on Google Maps. Prefers exact coordinates (a pin), falling
+ * back to an address search. Used to show where a client-site check-in
+ * happened straight from the attendance view. Returns false if there's
+ * nothing to open.
+ */
+export const openMaps = (
+  latitude?: number | null,
+  longitude?: number | null,
+  address?: string | null
+): boolean => {
+  let url: string | null = null;
+  if (typeof latitude === "number" && typeof longitude === "number") {
+    url = `https://www.google.com/maps/search/?api=1&query=${latitude},${longitude}`;
+  } else if (address && address.trim()) {
+    url = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(
+      address.trim()
+    )}`;
+  }
+  if (!url) return false;
+  if (Platform.OS === "web") {
+    try {
+      window.open(url, "_blank", "noopener");
+      return true;
+    } catch {
+      /* fall through to Linking */
+    }
+  }
+  Linking.openURL(url).catch(() => {});
+  return true;
+};

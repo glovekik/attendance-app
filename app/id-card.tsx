@@ -1,4 +1,10 @@
-import React, { useCallback, useEffect, useMemo, useState } from "react";
+import React, {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 
 import {
   View,
@@ -28,6 +34,9 @@ import {
   hrRejectIdCard,
   setMyIdCardFraming,
   hrSetIdCardFraming,
+  downloadMyIdCard,
+  hrDownloadIdCard,
+  BadgeFormat,
   IDCardState,
   IDCardFraming,
   DEFAULT_FRAMING,
@@ -64,24 +73,6 @@ import { mediaUrl } from "../src/utils/media";
 
 const isWeb = Platform.OS === "web";
 
-// Print rules: hide the whole app, show only the badge area, scaled to true
-// CR80 size. 320px @96dpi = 84.7mm, so 54/84.7 = 0.6375 prints at 54 x 85.6mm.
-const PRINT_STYLE_ID = "idcard-print-style";
-const PRINT_CSS = `
-@media print {
-  body * { visibility: hidden !important; }
-  #idcard-print, #idcard-print * { visibility: visible !important; }
-  #idcard-print {
-    position: absolute !important;
-    left: 0 !important;
-    top: 0 !important;
-    transform: scale(0.6375);
-    transform-origin: top left;
-  }
-  @page { margin: 12mm; }
-}
-`;
-
 export default function IdCardScreen() {
   const router = useRouter();
   const params = useLocalSearchParams<{ userId?: string }>();
@@ -101,23 +92,12 @@ export default function IdCardScreen() {
   const [rejectOpen, setRejectOpen] = useState(false);
   const [rejectReason, setRejectReason] = useState("");
   const [editing, setEditing] = useState(false);
+  const [exporting, setExporting] = useState(false);
   const [draftFraming, setDraftFraming] =
     useState<IDCardFraming>(DEFAULT_FRAMING);
 
   const targetId =
     typeof params.userId === "string" && params.userId ? params.userId : null;
-
-  useEffect(() => {
-    if (!isWeb || typeof document === "undefined") return;
-    if (document.getElementById(PRINT_STYLE_ID)) return;
-    const el = document.createElement("style");
-    el.id = PRINT_STYLE_ID;
-    el.textContent = PRINT_CSS;
-    document.head.appendChild(el);
-    return () => {
-      el.remove();
-    };
-  }, []);
 
   const load = useCallback(async () => {
     try {
@@ -272,9 +252,22 @@ export default function IdCardScreen() {
     onChange: setDraftFraming,
   });
 
-  const onPrint = () => {
-    if (!isWeb || typeof window === "undefined") return;
-    window.print();
+  const onDownload = async (format: BadgeFormat) => {
+    if (exporting) return;
+    try {
+      setExporting(true);
+      // Server-rendered so the photo + logo are always embedded and the file
+      // is a clean badge (front + back), not a browser screenshot.
+      if (targetId && targetId !== me?.id) {
+        await hrDownloadIdCard(targetId, format);
+      } else {
+        await downloadMyIdCard(format);
+      }
+    } catch (err: any) {
+      notify("Couldn't download", err?.message || "Please try again.");
+    } finally {
+      setExporting(false);
+    }
   };
 
   if (loading) {
@@ -322,6 +315,18 @@ export default function IdCardScreen() {
   const cardUser: User | null =
     subject && approved
       ? ({ ...subject, profilePictureUrl: card?.photoUrl || undefined } as User)
+      : null;
+
+  // Employee only: once they've had a card issued, keep showing it while a NEW
+  // photo is still PENDING/REJECTED — the card doesn't disappear the moment
+  // they re-submit. HR's review view is unaffected (they see the new photo).
+  const priorApproved = isOwn && !approved && !!card?.approvedPhotoUrl;
+  const priorCardUser: User | null =
+    priorApproved && subject
+      ? ({
+          ...subject,
+          profilePictureUrl: card?.approvedPhotoUrl || undefined,
+        } as User)
       : null;
 
   const bottomPadding = responsive.showSidebar
@@ -470,7 +475,6 @@ export default function IdCardScreen() {
             )}
 
             <View
-              nativeID="idcard-print"
               style={[
                 styles.cardsRow,
                 responsive.isDesktop
@@ -493,22 +497,50 @@ export default function IdCardScreen() {
 
             {isWeb ? (
               <>
-                <TouchableOpacity
-                  style={[styles.btn, { backgroundColor: c.accent }]}
-                  onPress={onPrint}
-                  activeOpacity={0.85}
-                >
-                  <Ionicons name="print-outline" size={18} color="#fff" />
-                  <Text style={styles.btnText}>Print / Save as PDF</Text>
-                </TouchableOpacity>
+                <View style={styles.dlRow}>
+                  <TouchableOpacity
+                    style={[
+                      styles.btn,
+                      { backgroundColor: c.accent, flex: 1 },
+                      exporting && { opacity: 0.6 },
+                    ]}
+                    onPress={() => onDownload("pdf")}
+                    disabled={exporting}
+                    activeOpacity={0.85}
+                  >
+                    <Ionicons
+                      name="document-text-outline"
+                      size={18}
+                      color="#fff"
+                    />
+                    <Text style={styles.btnText}>
+                      {exporting ? "Preparing…" : "Download PDF"}
+                    </Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={[
+                      styles.btn,
+                      styles.ghostBtn,
+                      { flex: 1 },
+                      exporting && { opacity: 0.6 },
+                    ]}
+                    onPress={() => onDownload("jpg")}
+                    disabled={exporting}
+                    activeOpacity={0.85}
+                  >
+                    <Ionicons name="image-outline" size={18} color={c.text} />
+                    <Text style={[styles.btnText, { color: c.text }]}>
+                      Download JPG
+                    </Text>
+                  </TouchableOpacity>
+                </View>
                 <Text style={styles.hint}>
-                  Prints at true ID-card size (54 × 85.6 mm). Choose &quot;Save
-                  as PDF&quot; in the dialog to download it.
+                  Front &amp; back, print-ready, with the photo embedded.
                 </Text>
               </>
             ) : (
               <Text style={styles.hint}>
-                Open the app on a computer to print or save this card as a PDF.
+                Open the app on a computer to download this card.
               </Text>
             )}
 
@@ -540,6 +572,52 @@ export default function IdCardScreen() {
           </>
         ) : editing ? null : (
           /* ============ STATE: NONE / PENDING / REJECTED ============ */
+          <>
+          {/* Still-valid issued card, kept on screen while a new photo is
+              under review. Shown above the "new photo" status block. */}
+          {priorCardUser && (
+            <>
+              <View style={styles.pendingBanner}>
+                <Ionicons
+                  name={
+                    status === "REJECTED"
+                      ? "close-circle-outline"
+                      : "hourglass-outline"
+                  }
+                  size={16}
+                  color="#b45309"
+                />
+                <Text style={styles.pendingBannerText}>
+                  {status === "REJECTED"
+                    ? "Your new photo was rejected — the ID card below is still valid and stays in use."
+                    : "Your new photo is pending HR approval. The ID card below stays active until the new one is approved."}
+                </Text>
+              </View>
+
+              <View
+                style={[
+                  styles.cardsRow,
+                  responsive.isDesktop
+                    ? styles.cardsRowWide
+                    : styles.cardsRowNarrow,
+                  { marginBottom: 22 },
+                ]}
+              >
+                <IDCard
+                  user={priorCardUser}
+                  departmentName={deptName}
+                  side="front"
+                  framing={card?.approvedFraming}
+                />
+                <IDCard
+                  user={priorCardUser}
+                  departmentName={deptName}
+                  side="back"
+                />
+              </View>
+            </>
+          )}
+
           <View style={styles.stateCard}>
             <View
               style={[
@@ -575,9 +653,13 @@ export default function IdCardScreen() {
 
             <Text style={styles.stateTitle}>
               {status === "PENDING"
-                ? "Waiting for HR approval"
+                ? priorApproved
+                  ? "New photo — waiting for approval"
+                  : "Waiting for HR approval"
                 : status === "REJECTED"
-                ? "Photo was rejected"
+                ? priorApproved
+                  ? "New photo was rejected"
+                  : "Photo was rejected"
                 : isOwn
                 ? "Get your ID card"
                 : "No photo submitted yet"}
@@ -586,7 +668,9 @@ export default function IdCardScreen() {
             <Text style={styles.stateBody}>
               {status === "PENDING"
                 ? isOwn
-                  ? "Your photo has been sent to HR. Once it's approved, your ID card will appear here."
+                  ? priorApproved
+                    ? "Your new photo has been sent to HR. The card above updates to it once approved."
+                    : "Your photo has been sent to HR. Once it's approved, your ID card will appear here."
                   : "This employee is waiting for their photo to be reviewed."
                 : status === "REJECTED"
                 ? isOwn
@@ -651,6 +735,7 @@ export default function IdCardScreen() {
               </Text>
             )}
           </View>
+          </>
         )}
 
         {/* ============ HR REVIEW ACTIONS ============ */}
@@ -758,7 +843,35 @@ const makeStyles = (c: any) =>
     },
     warnText: { flex: 1, color: "#b45309", fontSize: 12.5, lineHeight: 18 },
 
+    pendingBanner: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 10,
+      alignSelf: "stretch",
+      maxWidth: 680,
+      backgroundColor: "rgba(245,158,11,0.12)",
+      borderColor: "rgba(245,158,11,0.4)",
+      borderWidth: 1,
+      borderRadius: 12,
+      padding: 12,
+      marginBottom: 16,
+    },
+    pendingBannerText: {
+      flex: 1,
+      color: "#b45309",
+      fontSize: 12.5,
+      lineHeight: 18,
+      fontWeight: "600",
+    },
+
     cardsRow: { gap: 24, alignItems: "center" },
+    dlRow: {
+      flexDirection: "row",
+      gap: 10,
+      alignSelf: "stretch",
+      maxWidth: 420,
+      marginTop: 4,
+    },
     cardsRowWide: {
       flexDirection: "row",
       flexWrap: "wrap",

@@ -272,16 +272,32 @@ export default function TeamMemberDetail() {
   // user navigates weeks). Fetches every month the week touches.
   const loadWeek = useCallback(
     async (ws: Date) => {
+      const end = new Date(ws);
+      end.setDate(ws.getDate() + 6);
+      const months = Array.from(new Set([monthKey(ws), monthKey(end)]));
+      const baseMonth = monthKey(new Date());
+
+      // Fast path: the visible week sits entirely in the month `load()` already
+      // fetched into `attendance`. Reuse it instead of firing the identical
+      // request a second time (this was a duplicate call on every open). Until
+      // that data lands, do nothing — the [attendance] dep re-runs this once
+      // it arrives, so we never double-fetch the current month.
+      if (months.length === 1 && months[0] === baseMonth) {
+        if (attendance.length > 0) setWeekRows(attendance);
+        return;
+      }
+
       setWeekLoading(true);
       try {
         const token = await AsyncStorage.getItem("token");
         if (!token) return;
-        const end = new Date(ws);
-        end.setDate(ws.getDate() + 6);
-        const months = Array.from(new Set([monthKey(ws), monthKey(end)]));
+        // Cross-month week: still reuse the already-loaded base month, fetch
+        // only the other month the week reaches into.
         const res = await Promise.all(
           months.map((m) =>
-            listTeamAttendance(token, { userId, month: m }).catch(() => [])
+            m === baseMonth && attendance.length > 0
+              ? Promise.resolve(attendance)
+              : listTeamAttendance(token, { userId, month: m }).catch(() => [])
           )
         );
         setWeekRows(res.flat());
@@ -291,7 +307,7 @@ export default function TeamMemberDetail() {
         setWeekLoading(false);
       }
     },
-    [userId]
+    [userId, attendance]
   );
 
   useEffect(() => {

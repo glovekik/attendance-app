@@ -60,23 +60,21 @@ export const confirmAction = ({
 };
 
 /**
- * Cross-platform informational notification. Renders a themed slide-in
- * toast on native (replaces the dated Material Alert dialog), and falls
- * back to window.alert on web (where Toast doesn't auto-mount cleanly
- * inside react-native-web's portal).
+ * Cross-platform informational notification — a themed slide-in toast on
+ * every platform, web included.
  *
- * Tone is inferred from the title — anything mentioning "fail",
- * "error", or "couldn't" routes to the red error toast; everything else
- * uses the neutral info style. Callers wanting an explicit success
- * toast should use `notifySuccess` instead.
+ * It used to fall back to window.alert() on web, which is the blocking grey
+ * browser dialog. That was a workaround from before the <Toast> host was
+ * mounted at the app root (app/_layout.tsx) — it now renders fine on
+ * react-native-web, so we use it there too and the browser alert is gone.
+ *
+ * Tone is inferred from the title — anything mentioning "fail", "error",
+ * or "couldn't" routes to the red error toast; everything else uses the
+ * neutral info style. Callers wanting an explicit success toast should use
+ * `notifySuccess` instead.
  */
 export const notify = (title: string, message?: string) => {
-  if (Platform.OS === "web") {
-    if (typeof window === "undefined") return;
-    window.alert(message ? `${title}\n\n${message}` : title);
-    return;
-  }
-  const lower = title.toLowerCase();
+  const lower = (title || "").toLowerCase();
   const isError =
     lower.includes("fail") ||
     lower.includes("error") ||
@@ -92,13 +90,8 @@ export const notify = (title: string, message?: string) => {
   });
 };
 
-/** Explicit success toast — green check + 2.5s visibility. */
+/** Explicit success toast — green check + 2.5s visibility. In-app on web too. */
 export const notifySuccess = (title: string, message?: string) => {
-  if (Platform.OS === "web") {
-    if (typeof window === "undefined") return;
-    window.alert(message ? `${title}\n\n${message}` : title);
-    return;
-  }
   Toast.show({
     type: "success",
     text1: title,

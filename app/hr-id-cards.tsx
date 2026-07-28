@@ -1,4 +1,4 @@
-import React, { useCallback, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import {
   View,
@@ -9,6 +9,7 @@ import {
   ActivityIndicator,
   Image,
   RefreshControl,
+  TextInput,
   Platform,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
@@ -21,10 +22,14 @@ import { getMe } from "../src/services/api";
 import {
   hrListIdCards,
   hrApproveIdCard,
+  hrRejectIdCard,
+  hrDownloadIdCard,
   IDCardState,
   IDCardStatus,
 } from "../src/services/idCard";
 
+import { StatusTabs, approvalTabs } from "../src/components/StatusTabs";
+import { WebModal, ModalActions } from "../src/components/WebModal";
 import { useTheme } from "../src/theme/ThemeProvider";
 import { useResponsive, getResponsiveSpacing } from "../src/utils/responsive";
 import {
@@ -35,7 +40,7 @@ import { User, hasRole } from "../src/types";
 import { notify } from "../src/utils/confirm";
 import { mediaUrl } from "../src/utils/media";
 
-type Filter = "PENDING" | "ALL";
+type Filter = "PENDING" | "APPROVED" | "REJECTED" | "ALL";
 
 const STATUS_TONE: Record<
   string,
@@ -64,6 +69,16 @@ export default function HrIdCardsScreen() {
   const [filter, setFilter] = useState<Filter>("PENDING");
   const [denied, setDenied] = useState(false);
 
+  // Inline reject-with-reason, so HR can turn a photo down straight from the
+  // queue instead of opening the full review screen.
+  const [rejectUid, setRejectUid] = useState<string | null>(null);
+  const [rejectReason, setRejectReason] = useState("");
+  const [rejectBusy, setRejectBusy] = useState(false);
+
+  // Per-employee card download — the server renders the badge (PDF) with the
+  // photo baked in, so the list just needs to know which row is downloading.
+  const [dlId, setDlId] = useState<string | null>(null);
+
   const load = useCallback(
     async (f: Filter = filter) => {
       try {
@@ -80,7 +95,7 @@ export default function HrIdCardsScreen() {
         }
         const list = await hrListIdCards(
           token,
-          f === "PENDING" ? ("PENDING" as IDCardStatus) : undefined
+          f === "ALL" ? undefined : (f as IDCardStatus)
         );
         setRows(list || []);
       } catch (err: any) {
@@ -105,6 +120,19 @@ export default function HrIdCardsScreen() {
     load(f);
   };
 
+  // Server renders the badge (PDF, photo baked in) and streams it back.
+  const onDownload = async (userId?: string) => {
+    if (!userId || dlId) return;
+    try {
+      setDlId(userId);
+      await hrDownloadIdCard(userId, "pdf");
+    } catch (err: any) {
+      notify("Couldn't download", err?.message || "");
+    } finally {
+      setDlId(null);
+    }
+  };
+
   const approve = async (userId?: string) => {
     if (!userId || busyId) return;
     try {
@@ -118,6 +146,24 @@ export default function HrIdCardsScreen() {
       notify("Couldn't approve", err?.message || "");
     } finally {
       setBusyId(null);
+    }
+  };
+
+  const submitReject = async () => {
+    if (!rejectUid || rejectBusy) return;
+    try {
+      setRejectBusy(true);
+      const token = await AsyncStorage.getItem("token");
+      if (!token) return;
+      await hrRejectIdCard(token, rejectUid, rejectReason.trim() || undefined);
+      notify("Rejected", "The employee has been asked to upload a new photo.");
+      setRejectUid(null);
+      setRejectReason("");
+      await load();
+    } catch (err: any) {
+      notify("Couldn't reject", err?.message || "");
+    } finally {
+      setRejectBusy(false);
     }
   };
 
@@ -190,25 +236,14 @@ export default function HrIdCardsScreen() {
           </View>
         </View>
 
-        {/* FILTER */}
-        <View style={styles.tabs}>
-          {(["PENDING", "ALL"] as Filter[]).map((f) => (
-            <TouchableOpacity
-              key={f}
-              style={[styles.tab, filter === f && styles.tabActive]}
-              onPress={() => switchFilter(f)}
-            >
-              <Text
-                style={[
-                  styles.tabText,
-                  filter === f && styles.tabTextActive,
-                ]}
-              >
-                {f === "PENDING" ? "Pending" : "All"}
-              </Text>
-            </TouchableOpacity>
-          ))}
-        </View>
+        {/* FILTER — same Pending / Approved / Rejected / All control as the
+            other approval queues. */}
+        <StatusTabs
+          tabs={approvalTabs({}, c)}
+          value={filter}
+          onChange={(f) => switchFilter(f as Filter)}
+          style={{ marginBottom: 16 }}
+        />
 
         {rows.length === 0 ? (
           <View style={styles.empty}>
@@ -220,6 +255,10 @@ export default function HrIdCardsScreen() {
             <Text style={styles.emptyText}>
               {filter === "PENDING"
                 ? "Nothing waiting for review."
+                : filter === "APPROVED"
+                ? "No approved cards yet."
+                : filter === "REJECTED"
+                ? "No rejected cards."
                 : "No ID card requests yet."}
             </Text>
           </View>
@@ -268,17 +307,49 @@ export default function HrIdCardsScreen() {
                     <Text style={styles.ghostBtnText}>Review</Text>
                   </TouchableOpacity>
                   {r.status === "PENDING" && (
+                    <>
+                      <TouchableOpacity
+                        style={[styles.smallBtn, styles.rejectBtn]}
+                        onPress={() => {
+                          setRejectReason("");
+                          setRejectUid(uid || null);
+                        }}
+                        disabled={busyId === uid}
+                      >
+                        <Text style={styles.rejectBtnText}>Reject</Text>
+                      </TouchableOpacity>
+                      <TouchableOpacity
+                        style={[
+                          styles.smallBtn,
+                          styles.approveBtn,
+                          busyId === uid && { opacity: 0.6 },
+                        ]}
+                        onPress={() => approve(uid)}
+                        disabled={busyId === uid}
+                      >
+                        <Text style={styles.approveBtnText}>
+                          {busyId === uid ? "…" : "Approve"}
+                        </Text>
+                      </TouchableOpacity>
+                    </>
+                  )}
+                  {r.status === "APPROVED" && (
                     <TouchableOpacity
                       style={[
                         styles.smallBtn,
-                        styles.approveBtn,
-                        busyId === uid && { opacity: 0.6 },
+                        styles.downloadBtn,
+                        dlId === uid && { opacity: 0.6 },
                       ]}
-                      onPress={() => approve(uid)}
-                      disabled={busyId === uid}
+                      onPress={() => onDownload(uid)}
+                      disabled={!!dlId}
                     >
+                      <Ionicons
+                        name="document-text-outline"
+                        size={14}
+                        color="#fff"
+                      />
                       <Text style={styles.approveBtnText}>
-                        {busyId === uid ? "…" : "Approve"}
+                        {dlId === uid ? "…" : "PDF"}
                       </Text>
                     </TouchableOpacity>
                   )}
@@ -288,6 +359,48 @@ export default function HrIdCardsScreen() {
           })
         )}
       </ScrollView>
+
+      {/* Reject-with-reason, straight from the queue. */}
+      <WebModal
+        visible={!!rejectUid}
+        onClose={() => setRejectUid(null)}
+        title="Reject photo"
+        size="sm"
+        footer={
+          <ModalActions align="spread">
+            <TouchableOpacity
+              style={[styles.smallBtn, styles.ghostBtn, { flex: 1 }]}
+              onPress={() => setRejectUid(null)}
+            >
+              <Text style={styles.ghostBtnText}>Cancel</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[
+                styles.smallBtn,
+                styles.rejectBtn,
+                { flex: 1 },
+                rejectBusy && { opacity: 0.6 },
+              ]}
+              onPress={submitReject}
+              disabled={rejectBusy}
+            >
+              <Text style={styles.rejectBtnText}>
+                {rejectBusy ? "…" : "Reject photo"}
+              </Text>
+            </TouchableOpacity>
+          </ModalActions>
+        }
+      >
+        <Text style={styles.reasonLabel}>REASON (shown to the employee)</Text>
+        <TextInput
+          style={styles.reasonInput}
+          value={rejectReason}
+          onChangeText={setRejectReason}
+          placeholder="e.g. Photo is blurry — please retake"
+          placeholderTextColor={c.textFaint}
+          multiline
+        />
+      </WebModal>
 
       <BottomTabBar user={me} />
     </SafeAreaView>
@@ -374,6 +487,46 @@ const makeStyles = (c: any) =>
     ghostBtnText: { color: c.text, fontSize: 12.5, fontWeight: "800" },
     approveBtn: { backgroundColor: "#16a34a" },
     approveBtnText: { color: "#fff", fontSize: 12.5, fontWeight: "800" },
+    rejectBtn: {
+      backgroundColor: "transparent",
+      borderWidth: 1.5,
+      borderColor: "#dc2626",
+    },
+    rejectBtnText: { color: "#dc2626", fontSize: 12.5, fontWeight: "800" },
+
+    reasonLabel: {
+      fontSize: 9.5,
+      fontWeight: "800",
+      letterSpacing: 1,
+      color: c.textMuted,
+      marginBottom: 6,
+    },
+    reasonInput: {
+      backgroundColor: c.surfaceMuted,
+      borderRadius: 10,
+      borderWidth: 1,
+      borderColor: c.surfaceBorder,
+      padding: 12,
+      color: c.text,
+      minHeight: 70,
+      textAlignVertical: "top",
+    },
+    downloadBtn: {
+      backgroundColor: "#10305F",
+      flexDirection: "row",
+      gap: 5,
+    },
+
+    // Off-screen capture source — big offset so it never paints on screen.
+    exportHost: {
+      position: "absolute",
+      left: -10000,
+      top: 0,
+      flexDirection: "row",
+      gap: 24,
+      padding: 16,
+      backgroundColor: "#fff",
+    },
 
     empty: { alignItems: "center", paddingVertical: 50, gap: 12 },
     emptyText: { color: c.textMuted, fontSize: 13, fontWeight: "600" },

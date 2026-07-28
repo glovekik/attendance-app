@@ -209,9 +209,12 @@ export function AttendanceHistorySection({
     });
   }, [month]);
 
+  // The date list follows the calendar: only the month currently on screen,
+  // so navigating months moves the chips with it. (The two counts above still
+  // show this-month vs all-time — labelled — so nothing is lost.)
   const visibleAutoRows = showAllAuto
-    ? autoRows
-    : autoRows.slice(0, AUTO_CHIP_LIMIT);
+    ? monthAutoRows
+    : monthAutoRows.slice(0, AUTO_CHIP_LIMIT);
 
   const dayChipLabel = (ymd: string) => {
     const [yy, mm, dd] = ymd.split("-").map(Number);
@@ -572,7 +575,7 @@ export function AttendanceHistorySection({
           </View>
         </View>
 
-        {autoRows.length > 0 ? (
+        {monthAutoRows.length > 0 ? (
           <>
             <View style={styles.chipWrap}>
               {visibleAutoRows.map((r) => (
@@ -590,7 +593,7 @@ export function AttendanceHistorySection({
                   <Text style={styles.dayChipText}>{dayChipLabel(r.date)}</Text>
                 </TouchableOpacity>
               ))}
-              {autoRows.length > AUTO_CHIP_LIMIT && (
+              {monthAutoRows.length > AUTO_CHIP_LIMIT && (
                 <TouchableOpacity
                   style={styles.moreChip}
                   onPress={() => setShowAllAuto((v) => !v)}
@@ -599,7 +602,7 @@ export function AttendanceHistorySection({
                   <Text style={styles.moreChipText}>
                     {showAllAuto
                       ? "Show less"
-                      : `+${autoRows.length - AUTO_CHIP_LIMIT} more`}
+                      : `+${monthAutoRows.length - AUTO_CHIP_LIMIT} more`}
                   </Text>
                 </TouchableOpacity>
               )}
@@ -612,7 +615,9 @@ export function AttendanceHistorySection({
           </>
         ) : (
           <Text style={styles.autoNone}>
-            No auto check-outs — nicely done.
+            {autoRows.length > 0
+              ? `No auto check-outs in ${monthLabelText}.`
+              : "No auto check-outs — nicely done."}
           </Text>
         )}
       </View>

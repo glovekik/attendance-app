@@ -20,8 +20,9 @@ import { Ionicons } from "@expo/vector-icons";
 import {
   listManagerReimbursements,
   decideManagerReimbursement } from "../src/services/manager";
-import { Reimbursement } from "../src/types";
+import { Reimbursement, ReimbursementStatus } from "../src/types";
 import { WebModal, ModalActions } from "../src/components/WebModal";
+import { StatusTabs } from "../src/components/StatusTabs";
 
 import { useTheme } from "../src/theme/ThemeProvider";
 const fmtMoney = (n: number): string => {
@@ -37,6 +38,9 @@ export default function ManagerReimbursements() {
   const c = theme.colors;
   const styles = useMemo(() => makeStyles(c), [c]);
   const [items, setItems] = useState<Reimbursement[]>([]);
+  // Was hard-wired to PENDING_MANAGER, so history (Approved / Rejected / with
+  // HR) was impossible to see. Now driven by the tab.
+  const [tab, setTab] = useState<ReimbursementStatus>("PENDING_MANAGER");
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [selected, setSelected] = useState<Reimbursement | null>(null);
@@ -52,10 +56,7 @@ export default function ManagerReimbursements() {
         router.replace("/login");
         return;
       }
-      const data = await listManagerReimbursements(
-        token,
-        "PENDING_MANAGER"
-      );
+      const data = await listManagerReimbursements(token, tab);
       setItems(data || []);
     } catch (err: any) {
       Alert.alert(
@@ -66,7 +67,7 @@ export default function ManagerReimbursements() {
       setLoading(false);
       setRefreshing(false);
     }
-  }, [router]);
+  }, [router, tab]);
 
   useEffect(() => {
     load();
@@ -131,6 +132,21 @@ export default function ManagerReimbursements() {
         <View style={{ width: 24 }} />
       </View>
 
+      <StatusTabs
+        tabs={[
+          { key: "PENDING_MANAGER", label: "Pending", tone: "#b45309" },
+          { key: "PENDING_HR", label: "With HR", tone: c.accent },
+          { key: "APPROVED", label: "Approved", tone: "#16a34a" },
+          { key: "REJECTED", label: "Rejected", tone: "#dc2626" },
+        ]}
+        value={tab}
+        onChange={(k) => {
+          setTab(k as ReimbursementStatus);
+          setLoading(true);
+        }}
+        style={{ paddingHorizontal: 12, marginTop: 8 }}
+      />
+
       <FlatList
         data={items}
         keyExtractor={(r) => r.id}
@@ -149,7 +165,13 @@ export default function ManagerReimbursements() {
           <View style={styles.empty}>
             <Ionicons name="checkmark-done" size={42} color={c.textFaint} />
             <Text style={styles.emptyText}>
-              No pending reimbursements
+              {tab === "PENDING_MANAGER"
+                ? "No pending reimbursements"
+                : tab === "PENDING_HR"
+                ? "Nothing waiting with HR"
+                : tab === "APPROVED"
+                ? "No approved reimbursements"
+                : "No rejected reimbursements"}
             </Text>
           </View>
         }
@@ -200,26 +222,28 @@ export default function ManagerReimbursements() {
         title="Decide reimbursement"
         size="md"
         footer={
-          <ModalActions align="spread">
-            <TouchableOpacity
-              style={[styles.btn, styles.btnReject]}
-              onPress={() => onDecide("REJECT")}
-              disabled={acting !== null}
-            >
-              <Text style={styles.btnText}>
-                {acting === "REJECT" ? "..." : "Reject"}
-              </Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={[styles.btn, styles.btnApprove]}
-              onPress={() => onDecide("APPROVE")}
-              disabled={acting !== null}
-            >
-              <Text style={styles.btnText}>
-                {acting === "APPROVE" ? "..." : "Approve"}
-              </Text>
-            </TouchableOpacity>
-          </ModalActions>
+          tab === "PENDING_MANAGER" ? (
+            <ModalActions align="spread">
+              <TouchableOpacity
+                style={[styles.btn, styles.btnReject]}
+                onPress={() => onDecide("REJECT")}
+                disabled={acting !== null}
+              >
+                <Text style={styles.btnText}>
+                  {acting === "REJECT" ? "..." : "Reject"}
+                </Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.btn, styles.btnApprove]}
+                onPress={() => onDecide("APPROVE")}
+                disabled={acting !== null}
+              >
+                <Text style={styles.btnText}>
+                  {acting === "APPROVE" ? "..." : "Approve"}
+                </Text>
+              </TouchableOpacity>
+            </ModalActions>
+          ) : undefined
         }
       >
             {selected && (

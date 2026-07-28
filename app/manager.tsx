@@ -390,6 +390,16 @@ export default function ManagerHub() {
               theme={theme}
               styles={styles}
             />
+            <Tile
+              icon="reader-outline"
+              label="Work Reports"
+              sub="Daily/weekly/monthly · Excel · PDF"
+              tint={c.pastelSky}
+              iconColor="#0369a1"
+              onPress={() => router.push("/client-visits" as any)}
+              theme={theme}
+              styles={styles}
+            />
           </View>
         </Section>
 
