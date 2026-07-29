@@ -495,54 +495,50 @@ export default function IdCardScreen() {
               />
             </View>
 
-            {isWeb ? (
-              <>
-                <View style={styles.dlRow}>
-                  <TouchableOpacity
-                    style={[
-                      styles.btn,
-                      { backgroundColor: c.accent, flex: 1 },
-                      exporting && { opacity: 0.6 },
-                    ]}
-                    onPress={() => onDownload("pdf")}
-                    disabled={exporting}
-                    activeOpacity={0.85}
-                  >
-                    <Ionicons
-                      name="document-text-outline"
-                      size={18}
-                      color="#fff"
-                    />
-                    <Text style={styles.btnText}>
-                      {exporting ? "Preparing…" : "Download PDF"}
-                    </Text>
-                  </TouchableOpacity>
-                  <TouchableOpacity
-                    style={[
-                      styles.btn,
-                      styles.ghostBtn,
-                      { flex: 1 },
-                      exporting && { opacity: 0.6 },
-                    ]}
-                    onPress={() => onDownload("jpg")}
-                    disabled={exporting}
-                    activeOpacity={0.85}
-                  >
-                    <Ionicons name="image-outline" size={18} color={c.text} />
-                    <Text style={[styles.btnText, { color: c.text }]}>
-                      Download JPG
-                    </Text>
-                  </TouchableOpacity>
-                </View>
-                <Text style={styles.hint}>
-                  Front &amp; back, print-ready, with the photo embedded.
-                </Text>
-              </>
-            ) : (
+            <>
+              <View style={styles.dlRow}>
+                <TouchableOpacity
+                  style={[
+                    styles.btn,
+                    { backgroundColor: c.accent, flex: 1 },
+                    exporting && { opacity: 0.6 },
+                  ]}
+                  onPress={() => onDownload("pdf")}
+                  disabled={exporting}
+                  activeOpacity={0.85}
+                >
+                  <Ionicons
+                    name="document-text-outline"
+                    size={18}
+                    color="#fff"
+                  />
+                  <Text style={styles.btnText}>
+                    {exporting ? "Preparing…" : isWeb ? "Download PDF" : "Save PDF"}
+                  </Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[
+                    styles.btn,
+                    styles.ghostBtn,
+                    { flex: 1 },
+                    exporting && { opacity: 0.6 },
+                  ]}
+                  onPress={() => onDownload("jpg")}
+                  disabled={exporting}
+                  activeOpacity={0.85}
+                >
+                  <Ionicons name="image-outline" size={18} color={c.text} />
+                  <Text style={[styles.btnText, { color: c.text }]}>
+                    {isWeb ? "Download JPG" : "Save JPG"}
+                  </Text>
+                </TouchableOpacity>
+              </View>
               <Text style={styles.hint}>
-                Open the app on a computer to download this card.
+                {isWeb
+                  ? "Front & back, print-ready, with the photo embedded."
+                  : "Front & back, with the photo embedded — saved to your device."}
               </Text>
-            )}
+            </>
 
             {isOwn && (
               <TouchableOpacity

@@ -35,26 +35,13 @@ const downloadWithAuth = async (
     return;
   }
 
-  // Native — needs expo-file-system + expo-sharing
-  const { File, Paths } = require("expo-file-system");
-  const Sharing = require("expo-sharing");
-
-  const destination = new File(Paths.cache, filename);
-
-  // Throws on failure; `idempotent` overwrites a stale cached copy.
-  const result = await File.downloadFileAsync(url, destination, {
-    headers: { Authorization: `Bearer ${token}` },
-    idempotent: true,
-  });
-
-  const canShare = await Sharing.isAvailableAsync();
-  if (canShare) {
-    await Sharing.shareAsync(result.uri, {
-      mimeType,
-      dialogTitle: filename,
-      UTI: uti,
-    });
-  }
+  // Native — download (authed) then save to a device folder (Android SAF /
+  // iOS Files), with a share fallback. See fileSave.ts. mimeType/uti are
+  // derived from the filename extension there.
+  void mimeType;
+  void uti;
+  const { downloadAndSave } = require("./fileSave");
+  await downloadAndSave(url, filename, token);
 };
 
 export const downloadPdfWithAuth = (
