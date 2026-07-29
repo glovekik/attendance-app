@@ -38,7 +38,7 @@
         "READ_MEDIA_IMAGES"
       ],
       "package": "com.lovekik.attendanceapp",
-      "versionCode": 3,
+      "versionCode": 4,
       "googleServicesFile": "./google-services.json"
     },
     "web": {
