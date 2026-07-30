@@ -60,6 +60,7 @@ export const teamProductivityReport = (
 // ===== WORK REPORT (daily / weekly / monthly) =====
 
 export interface WorkReportRow {
+  userId?: string;
   name: string;
   employeeCode: string;
   date: string;

@@ -21,6 +21,10 @@ import { TeamProductivityRow } from "../src/types";
 
 import { useTheme } from "../src/theme/ThemeProvider";
 import { Avatar } from "../src/components/Avatar";
+
+// Semantic tones: workload (amber), output (green), effort (blue).
+const TONE = { open: "#F59E0B", done: "#16A34A", hours: "#2563EB" };
+
 export default function ManagerProductivity() {
   const router = useRouter();
   const { theme } = useTheme();
@@ -127,37 +131,59 @@ export default function ManagerProductivity() {
         }
         renderItem={({ item }) => {
           const name = item.userName || (item as any).name || "Unknown";
+          const code = (item as any).employeeCode || (item as any).empCode || "";
+          const tiles = [
+            {
+              icon: "albums-outline" as const,
+              value: String(item.openTasks),
+              label: "Open tasks",
+              tone: TONE.open,
+            },
+            {
+              icon: "checkmark-done-outline" as const,
+              value: String(item.completedTasksLast30d),
+              label: "Done · 30d",
+              tone: TONE.done,
+            },
+            {
+              icon: "time-outline" as const,
+              value: `${item.avgHoursPerDayLast7d.toFixed(1)}h`,
+              label: "Avg/day · 7d",
+              tone: TONE.hours,
+            },
+          ];
           return (
-          <View style={styles.card}>
-            <View style={styles.cardTop}>
-              <Avatar
-                name={name}
-                uri={(item as any).profilePictureUrl}
-                size={42}
-              />
-              <Text style={styles.cardName} numberOfLines={1}>
-                {name}
-              </Text>
+            <View style={styles.card}>
+              <View style={styles.cardTop}>
+                <Avatar
+                  name={name}
+                  uri={(item as any).profilePictureUrl}
+                  size={44}
+                />
+                <View style={styles.cardWho}>
+                  <Text style={styles.cardName} numberOfLines={1}>
+                    {name}
+                  </Text>
+                  <Text style={styles.cardMeta} numberOfLines={1}>
+                    {code ? `${code} · ` : ""}Direct report
+                  </Text>
+                </View>
+              </View>
+              <View style={styles.metricRow}>
+                {tiles.map((t) => (
+                  <View
+                    key={t.label}
+                    style={[styles.tile, { backgroundColor: t.tone + "14" }]}
+                  >
+                    <Ionicons name={t.icon} size={15} color={t.tone} />
+                    <Text style={[styles.tileValue, { color: t.tone }]}>
+                      {t.value}
+                    </Text>
+                    <Text style={styles.tileLabel}>{t.label}</Text>
+                  </View>
+                ))}
+              </View>
             </View>
-            <View style={styles.metricRow}>
-              <View style={styles.metric}>
-                <Text style={styles.metricValue}>{item.openTasks}</Text>
-                <Text style={styles.metricLabel}>Open tasks</Text>
-              </View>
-              <View style={styles.metric}>
-                <Text style={styles.metricValue}>
-                  {item.completedTasksLast30d}
-                </Text>
-                <Text style={styles.metricLabel}>Done (30d)</Text>
-              </View>
-              <View style={styles.metric}>
-                <Text style={styles.metricValue}>
-                  {item.avgHoursPerDayLast7d.toFixed(1)}h
-                </Text>
-                <Text style={styles.metricLabel}>Avg/day (7d)</Text>
-              </View>
-            </View>
-          </View>
           );
         }}
       />
@@ -197,29 +223,38 @@ const makeStyles = (c: any) => StyleSheet.create({
   card: {
     backgroundColor: c.surface,
     padding: 14,
-    borderRadius: 14,
-    marginBottom: 10,
+    borderRadius: 16,
+    marginBottom: 12,
     borderWidth: 1,
     borderColor: c.surfaceBorder },
   cardTop: {
     flexDirection: "row",
     alignItems: "center",
     gap: 12 },
-  cardName: { color: c.text, fontSize: 14, fontWeight: "700" },
+  cardWho: { flex: 1, minWidth: 0 },
+  cardName: { color: c.text, fontSize: 15, fontWeight: "800" },
+  cardMeta: {
+    color: c.textMuted,
+    fontSize: 12,
+    fontWeight: "600",
+    marginTop: 1 },
   metricRow: {
     flexDirection: "row",
-    justifyContent: "space-between",
-    marginTop: 10,
-    paddingTop: 10,
-    borderTopWidth: 1,
-    borderTopColor: c.surfaceBorder },
-  metric: { alignItems: "center", flex: 1 },
-  metricValue: { color: c.text, fontSize: 18, fontWeight: "800" },
-  metricLabel: {
+    gap: 8,
+    marginTop: 14 },
+  tile: {
+    flex: 1,
+    alignItems: "center",
+    paddingVertical: 12,
+    paddingHorizontal: 4,
+    borderRadius: 12,
+    gap: 3 },
+  tileValue: { fontSize: 19, fontWeight: "900", marginTop: 1 },
+  tileLabel: {
     color: c.textMuted,
-    fontSize: 10,
-    marginTop: 2,
-    letterSpacing: 0.3 },
+    fontSize: 10.5,
+    fontWeight: "700",
+    letterSpacing: 0.2 },
 
   emptyWrap: { flex: 1, justifyContent: "center" },
   empty: { alignItems: "center", gap: 10, padding: 30 },

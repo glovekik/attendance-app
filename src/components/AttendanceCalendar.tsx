@@ -49,6 +49,7 @@ export interface CalRow {
   workNotes?: string;
   attendanceType?: string | null;
   status?: string;
+  isLate?: boolean;
   clientAddress?: string | null;
   clientName?: string | null;
   autoClosedByCron?: boolean;
@@ -204,6 +205,10 @@ export function AttendanceCalendar({
   };
 
   const selInfo = sel ? classify(Number(sel.slice(8, 10))) : null;
+  const selLate = !!(
+    selInfo?.rec &&
+    (selInfo.rec.status === "LATE" || selInfo.rec.isLate)
+  );
   const selCorrection = sel ? correctionByDate[sel] : undefined;
   const isFuture = !!sel && sel > todayY;
   const interactive =
@@ -244,6 +249,11 @@ export function AttendanceCalendar({
             const info = classify(day);
             const isSel = key === sel;
             const isToday = key === todayY;
+            // A late arrival still counts as present (letter "P"), but the cell
+            // gets a red outline so late days stand out on every calendar.
+            const isLate = !!(
+              info.rec && (info.rec.status === "LATE" || info.rec.isLate)
+            );
             return (
               <TouchableOpacity
                 key={di}
@@ -251,6 +261,7 @@ export function AttendanceCalendar({
                   styles.cell,
                   info.softBg ? { backgroundColor: info.softBg } : null,
                   isToday && styles.cellToday,
+                  isLate && styles.cellLate,
                   isSel && styles.cellSel,
                 ]}
                 activeOpacity={0.7}
@@ -294,6 +305,12 @@ export function AttendanceCalendar({
               <Text style={styles.detailDate}>{prettyDay(selInfo.key)}</Text>
               <Text style={styles.detailLabel}>{selInfo.label}</Text>
             </View>
+            {selLate && (
+              <View style={styles.latePill}>
+                <Ionicons name="alert-circle-outline" size={12} color="#DC2626" />
+                <Text style={styles.latePillText}>Late</Text>
+              </View>
+            )}
             {selCorrection === "PENDING" && (
               <View style={styles.pendingPill}>
                 <Ionicons name="time-outline" size={12} color="#b45309" />
@@ -465,6 +482,7 @@ const makeStyles = (c: any) =>
       borderColor: "transparent",
     },
     cellToday: { borderColor: c.textFaint },
+    cellLate: { borderColor: "#DC2626" },
     cellSel: { borderColor: c.accent },
     dayNum: { color: c.text, fontSize: 13, fontWeight: "700" },
     dayNumSel: { color: c.accent, fontWeight: "800" },
@@ -510,6 +528,18 @@ const makeStyles = (c: any) =>
       borderRadius: 999,
     },
     pendingPillText: { color: "#b45309", fontSize: 11, fontWeight: "800" },
+    latePill: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 4,
+      backgroundColor: "rgba(220,38,38,0.12)",
+      borderColor: "rgba(220,38,38,0.4)",
+      borderWidth: 1,
+      paddingHorizontal: 8,
+      paddingVertical: 4,
+      borderRadius: 999,
+    },
+    latePillText: { color: "#DC2626", fontSize: 11, fontWeight: "800" },
 
     statRow: { flexDirection: "row", gap: 8, marginTop: 12 },
     stat: {

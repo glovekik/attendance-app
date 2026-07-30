@@ -541,32 +541,30 @@ export default function TeamMemberDetail() {
           />
         }
       >
-        {/* HERO — compact horizontal identity card */}
+        {/* HERO — employee identity card */}
         <View style={styles.hero}>
-          <Avatar
-            name={name}
-            uri={photoUrl}
-            size={52}
-            bg="rgba(255,255,255,0.22)"
-            fg="#fff"
-            fontSize={20}
-            zoomable
-          />
-          <View style={{ flex: 1 }}>
+          <View style={styles.heroAvatarRing}>
+            <Avatar name={name} uri={photoUrl} size={58} zoomable />
+          </View>
+          <View style={{ flex: 1, minWidth: 0 }}>
             <Text style={styles.heroName} numberOfLines={1}>{name}</Text>
             {!!email && (
               <Text style={styles.heroEmail} numberOfLines={1}>{email}</Text>
             )}
             <View style={styles.heroPills}>
               {!!employeeCode && (
-                <View style={styles.heroPill}>
-                  <Ionicons name="id-card-outline" size={12} color="#fff" />
-                  <Text style={styles.heroPillText}>{employeeCode}</Text>
+                <View style={styles.codeChip}>
+                  <Ionicons
+                    name="id-card-outline"
+                    size={12}
+                    color={c.textMuted}
+                  />
+                  <Text style={styles.codeChipText}>{employeeCode}</Text>
                 </View>
               )}
               {!!tag && (
-                <View style={styles.heroPill}>
-                  <Text style={styles.heroPillText}>{tag}</Text>
+                <View style={styles.roleBadge}>
+                  <Text style={styles.roleBadgeText}>{tag}</Text>
                 </View>
               )}
             </View>
@@ -886,6 +884,21 @@ export default function TeamMemberDetail() {
             <EmptyRow c={c} icon="trending-up-outline" text="No productivity data yet." />
           </View>
         )}
+
+        <TouchableOpacity
+          style={styles.reportBtn}
+          onPress={() =>
+            router.push(
+              `/client-visits?userId=${userId}&name=${encodeURIComponent(
+                name
+              )}` as any
+            )
+          }
+          activeOpacity={0.85}
+        >
+          <Ionicons name="download-outline" size={18} color="#fff" />
+          <Text style={styles.reportBtnText}>Download work report</Text>
+        </TouchableOpacity>
 
         {/* LEAVE BALANCES */}
         <SectionHeader c={c} icon="briefcase-outline" title="Leave balances" />
@@ -1211,23 +1224,37 @@ function KpiCell({
       style={{
         width: "31%",
         flexGrow: 1,
-        backgroundColor: c.surface,
-        borderColor: c.surfaceBorder,
+        backgroundColor: tintBg,
+        borderColor: tint + "33",
         borderWidth: 1,
         borderRadius: 16,
         padding: 14,
-        shadowColor: c.shadow,
-        shadowOpacity: 1,
-        shadowRadius: 12,
-        shadowOffset: { width: 0, height: 4 },
-        elevation: 2,
       }}
     >
-      <View style={{ width: 30, height: 30, borderRadius: 9, backgroundColor: tintBg, alignItems: "center", justifyContent: "center", marginBottom: 8 }}>
+      <View
+        style={{
+          width: 30,
+          height: 30,
+          borderRadius: 9,
+          backgroundColor: c.surface,
+          alignItems: "center",
+          justifyContent: "center",
+          marginBottom: 10,
+        }}
+      >
         <Ionicons name={icon} size={17} color={tint} />
       </View>
-      <Text style={{ color: c.text, fontSize: 20, fontWeight: "800" }}>{value}</Text>
-      <Text style={{ color: c.textMuted, fontSize: 11, marginTop: 2 }}>{label}</Text>
+      <Text style={{ color: tint, fontSize: 22, fontWeight: "900" }}>{value}</Text>
+      <Text
+        style={{
+          color: c.textMuted,
+          fontSize: 11,
+          fontWeight: "700",
+          marginTop: 2,
+        }}
+      >
+        {label}
+      </Text>
     </View>
   );
 }
@@ -1295,38 +1322,55 @@ const makeStyles = (c: any) =>
       flexDirection: "row",
       alignItems: "center",
       gap: 14,
-      backgroundColor: c.accent,
-      borderRadius: 18,
+      backgroundColor: c.surface,
+      borderRadius: 20,
+      borderWidth: 1,
+      borderColor: c.surfaceBorder,
       padding: 16,
-      shadowColor: c.accent,
-      shadowOpacity: 0.22,
-      shadowRadius: 12,
-      shadowOffset: { width: 0, height: 6 },
-      elevation: 4,
+      shadowColor: c.shadow,
+      shadowOpacity: 1,
+      shadowRadius: 14,
+      shadowOffset: { width: 0, height: 5 },
+      elevation: 3,
     },
-    heroAvatar: {
-      width: 68,
-      height: 68,
-      borderRadius: 34,
-      backgroundColor: "rgba(255,255,255,0.22)",
-      alignItems: "center",
-      justifyContent: "center",
-      marginBottom: 10,
+    heroAvatarRing: {
+      padding: 3,
+      borderRadius: 999,
+      borderWidth: 2,
+      borderColor: c.accent + "55",
     },
-    heroAvatarText: { color: "#fff", fontSize: 26, fontWeight: "800" },
-    heroName: { color: "#fff", fontSize: 17, fontWeight: "800" },
-    heroEmail: { color: "rgba(255,255,255,0.85)", fontSize: 12.5, marginTop: 2 },
-    heroPills: { flexDirection: "row", flexWrap: "wrap", gap: 6, marginTop: 8, justifyContent: "flex-start" },
-    heroPill: {
+    heroName: { color: c.text, fontSize: 18, fontWeight: "800" },
+    heroEmail: { color: c.textMuted, fontSize: 12.5, marginTop: 2 },
+    heroPills: {
+      flexDirection: "row",
+      flexWrap: "wrap",
+      gap: 6,
+      marginTop: 10,
+    },
+    codeChip: {
       flexDirection: "row",
       alignItems: "center",
       gap: 4,
-      backgroundColor: "rgba(255,255,255,0.18)",
-      borderRadius: 999,
-      paddingHorizontal: 10,
-      paddingVertical: 5,
+      backgroundColor: c.surfaceMuted,
+      borderRadius: 8,
+      paddingHorizontal: 9,
+      paddingVertical: 4,
     },
-    heroPillText: { color: "#fff", fontSize: 11, fontWeight: "700" },
+    codeChipText: {
+      color: c.textMuted,
+      fontSize: 11,
+      fontWeight: "800",
+      letterSpacing: 0.3,
+    },
+    roleBadge: {
+      backgroundColor: c.accent + "1A",
+      borderColor: c.accent + "44",
+      borderWidth: 1,
+      borderRadius: 8,
+      paddingHorizontal: 9,
+      paddingVertical: 4,
+    },
+    roleBadgeText: { color: c.accent, fontSize: 11, fontWeight: "800" },
 
     // generic card
     card: {
@@ -1341,6 +1385,17 @@ const makeStyles = (c: any) =>
       shadowOffset: { width: 0, height: 4 },
       elevation: 2,
     },
+    reportBtn: {
+      flexDirection: "row",
+      alignItems: "center",
+      justifyContent: "center",
+      gap: 8,
+      backgroundColor: c.accent,
+      borderRadius: 14,
+      paddingVertical: 13,
+      marginTop: 4,
+    },
+    reportBtnText: { color: "#fff", fontSize: 14, fontWeight: "800" },
 
     // segmented control
     segment: {

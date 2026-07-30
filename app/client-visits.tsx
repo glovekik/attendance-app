@@ -13,13 +13,14 @@ import {
 import { SafeAreaView } from "react-native-safe-area-context";
 
 import AsyncStorage from "@react-native-async-storage/async-storage";
-import { useRouter } from "expo-router";
+import { useRouter, useLocalSearchParams } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 
 import { getMe } from "../src/services/api";
 import { getWorkReport, WorkReportRow } from "../src/services/reports";
 import { downloadAuthedFile } from "../src/utils/downloadFile";
 import { WebDateField } from "../src/components/WebDateField";
+import { WebModal, ModalActions } from "../src/components/WebModal";
 import { useTheme } from "../src/theme/ThemeProvider";
 import { useResponsive, getResponsiveSpacing } from "../src/utils/responsive";
 import {
@@ -73,6 +74,12 @@ const TYPE_TONE: Record<string, string> = {
 
 export default function WorkReports() {
   const router = useRouter();
+  // Optional focus on one employee (opened from their profile).
+  const params = useLocalSearchParams<{ userId?: string; name?: string }>();
+  const focusUserId =
+    typeof params.userId === "string" && params.userId ? params.userId : undefined;
+  const focusName =
+    typeof params.name === "string" && params.name ? params.name : undefined;
   const { theme } = useTheme();
   const c = theme.colors;
   const responsive = useResponsive();
@@ -80,12 +87,18 @@ export default function WorkReports() {
   const styles = useMemo(() => makeStyles(c), [c]);
 
   const [me, setMe] = useState<User | null>(null);
-  const [period, setPeriod] = useState<Period>("daily");
+  const [period, setPeriod] = useState<Period>(focusUserId ? "monthly" : "daily");
   const [anchor, setAnchor] = useState<string>(todayYMD());
   const [month, setMonth] = useState<string>(todayYMD().slice(0, 7));
   const [rows, setRows] = useState<WorkReportRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [downloading, setDownloading] = useState<null | "xlsx" | "pdf">(null);
+  // Which people to include. Empty (or all ticked) = everyone in scope.
+  // When opened from an employee's profile, start focused on just them.
+  const [picked, setPicked] = useState<Set<string>>(() =>
+    focusUserId ? new Set([focusUserId]) : new Set()
+  );
+  const [pickerOpen, setPickerOpen] = useState(false);
 
   const isHR = hasRole(me, "HR") || hasRole(me, "CEO");
   const base: "/hr/reports" | "/manager/reports" = isHR
@@ -141,9 +154,11 @@ export default function WorkReports() {
     if (downloading) return;
     try {
       setDownloading(fmt);
+      const ids = everyone ? "" : [...picked].join(",");
       const path =
         `${base}/work/export.${fmt}` +
-        `?fromDate=${fromDate}&toDate=${toDate}&period=${period}`;
+        `?fromDate=${fromDate}&toDate=${toDate}&period=${period}` +
+        (ids ? `&userIds=${encodeURIComponent(ids)}` : "");
       await downloadAuthedFile(path, `work-report-${fromDate}_${toDate}.${fmt}`);
     } catch (err: any) {
       notify("Download failed", err?.message || "");
@@ -152,9 +167,38 @@ export default function WorkReports() {
     }
   };
 
+  // Distinct people present in the loaded range (only those with records).
+  const people = useMemo(() => {
+    const m = new Map<string, { userId: string; name: string; code: string }>();
+    for (const r of rows) {
+      if (r.userId && !m.has(r.userId)) {
+        m.set(r.userId, { userId: r.userId, name: r.name, code: r.employeeCode });
+      }
+    }
+    return [...m.values()].sort((a, b) => a.name.localeCompare(b.name));
+  }, [rows]);
+
+  // None ticked, or all of a non-empty list ticked → treat as "everyone".
+  const everyone =
+    picked.size === 0 || (people.length > 0 && picked.size >= people.length);
+
+  const visibleRows = useMemo(
+    () =>
+      everyone ? rows : rows.filter((r) => r.userId && picked.has(r.userId)),
+    [rows, picked, everyone]
+  );
+
+  const togglePick = (id: string) =>
+    setPicked((prev) => {
+      const n = new Set(prev);
+      if (n.has(id)) n.delete(id);
+      else n.add(id);
+      return n;
+    });
+
   const totalHours = useMemo(
-    () => rows.reduce((s, r) => s + (Number(r.hours) || 0), 0),
-    [rows]
+    () => visibleRows.reduce((s, r) => s + (Number(r.hours) || 0), 0),
+    [visibleRows]
   );
   const rangeLabel =
     fromDate === toDate ? prettyDay(fromDate) : `${prettyDay(fromDate)} – ${prettyDay(toDate)}`;
@@ -190,7 +234,8 @@ export default function WorkReports() {
           <View style={{ flex: 1, marginLeft: 12 }}>
             <Text style={styles.title}>Work Reports</Text>
             <Text style={styles.subtitle}>
-              {isHR ? "All employees" : "My team"} · who worked, when, and on what
+              {focusName || (isHR ? "All employees" : "My team")} · who worked,
+              when, and on what
             </Text>
           </View>
         </View>
@@ -242,10 +287,33 @@ export default function WorkReports() {
           <Text style={styles.rangeLabel}>{rangeLabel}</Text>
         </View>
 
+        {/* Who to include */}
+        <TouchableOpacity
+          style={styles.peopleRow}
+          onPress={() => setPickerOpen(true)}
+          activeOpacity={0.85}
+          disabled={people.length === 0}
+        >
+          <Ionicons name="people-outline" size={18} color={c.textMuted} />
+          <Text style={styles.peopleText}>
+            {everyone
+              ? isHR
+                ? "All employees"
+                : "My team"
+              : `${picked.size} ${picked.size === 1 ? "person" : "people"} selected`}
+          </Text>
+          <Ionicons
+            name="chevron-down"
+            size={16}
+            color={c.textMuted}
+            style={{ marginLeft: "auto" }}
+          />
+        </TouchableOpacity>
+
         {/* Summary + downloads */}
         <View style={styles.summaryCard}>
           <View style={{ flex: 1 }}>
-            <Text style={styles.sumBig}>{rows.length}</Text>
+            <Text style={styles.sumBig}>{visibleRows.length}</Text>
             <Text style={styles.sumLabel}>
               records · {totalHours.toFixed(1)} h total
             </Text>
@@ -253,7 +321,7 @@ export default function WorkReports() {
           <TouchableOpacity
             style={[styles.dlBtn, styles.dlXlsx, downloading && { opacity: 0.6 }]}
             onPress={() => onDownload("xlsx")}
-            disabled={!!downloading || rows.length === 0}
+            disabled={!!downloading || visibleRows.length === 0}
           >
             <Ionicons name="grid-outline" size={16} color="#fff" />
             <Text style={styles.dlText}>
@@ -263,7 +331,7 @@ export default function WorkReports() {
           <TouchableOpacity
             style={[styles.dlBtn, styles.dlPdf, downloading && { opacity: 0.6 }]}
             onPress={() => onDownload("pdf")}
-            disabled={!!downloading || rows.length === 0}
+            disabled={!!downloading || visibleRows.length === 0}
           >
             <Ionicons name="document-text-outline" size={16} color="#fff" />
             <Text style={styles.dlText}>
@@ -278,17 +346,19 @@ export default function WorkReports() {
             color={c.accent}
             style={{ paddingVertical: 40 }}
           />
-        ) : rows.length === 0 ? (
+        ) : visibleRows.length === 0 ? (
           <View style={styles.empty}>
             <Ionicons name="reader-outline" size={36} color={c.textMuted} />
             <Text style={styles.emptyText}>
-              No attendance records in this period.
+              {rows.length === 0
+                ? "No attendance records in this period."
+                : "No records for the selected people."}
             </Text>
           </View>
         ) : (
           <View style={{ gap: 8 }}>
             <Text style={styles.previewHint}>Preview</Text>
-            {rows.map((r, i) => (
+            {visibleRows.map((r, i) => (
               <View key={`${r.employeeCode}-${r.date}-${i}`} style={styles.row}>
                 <View style={styles.rowTop}>
                   <Text style={styles.rName} numberOfLines={1}>
@@ -332,6 +402,82 @@ export default function WorkReports() {
           </View>
         )}
       </ScrollView>
+
+      <WebModal
+        visible={pickerOpen}
+        onClose={() => setPickerOpen(false)}
+        title="Choose people"
+        subtitle={`Download the report for specific ${isHR ? "employees" : "team members"}`}
+      >
+        <Text style={styles.pickerHint}>
+          Tick the people to include — or leave all unticked for{" "}
+          {isHR ? "everyone" : "the whole team"}.
+        </Text>
+
+        <TouchableOpacity
+          style={styles.pickAll}
+          onPress={() =>
+            setPicked((prev) =>
+              prev.size >= people.length
+                ? new Set()
+                : new Set(people.map((p) => p.userId))
+            )
+          }
+          activeOpacity={0.8}
+        >
+          <Ionicons
+            name={
+              people.length > 0 && picked.size >= people.length
+                ? "checkbox"
+                : "square-outline"
+            }
+            size={20}
+            color={c.accent}
+          />
+          <Text style={styles.pickAllText}>Select all</Text>
+        </TouchableOpacity>
+
+        <ScrollView style={{ maxHeight: 340 }}>
+          {people.map((p) => {
+            const on = picked.has(p.userId);
+            return (
+              <TouchableOpacity
+                key={p.userId}
+                style={styles.pickRowItem}
+                onPress={() => togglePick(p.userId)}
+                activeOpacity={0.8}
+              >
+                <Ionicons
+                  name={on ? "checkbox" : "square-outline"}
+                  size={20}
+                  color={on ? c.accent : c.textMuted}
+                />
+                <View style={{ marginLeft: 10, flex: 1 }}>
+                  <Text style={styles.pickName} numberOfLines={1}>
+                    {p.name}
+                  </Text>
+                  {!!p.code && <Text style={styles.pickCode}>{p.code}</Text>}
+                </View>
+              </TouchableOpacity>
+            );
+          })}
+        </ScrollView>
+
+        <ModalActions align="spread">
+          <TouchableOpacity onPress={() => setPicked(new Set())} activeOpacity={0.8}>
+            <Text style={styles.pickClear}>Clear</Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={styles.pickDoneBtn}
+            onPress={() => setPickerOpen(false)}
+            activeOpacity={0.85}
+          >
+            <Text style={styles.pickDoneText}>
+              {everyone ? "Use everyone" : `Use ${picked.size} selected`}
+            </Text>
+          </TouchableOpacity>
+        </ModalActions>
+      </WebModal>
 
       <BottomTabBar user={me} />
     </SafeAreaView>
@@ -451,4 +597,49 @@ const makeStyles = (c: any) =>
 
     empty: { alignItems: "center", paddingVertical: 46, gap: 12 },
     emptyText: { color: c.textMuted, fontSize: 13, fontWeight: "600" },
+
+    peopleRow: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 10,
+      backgroundColor: c.surface,
+      borderWidth: 1,
+      borderColor: c.surfaceBorder,
+      borderRadius: 12,
+      paddingHorizontal: 12,
+      height: 46,
+      marginBottom: 16,
+      ...(Platform.OS === "web" ? { cursor: "pointer" as any } : {}),
+    },
+    peopleText: { color: c.text, fontSize: 14, fontWeight: "700" },
+
+    pickerHint: { color: c.textMuted, fontSize: 13, marginBottom: 12, lineHeight: 18 },
+    pickAll: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 10,
+      paddingVertical: 10,
+      borderBottomWidth: 1,
+      borderBottomColor: c.surfaceBorder,
+      marginBottom: 4,
+      ...(Platform.OS === "web" ? { cursor: "pointer" as any } : {}),
+    },
+    pickAllText: { color: c.text, fontSize: 14, fontWeight: "800" },
+    pickRowItem: {
+      flexDirection: "row",
+      alignItems: "center",
+      paddingVertical: 10,
+      ...(Platform.OS === "web" ? { cursor: "pointer" as any } : {}),
+    },
+    pickName: { color: c.text, fontSize: 14, fontWeight: "700" },
+    pickCode: { color: c.textMuted, fontSize: 12, marginTop: 1 },
+    pickClear: { color: c.textMuted, fontSize: 14, fontWeight: "700" },
+    pickDoneBtn: {
+      backgroundColor: c.accent,
+      paddingHorizontal: 16,
+      paddingVertical: 10,
+      borderRadius: 11,
+      ...(Platform.OS === "web" ? { cursor: "pointer" as any } : {}),
+    },
+    pickDoneText: { color: "#fff", fontSize: 14, fontWeight: "800" },
   });

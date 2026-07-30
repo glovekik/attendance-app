@@ -1366,6 +1366,17 @@ export default function HrUserProfile() {
         } as any),
     },
     {
+      key: "workreport",
+      label: "Work Report",
+      icon: "download-outline",
+      onPress: () =>
+        router.push(
+          `/client-visits?userId=${id}&name=${encodeURIComponent(
+            displayName
+          )}` as any
+        ),
+    },
+    {
       key: "leave",
       label: "Leave Balance",
       icon: "airplane-outline",
