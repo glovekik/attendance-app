@@ -39,6 +39,7 @@ import { Ionicons } from "@expo/vector-icons";
 
 import { useTheme } from "../theme/ThemeProvider";
 import { useResponsive } from "../utils/responsive";
+import { ModalToastHost } from "./ModalToastHost";
 
 type SheetHeight = "auto" | "half" | "full";
 
@@ -230,6 +231,7 @@ export const BottomSheet = ({
         </View>
       </View>
       </KeyboardAvoidingView>
+      <ModalToastHost />
     </Modal>
   );
 };
