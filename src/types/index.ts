@@ -343,6 +343,8 @@ export type TDSRegime = "OLD" | "NEW";
 export interface SalaryStructure {
   id: string;
   userId: string;
+  /** Company-provided accommodation — drives the HRA / Other split. */
+  accommodation?: boolean;
   basic: number;
   hra: number;
   communicationAllowance: number;

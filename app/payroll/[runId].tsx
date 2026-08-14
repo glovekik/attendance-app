@@ -49,7 +49,9 @@ import { hrListLeaveRequests } from "../../src/services/leaves";
 import { AttendanceCalendar } from "../../src/components/AttendanceCalendar";
 
 import { useTheme } from "../../src/theme/ThemeProvider";
+import { formatDays } from "../../src/utils/leaveDays";
 import { ATT, ATT_BG } from "../../src/theme/attendanceColors";
+import { notify, notifySuccess } from "../../src/utils/confirm";
 const monthLabel = (year: number, month: number) =>
   new Date(year, month - 1, 1).toLocaleDateString("en-US", {
     month: "long",
@@ -128,20 +130,16 @@ export default function HRPayrollRun() {
   const [holidayMap, setHolidayMap] = useState<Record<string, string>>({});
   const [monthLeaves, setMonthLeaves] = useState<LeaveRequest[]>([]);
 
-  const [popup, setPopup] = useState({
-    visible: false,
-    type: "success" as "success" | "error",
-    message: "",
-  });
 
+  // Routed through the shared toast host rather than an in-screen View:
+  // a screen-level popup renders BEHIND any open modal, so errors raised
+  // from inside a dialog were invisible. See components/ModalToastHost.
   const showPopup = (
     msg: string,
     kind: "success" | "error" = "success"
   ) => {
-    setPopup({ visible: true, type: kind, message: msg });
-    setTimeout(() => {
-      setPopup((p) => ({ ...p, visible: false }));
-    }, 3000);
+    if (kind === "error") notify(msg);
+    else notifySuccess(msg);
   };
 
   const load = async () => {
@@ -436,16 +434,7 @@ export default function HRPayrollRun() {
   return (
     <SafeAreaView style={s.safe}>
 
-      {popup.visible && (
-        <View
-          style={[
-            s.popup,
-            popup.type === "success" ? s.popupOk : s.popupErr,
-          ]}
-        >
-          <Text style={s.popupText}>{popup.message}</Text>
-        </View>
-      )}
+      
 
       <ScrollView
         style={s.container}
@@ -596,8 +585,8 @@ export default function HRPayrollRun() {
 
             <View style={s.metaRow}>
               <Text style={s.metaText}>
-                Att {p.attendedDays}/{p.workingDays}
-                {p.lopDays > 0 ? `  ·  LOP ${p.lopDays}d` : ""}
+                Att {formatDays(p.attendedDays)}/{formatDays(p.workingDays)}
+                {p.lopDays > 0 ? `  ·  LOP ${formatDays(p.lopDays)}d` : ""}
                 {"  ·  "}
                 Gross ₹{p.totalGross.toLocaleString("en-IN")}
                 {"  ·  "}
@@ -748,7 +737,7 @@ export default function HRPayrollRun() {
                 {editPayslip.lopDays > 0 && (
                   <View style={s.previewRow}>
                     <Text style={s.previewLabel}>
-                      LOP ({editPayslip.lopDays}d)
+                      LOP ({formatDays(editPayslip.lopDays)}d)
                     </Text>
                     <Text style={s.previewValue}>
                       − ₹ {editPayslip.lopDeduction.toLocaleString("en-IN")}
@@ -798,7 +787,7 @@ export default function HRPayrollRun() {
                 <View style={s.payStatsRow}>
                   <View style={s.payStat}>
                     <Text style={[s.payStatValue, { color: ATT.present }]}>
-                      {editPayslip.attendedDays}
+                      {formatDays(editPayslip.attendedDays)}
                       <Text style={s.payStatDenom}>/{editPayslip.workingDays}</Text>
                     </Text>
                     <Text style={s.payStatLabel}>Days worked</Text>
@@ -808,7 +797,7 @@ export default function HRPayrollRun() {
                     <Text style={s.payStatLabel}>Leave taken</Text>
                   </View>
                   <View style={s.payStat}>
-                    <Text style={[s.payStatValue, { color: ATT.unpaid }]}>{editPayslip.lopDays}</Text>
+                    <Text style={[s.payStatValue, { color: ATT.unpaid }]}>{formatDays(editPayslip.lopDays)}</Text>
                     <Text style={s.payStatLabel}>LOP</Text>
                   </View>
                 </View>

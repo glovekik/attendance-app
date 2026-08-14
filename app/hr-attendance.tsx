@@ -243,22 +243,71 @@ export default function HrAttendance() {
     load();
   }, [load]);
 
-  // Mark (or clear) the currently-open employee's selected day as unpaid leave.
-  const markUnpaid = async (unpaid: boolean) => {
-    if (!leaveMenuFor || markingLeave) return;
+  // Mark (or clear) one employee's day as unpaid leave.
+  //
+  // Two entry points share this: the row's ⋮ menu (which always acts on the
+  // currently-selected `date`) and the month calendar (which passes the day
+  // the HR user tapped). Taking userId/day as arguments keeps the calendar
+  // from having to move the whole screen to that date first.
+  // Both entry points (the row ⋮ menu and the month calendar) open this
+  // confirmation rather than firing straight away — marking a day unpaid
+  // moves someone's pay, so it shouldn't be one stray tap.
+  const [unpaidConfirm, setUnpaidConfirm] = useState<{
+    userId: string;
+    name: string;
+    dayKey: string;
+    next: boolean;
+    currentReason?: string | null;
+  } | null>(null);
+  const [unpaidReason, setUnpaidReason] = useState("");
+
+  const askUnpaid = (
+    userId: string,
+    name: string,
+    dayKey: string,
+    next: boolean,
+    currentReason?: string | null
+  ) => {
+    setUnpaidReason("");
+    setUnpaidConfirm({ userId, name, dayKey, next, currentReason });
+  };
+
+  const applyUnpaid = async () => {
+    if (!unpaidConfirm || markingLeave) return;
+    const { userId, dayKey, next } = unpaidConfirm;
     setMarkingLeave(true);
     try {
       const token = await AsyncStorage.getItem("token");
       if (!token) return;
-      await hrMarkUnpaidLeave(token, leaveMenuFor.member.id, date, unpaid);
-      notify(unpaid ? "Marked as unpaid leave" : "Unpaid leave removed");
-      setLeaveMenuFor(null);
+      await hrMarkUnpaidLeave(
+        token,
+        userId,
+        dayKey,
+        next,
+        unpaidReason.trim() || undefined
+      );
+      notify(next ? "Marked as unpaid leave" : "Unpaid leave removed");
+      setUnpaidConfirm(null);
+      setUnpaidReason("");
       load();
     } catch (err: any) {
       notify("Couldn't update", err?.message || "");
     } finally {
       setMarkingLeave(false);
     }
+  };
+
+  const markUnpaid = (unpaid: boolean) => {
+    if (!leaveMenuFor) return;
+    const row = leaveMenuFor.row;
+    setLeaveMenuFor(null);
+    askUnpaid(
+      leaveMenuFor.member.id,
+      leaveMenuFor.member.name,
+      date,
+      unpaid,
+      row?.unpaidReason
+    );
   };
 
   // Day view: one entry per employee (so people with no check-in still show).
@@ -443,7 +492,17 @@ export default function HrAttendance() {
         <View style={[styles.statusPill, { backgroundColor: tone.bg }]}>
           <Text style={[styles.statusText, { color: tone.fg }]}>{pill}</Text>
         </View>
-        <TouchableOpacity hitSlop={10} style={styles.rowMenuBtn} onPress={() => setLeaveMenuFor(e)}>
+        <TouchableOpacity
+          hitSlop={10}
+          style={styles.rowMenuBtn}
+          // Nested inside the row's Touchable: on react-native-web the outer
+          // onPress fires too, so the detail sheet opened over this menu and
+          // the unpaid-leave actions looked missing.
+          onPress={(ev: any) => {
+            ev?.stopPropagation?.();
+            setLeaveMenuFor(e);
+          }}
+        >
           <Ionicons name="ellipsis-vertical" size={16} color={c.textMuted} />
         </TouchableOpacity>
       </TouchableOpacity>
@@ -974,7 +1033,88 @@ export default function HrAttendance() {
             monthStr={month}
             rows={rows.filter((r) => r.userId === calFor.id)}
             holidayMap={holidayMap}
+            // Lets HR pick any day of the month here instead of stepping the
+            // whole screen day by day to reach it.
+            onToggleUnpaid={(dayKey, next, rec) =>
+              askUnpaid(
+                calFor.id,
+                calFor.name,
+                dayKey,
+                next,
+                (rec as any)?.unpaidReason
+              )
+            }
           />
+        )}
+      </WebModal>
+
+      {/* Confirm marking / clearing an unpaid day, with an optional reason. */}
+      <WebModal
+        visible={!!unpaidConfirm}
+        onClose={() => setUnpaidConfirm(null)}
+        title={
+          unpaidConfirm?.next
+            ? "Mark as unpaid leave?"
+            : "Remove unpaid leave?"
+        }
+        subtitle={
+          unpaidConfirm
+            ? `${unpaidConfirm.name} · ${prettyDate(unpaidConfirm.dayKey)}`
+            : undefined
+        }
+        size="sm"
+        scrollable={false}
+        footer={
+          <ModalActions align="spread">
+            <TouchableOpacity
+              style={styles.uCancel}
+              onPress={() => setUnpaidConfirm(null)}
+              disabled={markingLeave}
+            >
+              <Text style={styles.uCancelText}>Cancel</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[styles.uConfirm, markingLeave && { opacity: 0.5 }]}
+              onPress={applyUnpaid}
+              disabled={markingLeave}
+            >
+              {markingLeave ? (
+                <ActivityIndicator color="#fff" size="small" />
+              ) : (
+                <Text style={styles.uConfirmText}>
+                  {unpaidConfirm?.next ? "Mark unpaid" : "Remove"}
+                </Text>
+              )}
+            </TouchableOpacity>
+          </ModalActions>
+        }
+      >
+        <Text style={styles.uBody}>
+          {unpaidConfirm?.next
+            ? "This day becomes Loss of Pay — it is excluded from paid days and deducted in payroll. Any existing record for the day is replaced."
+            : "This clears the unpaid marker and deletes the day's record. Attendance for the day goes back to having no entry."}
+        </Text>
+
+        {!unpaidConfirm?.next && !!unpaidConfirm?.currentReason && (
+          <Text style={styles.uCurrent}>
+            Marked because: {unpaidConfirm.currentReason}
+          </Text>
+        )}
+
+        {unpaidConfirm?.next && (
+          <>
+            <Text style={styles.uLabel}>REASON (OPTIONAL)</Text>
+            <TextInput
+              style={styles.uInput}
+              value={unpaidReason}
+              onChangeText={setUnpaidReason}
+              placeholder="e.g. Unapproved absence"
+              placeholderTextColor={c.textFaint}
+              editable={!markingLeave}
+              multiline
+              maxLength={300}
+            />
+          </>
         )}
       </WebModal>
 
@@ -1165,6 +1305,56 @@ const makeStyles = (c: any) =>
     statusPill: { paddingHorizontal: 9, paddingVertical: 4, borderRadius: 999 },
     statusText: { fontSize: 10, fontWeight: "800", letterSpacing: 0.5 },
     rowMenuBtn: { width: 26, height: 30, alignItems: "center", justifyContent: "center" },
+    uBody: { color: c.textMuted, fontSize: 13, lineHeight: 19 },
+    uCurrent: {
+      color: c.text,
+      fontSize: 12.5,
+      marginTop: 10,
+      padding: 10,
+      borderRadius: 8,
+      backgroundColor: c.surfaceMuted,
+    },
+    uLabel: {
+      color: c.textFaint,
+      fontSize: 11,
+      fontWeight: "700",
+      letterSpacing: 0.6,
+      marginTop: 16,
+      marginBottom: 6,
+    },
+    uInput: {
+      borderWidth: 1,
+      borderColor: c.surfaceBorder,
+      backgroundColor: c.surface,
+      borderRadius: 10,
+      paddingHorizontal: 12,
+      paddingVertical: 10,
+      color: c.text,
+      fontSize: 14,
+      minHeight: 68,
+      textAlignVertical: "top",
+    },
+    uCancel: {
+      flex: 1,
+      minHeight: 44,
+      borderRadius: 10,
+      borderWidth: 1,
+      borderColor: c.surfaceBorder,
+      alignItems: "center",
+      justifyContent: "center",
+      ...(Platform.OS === "web" ? { cursor: "pointer" as any } : {}),
+    },
+    uCancelText: { color: c.text, fontSize: 14, fontWeight: "600" },
+    uConfirm: {
+      flex: 1,
+      minHeight: 44,
+      borderRadius: 10,
+      backgroundColor: ATT.unpaid,
+      alignItems: "center",
+      justifyContent: "center",
+      ...(Platform.OS === "web" ? { cursor: "pointer" as any } : {}),
+    },
+    uConfirmText: { color: "#fff", fontSize: 14, fontWeight: "700" },
     menuItem: {
       flexDirection: "row",
       alignItems: "center",

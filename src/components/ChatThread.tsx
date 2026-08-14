@@ -24,11 +24,13 @@ import { Image } from "expo-image";
 import * as DocumentPicker from "expo-document-picker";
 import { mediaUrl } from "../utils/media";
 import { Avatar } from "./Avatar";
+import { UserProfileSheet, ProfileSeed } from "./UserProfileSheet";
 
 import { Ionicons } from "@expo/vector-icons";
 
 import { ChatMessage, ChatAttachment, User } from "../types";
 import { useTheme } from "../theme/ThemeProvider";
+import { ModalToastHost } from "./ModalToastHost";
 
 export interface MentionUser {
   id: string;
@@ -102,6 +104,7 @@ const ChatThreadInner = ({
   const [error, setError] = useState<string | null>(null);
   const [editing, setEditing] = useState<ChatMessage | null>(null);
   const [actionMsg, setActionMsg] = useState<ChatMessage | null>(null);
+  const [profileFor, setProfileFor] = useState<ProfileSeed | null>(null);
   // Fullscreen image viewer (lightbox) for tapped image attachments.
   const [viewerUri, setViewerUri] = useState<string | null>(null);
   const [emojiOpen, setEmojiOpen] = useState(false);
@@ -445,19 +448,48 @@ const ChatThreadInner = ({
             >
               {!mine &&
                 (showHead ? (
-                  <Avatar
-                    name={m.user?.name}
-                    uri={m.user?.profilePictureUrl}
-                    size={28}
-                    style={styles.msgAvatar}
-                    zoomable
-                  />
+                  // Tapping a sender opens their profile card, the way a
+                  // chat app is expected to behave. `zoomable` is dropped
+                  // here: two gestures on one 28px avatar is a coin toss,
+                  // and the profile sheet shows the photo large anyway.
+                  <TouchableOpacity
+                    onPress={() =>
+                      m.user?.id &&
+                      setProfileFor({
+                        id: m.user.id,
+                        name: m.user?.name,
+                        profilePictureUrl: m.user?.profilePictureUrl,
+                      })
+                    }
+                    activeOpacity={0.7}
+                  >
+                    <Avatar
+                      name={m.user?.name}
+                      uri={m.user?.profilePictureUrl}
+                      size={28}
+                      style={styles.msgAvatar}
+                    />
+                  </TouchableOpacity>
                 ) : (
                   <View style={styles.msgAvatarSpacer} />
                 ))}
 
               <View style={[styles.bubbleCol, { alignItems: mine ? "flex-end" : "flex-start" }]}>
-                {showHead && !mine && <Text style={styles.author}>{m.user?.name || "User"}</Text>}
+                {showHead && !mine && (
+                  <TouchableOpacity
+                    onPress={() =>
+                      m.user?.id &&
+                      setProfileFor({
+                        id: m.user.id,
+                        name: m.user?.name,
+                        profilePictureUrl: m.user?.profilePictureUrl,
+                      })
+                    }
+                    activeOpacity={0.7}
+                  >
+                    <Text style={styles.author}>{m.user?.name || "User"}</Text>
+                  </TouchableOpacity>
+                )}
 
                 <TouchableOpacity
                   activeOpacity={0.7}
@@ -655,7 +687,8 @@ const ChatThreadInner = ({
             <SheetItem icon="close-outline" label="Cancel" c={c} styles={styles} onPress={() => setActionMsg(null)} />
           </View>
         </TouchableOpacity>
-      </Modal>
+        <ModalToastHost />
+    </Modal>
 
       {/* Fullscreen image viewer (lightbox) */}
       <Modal
@@ -679,7 +712,14 @@ const ChatThreadInner = ({
         <TouchableOpacity style={styles.viewerOpen} onPress={() => openExternal(viewerUri || undefined)} hitSlop={12}>
           <Ionicons name="open-outline" size={22} color="#fff" />
         </TouchableOpacity>
-      </Modal>
+        <ModalToastHost />
+    </Modal>
+
+      {/* Tap a sender's avatar or name to see their profile. */}
+      <UserProfileSheet
+        person={profileFor}
+        onClose={() => setProfileFor(null)}
+      />
     </KeyboardAvoidingView>
   );
 };

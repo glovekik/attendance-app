@@ -9,6 +9,9 @@ import { API_URL } from "../config";
 
 // ===== HR salary structure =====
 export interface SalaryStructurePayload {
+  /** Company-provided accommodation: drops HRA to 0 and moves its share
+   *  into Other Allowance. See utils/salaryFormula. */
+  accommodation?: boolean;
   basic: number;
   hra: number;
   communicationAllowance: number;

@@ -33,6 +33,8 @@ import {
   getUpcomingEvents,
   UpcomingEvents,
 } from "../services/dashboard";
+import { unregisterPushToken } from "../services/notifications";
+import { logoutSession } from "../services/session";
 import { User, hasRole, isManager, isCEO } from "../types";
 import { SIDEBAR_WIDTH } from "../utils/responsive";
 
@@ -309,10 +311,13 @@ export const SidebarNav = ({
     );
   };
 
-  // Group tabs by section
-  const mainTabs = tabs.filter((t) => t.section !== "admin" && t.section !== "settings");
+  // Group tabs by section. "settings" (My Profile) is deliberately NOT
+  // rendered as a nav row — the user card in the footer already links there,
+  // and listing it twice was the reason this array sat unused.
+  const mainTabs = tabs.filter(
+    (t) => t.section !== "admin" && t.section !== "settings"
+  );
   const adminTabs = tabs.filter((t) => t.section === "admin");
-  const settingsTabs = tabs.filter((t) => t.section === "settings");
 
   const styles = useMemo(() => makeStyles(theme.colors, collapsed), [theme.colors, collapsed]);
 
@@ -377,6 +382,25 @@ export const SidebarNav = ({
     );
   };
 
+  // Mirrors profile.tsx's handleLogout so both entry points tear the session
+  // down the same way — drop the push token first (best-effort, so a dead
+  // network can't strand the user in a logged-in shell), then clear session.
+  const [loggingOut, setLoggingOut] = useState(false);
+  const handleLogout = async () => {
+    if (loggingOut) return;
+    try {
+      setLoggingOut(true);
+      const token = await AsyncStorage.getItem("token");
+      if (token) await unregisterPushToken(token).catch(() => {});
+      await logoutSession();
+      router.replace("/login" as any);
+    } catch (err) {
+      console.log("Logout error:", err);
+    } finally {
+      setLoggingOut(false);
+    }
+  };
+
   // Get user initials for avatar
   const getInitials = (name?: string) => {
     if (!name) return "U";
@@ -387,157 +411,105 @@ export const SidebarNav = ({
     return name.slice(0, 2).toUpperCase();
   };
 
+  // Four upcoming-event lists that differ only by icon, label and how the
+  // "when" reads. They were four near-identical 35-line blocks; describing
+  // them as data keeps one rendering path and one place to restyle.
   const renderUpcoming = () => {
     if (collapsed || !upcoming) return null;
-    const holidays = upcoming.holidays || [];
-    const birthdays = upcoming.birthdays || [];
-    const anniversaries = upcoming.anniversaries || [];
-    const newJoiners = upcoming.newJoiners || [];
-    if (
-      holidays.length === 0 &&
-      birthdays.length === 0 &&
-      anniversaries.length === 0 &&
-      newJoiners.length === 0
-    )
-      return null;
+
+    interface EventGroup {
+      title: string;
+      items: any[];
+      max: number;
+      /** Avatar-style rows show a photo; holidays show a glyph. */
+      icon?: keyof typeof Ionicons.glyphMap;
+      when: (x: any) => string;
+    }
+
+    const groups: EventGroup[] = ([
+      {
+        title: "Upcoming Holidays",
+        items: upcoming.holidays || [],
+        max: 3,
+        icon: "sparkles-outline",
+        when: (h: any) => whenLabel(h.daysUntil, h.date),
+      },
+      {
+        title: "Birthdays",
+        items: upcoming.birthdays || [],
+        max: 4,
+        when: (b: any) => `🎂 ${whenLabel(b.daysUntil, b.birthday)}`,
+      },
+      {
+        title: "Work Anniversaries",
+        items: upcoming.anniversaries || [],
+        max: 4,
+        when: (a: any) =>
+          `🎉 ${a.years} yr${a.years === 1 ? "" : "s"} · ${whenLabel(
+            a.daysUntil,
+            a.joiningDate
+          )}`,
+      },
+      {
+        title: "New Joiners",
+        items: upcoming.newJoiners || [],
+        max: 4,
+        when: (n: any) =>
+          `👋 ${n.daysAgo === 0 ? "Joined today" : `Joined ${n.daysAgo}d ago`}`,
+      },
+    ] as EventGroup[]).filter((g) => g.items.length > 0);
+
+    if (groups.length === 0) return null;
 
     return (
       <View>
-        {holidays.length > 0 && (
-          <View style={styles.section}>
-            <Text style={styles.sectionTitle}>Upcoming Holidays</Text>
-            {holidays.slice(0, 3).map((h) => (
-              <View key={`${h.date}-${h.name}`} style={styles.eventRow}>
-                <View
-                  style={[
-                    styles.eventIcon,
-                    { backgroundColor: theme.colors.accentSoft },
-                  ]}
-                >
-                  <Ionicons
-                    name="sparkles-outline"
-                    size={14}
-                    color={theme.colors.accent}
-                  />
-                </View>
-                <View style={styles.eventInfo}>
-                  <Text style={styles.eventName} numberOfLines={1}>
-                    {h.name}
-                  </Text>
-                  <Text style={styles.eventWhen}>
-                    {whenLabel(h.daysUntil, h.date)}
-                  </Text>
-                </View>
-              </View>
-            ))}
-          </View>
-        )}
-
-        {birthdays.length > 0 && (
-          <View style={styles.section}>
-            <Text style={styles.sectionTitle}>Birthdays</Text>
-            {birthdays.slice(0, 4).map((b) => (
-              <View key={b.id} style={styles.eventRow}>
-                <View
-                  style={[
-                    styles.birthdayAvatar,
-                    { backgroundColor: theme.colors.accent },
-                  ]}
-                >
-                  {b.profilePictureUrl ? (
-                    <Image
-                      source={{ uri: b.profilePictureUrl }}
-                      style={styles.birthdayAvatarImg}
+        {groups.map((g) => (
+          <View key={g.title} style={styles.section}>
+            <Text style={styles.sectionTitle}>{g.title}</Text>
+            {g.items.slice(0, g.max).map((it, i) => (
+              <View key={it.id || `${g.title}-${i}`} style={styles.eventRow}>
+                {g.icon ? (
+                  <View
+                    style={[
+                      styles.eventIcon,
+                      { backgroundColor: theme.colors.accentSoft },
+                    ]}
+                  >
+                    <Ionicons
+                      name={g.icon}
+                      size={14}
+                      color={theme.colors.accent}
                     />
-                  ) : (
-                    <Text style={styles.birthdayInitials}>
-                      {getInitials(b.name)}
-                    </Text>
-                  )}
-                </View>
+                  </View>
+                ) : (
+                  <View
+                    style={[
+                      styles.birthdayAvatar,
+                      { backgroundColor: theme.colors.accent },
+                    ]}
+                  >
+                    {it.profilePictureUrl ? (
+                      <Image
+                        source={{ uri: it.profilePictureUrl }}
+                        style={styles.birthdayAvatarImg}
+                      />
+                    ) : (
+                      <Text style={styles.birthdayInitials}>
+                        {getInitials(it.name)}
+                      </Text>
+                    )}
+                  </View>
+                )}
                 <View style={styles.eventInfo}>
                   <Text style={styles.eventName} numberOfLines={1}>
-                    {b.name}
+                    {it.name}
                   </Text>
-                  <Text style={styles.eventWhen}>
-                    🎂 {whenLabel(b.daysUntil, b.birthday)}
-                  </Text>
+                  <Text style={styles.eventWhen}>{g.when(it)}</Text>
                 </View>
               </View>
             ))}
           </View>
-        )}
-
-        {anniversaries.length > 0 && (
-          <View style={styles.section}>
-            <Text style={styles.sectionTitle}>Work Anniversaries</Text>
-            {anniversaries.slice(0, 4).map((a) => (
-              <View key={a.id} style={styles.eventRow}>
-                <View
-                  style={[
-                    styles.birthdayAvatar,
-                    { backgroundColor: theme.colors.accent },
-                  ]}
-                >
-                  {a.profilePictureUrl ? (
-                    <Image
-                      source={{ uri: a.profilePictureUrl }}
-                      style={styles.birthdayAvatarImg}
-                    />
-                  ) : (
-                    <Text style={styles.birthdayInitials}>
-                      {getInitials(a.name)}
-                    </Text>
-                  )}
-                </View>
-                <View style={styles.eventInfo}>
-                  <Text style={styles.eventName} numberOfLines={1}>
-                    {a.name}
-                  </Text>
-                  <Text style={styles.eventWhen}>
-                    🎉 {a.years} yr{a.years === 1 ? "" : "s"} ·{" "}
-                    {whenLabel(a.daysUntil, a.joiningDate)}
-                  </Text>
-                </View>
-              </View>
-            ))}
-          </View>
-        )}
-
-        {newJoiners.length > 0 && (
-          <View style={styles.section}>
-            <Text style={styles.sectionTitle}>New Joiners</Text>
-            {newJoiners.slice(0, 4).map((n) => (
-              <View key={n.id} style={styles.eventRow}>
-                <View
-                  style={[
-                    styles.birthdayAvatar,
-                    { backgroundColor: theme.colors.accent },
-                  ]}
-                >
-                  {n.profilePictureUrl ? (
-                    <Image
-                      source={{ uri: n.profilePictureUrl }}
-                      style={styles.birthdayAvatarImg}
-                    />
-                  ) : (
-                    <Text style={styles.birthdayInitials}>
-                      {getInitials(n.name)}
-                    </Text>
-                  )}
-                </View>
-                <View style={styles.eventInfo}>
-                  <Text style={styles.eventName} numberOfLines={1}>
-                    {n.name}
-                  </Text>
-                  <Text style={styles.eventWhen}>
-                    👋 {n.daysAgo === 0 ? "Joined today" : `Joined ${n.daysAgo}d ago`}
-                  </Text>
-                </View>
-              </View>
-            ))}
-          </View>
-        )}
+        ))}
       </View>
     );
   };
@@ -547,8 +519,10 @@ export const SidebarNav = ({
       {/* Logo / Brand - Clean Keka-style header */}
       <View style={styles.header}>
         <View style={styles.logoContainer}>
+          {/* Transparent PNG, not the JPEG: the JPEG carries an opaque white
+              background that renders as a white box on the dark theme. */}
           <Image
-            source={require("../../assets/images/logo.jpg")}
+            source={require("../../assets/images/company-logo.png")}
             style={styles.logoImg}
             resizeMode="contain"
           />
@@ -613,6 +587,31 @@ export const SidebarNav = ({
             />
           )}
         </Pressable>
+
+        <Pressable
+          style={({ hovered, pressed }: any) => [
+            styles.logoutBtn,
+            hovered && styles.logoutBtnHover,
+            pressed && styles.logoutBtnPressed,
+          ]}
+          onPress={handleLogout}
+          disabled={loggingOut}
+          accessibilityRole="button"
+          accessibilityLabel="Log out"
+        >
+          <View style={styles.iconContainer}>
+            <Ionicons
+              name="log-out-outline"
+              size={20}
+              color={theme.colors.dangerText}
+            />
+          </View>
+          {!collapsed && (
+            <Text style={styles.logoutLabel} numberOfLines={1}>
+              {loggingOut ? "Logging out…" : "Log out"}
+            </Text>
+          )}
+        </Pressable>
       </View>
     </View>
   );
@@ -640,14 +639,6 @@ const makeStyles = (colors: any, collapsed: boolean) =>
       alignItems: "center",
       gap: 12,
       justifyContent: collapsed ? "center" : "flex-start",
-    },
-    logoIcon: {
-      width: 36,
-      height: 36,
-      borderRadius: 8,
-      backgroundColor: colors.accent,
-      alignItems: "center",
-      justifyContent: "center",
     },
     logoImg: {
       width: 40,
@@ -848,5 +839,32 @@ const makeStyles = (colors: any, collapsed: boolean) =>
       fontWeight: "400",
       color: colors.textMuted,
       marginTop: 1,
+    },
+    logoutBtn: {
+      flexDirection: "row",
+      alignItems: "center",
+      paddingVertical: 10,
+      paddingHorizontal: collapsed ? 8 : 12,
+      marginTop: 4,
+      borderRadius: 10,
+      gap: 12,
+      justifyContent: collapsed ? "center" : "flex-start",
+      ...(Platform.OS === "web" && {
+        transition: "background-color 0.15s ease" as any,
+        cursor: "pointer" as any,
+      }),
+    },
+    logoutBtnHover: {
+      backgroundColor: colors.dangerBg,
+    },
+    logoutBtnPressed: {
+      backgroundColor: colors.dangerBg,
+      opacity: 0.85,
+    },
+    logoutLabel: {
+      fontSize: 14,
+      fontWeight: "600",
+      color: colors.dangerText,
+      flex: 1,
     },
   });

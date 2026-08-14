@@ -27,6 +27,7 @@ import {
   markChatRead,
   DeleteScope } from "../../src/services/chat";
 import { chatUnreadStore } from "../../src/services/chatUnread";
+import { clearChatNotifications } from "../../src/services/chatNotifications";
 import { uploadFile } from "../../src/services/uploads";
 import { AttachInput } from "../../src/components/ChatThread";
 
@@ -83,6 +84,9 @@ export default function OfficeChat() {
       markChatRead(token).catch(() => {});
       // Clear the badge everywhere immediately — viewing the chat reads it.
       chatUnreadStore.set(0);
+      // Drop the grouped notification card and its stored message history —
+      // without this the next message re-displays ones already read.
+      clearChatNotifications("office").catch(() => {});
       try {
         const [user, directory] = await Promise.all([
           getMe(token),

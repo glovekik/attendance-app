@@ -30,6 +30,29 @@ import {
 
 type FilterTab = "ALL" | TimesheetStatus;
 
+const MONTH_NAMES = [
+  "January", "February", "March", "April", "May", "June",
+  "July", "August", "September", "October", "November", "December",
+];
+
+/** "2026-07" -> "July 2026". */
+const monthLabel = (key: string): string => {
+  const [y, m] = key.split("-").map(Number);
+  if (!y || !m || m < 1 || m > 12) return key;
+  return `${MONTH_NAMES[m - 1]} ${y}`;
+};
+
+/** "09:30" from an ISO timestamp; "—" when nothing was recorded. */
+const fmtTime = (v?: string | null): string => {
+  if (!v) return "—";
+  const d = new Date(v);
+  if (isNaN(d.getTime())) return "—";
+  return d.toLocaleTimeString(undefined, {
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+};
+
 const TABS: { key: FilterTab; label: string }[] = [
   { key: "ALL", label: "All" },
   { key: "PENDING", label: "Pending" },
@@ -48,6 +71,57 @@ export default function HrTimesheets() {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [selected, setSelected] = useState<Timesheet | null>(null);
+
+  // Two ways to read the same queue. "list" is the review inbox — what came
+  // in, newest first. "employee" answers the other question HR asks: what has
+  // one person filed, and when. Both drive the same detail modal, so there is
+  // one place a timesheet is ever displayed.
+  const [view, setView] = useState<"list" | "employee">("list");
+  const [drillUser, setDrillUser] = useState<string | null>(null);
+  const [drillMonth, setDrillMonth] = useState<string | null>(null);
+
+  const nameOf = (t: Timesheet) =>
+    (t as any).user?.name || t.userId || "Unknown";
+
+  /** userId -> { name, sheets } for the employee level. */
+  const byEmployee = useMemo(() => {
+    const map = new Map<string, { name: string; sheets: Timesheet[] }>();
+    for (const t of items) {
+      const key = t.userId || "unknown";
+      const entry = map.get(key);
+      if (entry) entry.sheets.push(t);
+      else map.set(key, { name: nameOf(t), sheets: [t] });
+    }
+    return [...map.entries()]
+      .map(([id, v]) => ({ id, ...v }))
+      .sort((a, b) => b.sheets.length - a.sheets.length);
+  }, [items]);
+
+  /** "YYYY-MM" -> that month's sheets, for the drilled-into employee. */
+  const monthsForUser = useMemo(() => {
+    if (!drillUser) return [];
+    const mine = items.filter((t) => t.userId === drillUser);
+    const map = new Map<string, Timesheet[]>();
+    for (const t of mine) {
+      const k = (t.weekStart || "").slice(0, 7);
+      if (!k) continue;
+      const list = map.get(k);
+      if (list) list.push(t);
+      else map.set(k, [t]);
+    }
+    return [...map.entries()]
+      .map(([key, sheets]) => ({
+        key,
+        sheets: [...sheets].sort((a, b) =>
+          b.weekStart.localeCompare(a.weekStart)
+        ),
+        totalHours: sheets.reduce((s, t) => s + (t.totalHours || 0), 0),
+      }))
+      .sort((a, b) => b.key.localeCompare(a.key));
+  }, [items, drillUser]);
+
+  const drillUserName =
+    byEmployee.find((e) => e.id === drillUser)?.name || "Employee";
 
   const load = useCallback(async () => {
     try {
@@ -84,12 +158,60 @@ export default function HrTimesheets() {
   return (
     <SafeAreaView style={styles.safe}>
       <View style={styles.header}>
-        <TouchableOpacity onPress={() => (router.canGoBack() ? router.back() : router.replace("/"))}>
+        <TouchableOpacity
+          onPress={() => {
+            // Walk up the drill-down before leaving the screen.
+            if (drillMonth) return setDrillMonth(null);
+            if (drillUser) return setDrillUser(null);
+            router.canGoBack() ? router.back() : router.replace("/");
+          }}
+        >
           <Ionicons name="arrow-back" size={24} color={c.text} />
         </TouchableOpacity>
-        <Text style={styles.title}>Timesheets (HR)</Text>
+        <Text style={styles.title} numberOfLines={1}>
+          {drillMonth
+            ? monthLabel(drillMonth)
+            : drillUser
+            ? drillUserName
+            : "Timesheets (HR)"}
+        </Text>
         <View style={{ width: 24 }} />
       </View>
+
+      {/* One screen, two readings of the same data. Hidden while drilled in —
+          switching grouping mid-drill would be disorienting. */}
+      {!drillUser && (
+        <View style={styles.viewToggle}>
+          {(["list", "employee"] as const).map((mode) => (
+            <TouchableOpacity
+              key={mode}
+              style={[
+                styles.viewBtn,
+                view === mode && styles.viewBtnActive,
+              ]}
+              onPress={() => {
+                setView(mode);
+                setDrillUser(null);
+                setDrillMonth(null);
+              }}
+            >
+              <Ionicons
+                name={mode === "list" ? "list-outline" : "people-outline"}
+                size={15}
+                color={view === mode ? c.accent : c.textMuted}
+              />
+              <Text
+                style={[
+                  styles.viewBtnText,
+                  view === mode && { color: c.accent },
+                ]}
+              >
+                {mode === "list" ? "All sheets" : "By employee"}
+              </Text>
+            </TouchableOpacity>
+          ))}
+        </View>
+      )}
 
       {/* Shared control, so this queue matches every other approval screen. */}
       <StatusTabs
@@ -128,6 +250,121 @@ export default function HrTimesheets() {
         <View style={styles.loader}>
           <ActivityIndicator size="large" color={c.accent} />
         </View>
+      ) : view === "employee" && !drillUser ? (
+        /* Level 1 — employees who have sheets in the current filter. */
+        <FlatList
+          data={byEmployee}
+          keyExtractor={(e) => e.id}
+          contentContainerStyle={
+            byEmployee.length === 0 ? styles.emptyWrap : { padding: 12 }
+          }
+          refreshControl={
+            <RefreshControl
+              refreshing={refreshing}
+              onRefresh={onRefresh}
+              tintColor={c.accent}
+              colors={[c.accent]}
+            />
+          }
+          ListEmptyComponent={
+            <View style={styles.empty}>
+              <Ionicons name="people-outline" size={42} color={c.textFaint} />
+              <Text style={styles.emptyText}>
+                No employees with timesheets in this filter
+              </Text>
+            </View>
+          }
+          renderItem={({ item }) => (
+            <TouchableOpacity
+              style={styles.card}
+              activeOpacity={0.8}
+              onPress={() => setDrillUser(item.id)}
+            >
+              <View style={styles.cardTop}>
+                <Text style={styles.who}>{item.name}</Text>
+                <Ionicons
+                  name="chevron-forward"
+                  size={18}
+                  color={c.textMuted}
+                />
+              </View>
+              <Text style={styles.row}>
+                {item.sheets.length} week
+                {item.sheets.length === 1 ? "" : "s"} ·{" "}
+                {item.sheets
+                  .reduce((s, t) => s + (t.totalHours || 0), 0)
+                  .toFixed(1)}{" "}
+                h
+              </Text>
+            </TouchableOpacity>
+          )}
+        />
+      ) : view === "employee" && drillUser && !drillMonth ? (
+        /* Level 2 — that employee's months. */
+        <FlatList
+          data={monthsForUser}
+          keyExtractor={(m) => m.key}
+          contentContainerStyle={{ padding: 12 }}
+          renderItem={({ item }) => (
+            <TouchableOpacity
+              style={styles.card}
+              activeOpacity={0.8}
+              onPress={() => setDrillMonth(item.key)}
+            >
+              <View style={styles.cardTop}>
+                <Text style={styles.who}>{monthLabel(item.key)}</Text>
+                <Ionicons
+                  name="chevron-forward"
+                  size={18}
+                  color={c.textMuted}
+                />
+              </View>
+              <Text style={styles.row}>
+                {item.sheets.length} week
+                {item.sheets.length === 1 ? "" : "s"} ·{" "}
+                {item.totalHours.toFixed(1)} h
+              </Text>
+            </TouchableOpacity>
+          )}
+        />
+      ) : view === "employee" && drillMonth ? (
+        /* Level 3 — that month's weeks. Opens the same detail modal. */
+        <FlatList
+          data={monthsForUser.find((m) => m.key === drillMonth)?.sheets || []}
+          keyExtractor={(t) => t.id || `${t.weekStart}-${t.userId}`}
+          contentContainerStyle={{ padding: 12 }}
+          renderItem={({ item }) => {
+            const sc = timesheetStatusColor(item.status, c);
+            return (
+              <TouchableOpacity
+                style={styles.card}
+                activeOpacity={0.8}
+                onPress={() => setSelected(item)}
+              >
+                <View style={styles.cardTop}>
+                  <Text style={styles.who}>Week of {item.weekStart}</Text>
+                  <View
+                    style={[styles.statusPill, { backgroundColor: sc.bg }]}
+                  >
+                    <Text style={[styles.statusText, { color: sc.fg }]}>
+                      {item.status}
+                    </Text>
+                  </View>
+                </View>
+                <Text style={styles.row}>
+                  {item.totalHours.toFixed(1)} h ·{" "}
+                  {(item.entries || []).length} day
+                  {(item.entries || []).length === 1 ? "" : "s"} logged
+                </Text>
+                {!!item.decisionNote && (
+                  <Text style={styles.note} numberOfLines={2}>
+                    {item.decisionNote}
+                  </Text>
+                )}
+              </TouchableOpacity>
+            );
+          }}
+        />
       ) : (
         <FlatList
           data={items}
@@ -262,20 +499,28 @@ export default function HrTimesheets() {
                 <Text style={styles.labelTop}>Entries</Text>
                 {(selected.entries || []).map(
                   (e: TimesheetEntry, i: number) => (
-                    <View key={i} style={styles.entryRow}>
-                      <Text style={styles.entryDate}>{e.date}</Text>
-                      <Text style={styles.entryHours}>
-                        {e.hours.toFixed(1)} h
-                      </Text>
-                      {!!e.projectId && (
-                        <Text style={styles.entryProj}>
-                          {e.projectId}
+                    // Times and the work note carry the actual evidence of
+                    // what was done; date + hours alone gave an approver
+                    // nothing to approve on.
+                    <View key={i} style={styles.entryBlock}>
+                      <View style={styles.entryRow}>
+                        <Text style={styles.entryDate}>{e.date}</Text>
+                        <Text style={styles.entryTimes}>
+                          {e.exempt
+                            ? e.exemptReason || "Non-working day"
+                            : `${fmtTime(e.checkIn)} – ${fmtTime(e.checkOut)}`}
                         </Text>
-                      )}
-                      {e.billable && (
-                        <View style={styles.tinyPill}>
-                          <Text style={styles.tinyPillText}>BILL</Text>
-                        </View>
+                        <Text style={styles.entryHours}>
+                          {e.exempt ? "—" : `${(e.hours || 0).toFixed(1)} h`}
+                        </Text>
+                        {e.billable && (
+                          <View style={styles.tinyPill}>
+                            <Text style={styles.tinyPillText}>BILL</Text>
+                          </View>
+                        )}
+                      </View>
+                      {!!e.notes && (
+                        <Text style={styles.entryNotes}>{e.notes}</Text>
                       )}
                     </View>
                   )
@@ -386,18 +631,45 @@ const makeStyles = (c: any) => StyleSheet.create({
     marginTop: 12,
     marginBottom: 6 },
   body: { color: c.text, fontSize: 13 },
+  entryBlock: {
+    backgroundColor: c.surface,
+    borderRadius: 8,
+    marginBottom: 6,
+    paddingBottom: 2 },
   entryRow: {
     flexDirection: "row",
     alignItems: "center",
-    backgroundColor: c.surface,
     paddingHorizontal: 10,
     paddingVertical: 8,
-    borderRadius: 8,
-    marginBottom: 4,
     gap: 10 },
-  entryDate: { color: c.text, fontSize: 12, fontWeight: "700", flex: 1 },
+  entryDate: { color: c.text, fontSize: 12, fontWeight: "700", width: 92 },
+  entryTimes: { color: c.textMuted, fontSize: 12, flex: 1 },
   entryHours: { color: "#3b82f6", fontSize: 12, fontWeight: "700" },
+  entryNotes: {
+    color: c.text,
+    fontSize: 12,
+    lineHeight: 17,
+    paddingHorizontal: 10,
+    paddingBottom: 8 },
   entryProj: { color: c.textMuted, fontSize: 11 },
+  viewToggle: {
+    flexDirection: "row",
+    gap: 8,
+    paddingHorizontal: 12,
+    paddingTop: 12 },
+  viewBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: c.surfaceBorder },
+  viewBtnActive: {
+    borderColor: c.accent,
+    backgroundColor: c.accentSoft },
+  viewBtnText: { color: c.textMuted, fontSize: 13, fontWeight: "700" },
   tinyPill: {
     backgroundColor: "#16a34a",
     paddingHorizontal: 6,

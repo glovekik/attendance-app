@@ -222,26 +222,30 @@ export default function ManagerManualRequests() {
         title="Decide request"
         size="md"
         footer={
-          <ModalActions align="spread">
-            <TouchableOpacity
-              style={[styles.btn, styles.btnReject]}
-              onPress={() => onDecide("REJECT")}
-              disabled={acting !== null}
-            >
-              <Text style={styles.btnText}>
-                {acting === "REJECT" ? "..." : "Reject"}
-              </Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={[styles.btn, styles.btnApprove]}
-              onPress={() => onDecide("APPROVE")}
-              disabled={acting !== null}
-            >
-              <Text style={styles.btnText}>
-                {acting === "APPROVE" ? "..." : "Approve"}
-              </Text>
-            </TouchableOpacity>
-          </ModalActions>
+          // Decided requests are read-only; the non-pending tabs open this
+          // same modal and used to keep the buttons live.
+          selected?.status === "PENDING" ? (
+            <ModalActions align="spread">
+              <TouchableOpacity
+                style={[styles.btn, styles.btnReject]}
+                onPress={() => onDecide("REJECT")}
+                disabled={acting !== null}
+              >
+                <Text style={styles.btnText}>
+                  {acting === "REJECT" ? "..." : "Reject"}
+                </Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.btn, styles.btnApprove]}
+                onPress={() => onDecide("APPROVE")}
+                disabled={acting !== null}
+              >
+                <Text style={styles.btnText}>
+                  {acting === "APPROVE" ? "..." : "Approve"}
+                </Text>
+              </TouchableOpacity>
+            </ModalActions>
+          ) : undefined
         }
       >
             {selected && (

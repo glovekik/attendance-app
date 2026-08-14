@@ -31,6 +31,7 @@ import {
 import { addManualEntry } from "../src/services/api";
 
 import { useTheme } from "../src/theme/ThemeProvider";
+import { notify, notifySuccess } from "../src/utils/confirm";
 const isWeb = Platform.OS === "web";
 
 const TYPES = ["OFFICE", "WFH", "LEAVE", "HOLIDAY"];
@@ -87,21 +88,17 @@ export default function Manual() {
   const [showIn, setShowIn] = useState(false);
   const [showOut, setShowOut] = useState(false);
 
-  const [popup, setPopup] = useState({
-    visible: false,
-    type: "success" as "success" | "error",
-    message: "" });
 
   // ================= POPUP =================
+  // Routed through the shared toast host rather than an in-screen View:
+  // a screen-level popup renders BEHIND any open modal, so errors raised
+  // from inside a dialog were invisible. See components/ModalToastHost.
   const showPopup = (
     msg: string,
     kind: "success" | "error" = "success"
   ) => {
-    setPopup({ visible: true, type: kind, message: msg });
-
-    setTimeout(() => {
-      setPopup((p) => ({ ...p, visible: false }));
-    }, 2500);
+    if (kind === "error") notify(msg);
+    else notifySuccess(msg);
   };
 
   // ================= FORMAT =================
@@ -225,20 +222,7 @@ export default function Manual() {
     <SafeAreaView style={styles.safe}>
 
       {/* POPUP */}
-      {popup.visible && (
-        <View
-          style={[
-            styles.popup,
-            popup.type === "success"
-              ? styles.successPopup
-              : styles.errorPopup,
-          ]}
-        >
-          <Text style={styles.popupText}>
-            {popup.message}
-          </Text>
-        </View>
-      )}
+      
 
       <KbAwareScroll
         style={styles.container}

@@ -28,6 +28,8 @@ import { downloadPdfWithAuth } from "../src/utils/download";
 
 import { Payslip, User, isIntern } from "../src/types";
 import { useTheme } from "../src/theme/ThemeProvider";
+import { formatDays } from "../src/utils/leaveDays";
+import { notify, notifySuccess } from "../src/utils/confirm";
 
 const monthLabel = (year: number, month: number) =>
   new Date(year, month - 1, 1).toLocaleDateString("en-US", {
@@ -46,19 +48,16 @@ export default function MyPayroll() {
   const [downloadingId, setDownloadingId] = useState<string | null>(null);
   const [me, setMe] = useState<User | null>(null);
 
-  const [popup, setPopup] = useState({
-    visible: false,
-    type: "success" as "success" | "error",
-    message: "" });
 
+  // Routed through the shared toast host rather than an in-screen View:
+  // a screen-level popup renders BEHIND any open modal, so errors raised
+  // from inside a dialog were invisible. See components/ModalToastHost.
   const showPopup = (
     msg: string,
     kind: "success" | "error" = "success"
   ) => {
-    setPopup({ visible: true, type: kind, message: msg });
-    setTimeout(() => {
-      setPopup((p) => ({ ...p, visible: false }));
-    }, 2500);
+    if (kind === "error") notify(msg);
+    else notifySuccess(msg);
   };
 
   const load = async () => {
@@ -118,16 +117,7 @@ export default function MyPayroll() {
   return (
     <SafeAreaView style={s.safe}>
 
-      {popup.visible && (
-        <View
-          style={[
-            s.popup,
-            popup.type === "success" ? s.popupOk : s.popupErr,
-          ]}
-        >
-          <Text style={s.popupText}>{popup.message}</Text>
-        </View>
-      )}
+      
 
       <ScrollView
         style={s.container}
@@ -186,8 +176,8 @@ export default function MyPayroll() {
                   {monthLabel(p.year, p.month)}
                 </Text>
                 <Text style={s.cardMeta}>
-                  Working {p.attendedDays}/{p.workingDays}
-                  {p.lopDays > 0 ? `  ·  LOP ${p.lopDays}d` : ""}
+                  Working {formatDays(p.attendedDays)}/{formatDays(p.workingDays)}
+                  {p.lopDays > 0 ? `  ·  LOP ${formatDays(p.lopDays)}d` : ""}
                 </Text>
               </View>
               <Text style={s.netPay}>

@@ -40,6 +40,7 @@ import { Ionicons } from "@expo/vector-icons";
 
 import { useTheme } from "../theme/ThemeProvider";
 import { useResponsive } from "../utils/responsive";
+import { ModalToastHost } from "./ModalToastHost";
 
 type ModalSize = "sm" | "md" | "lg" | "xl" | "full";
 
@@ -223,7 +224,15 @@ export const WebModal = ({
 
             {/* Content */}
             <ContentWrapper
-              style={styles.content}
+              // contentContainerStyle is a ScrollView-only prop, so the
+              // non-scrollable path (a plain View) silently dropped the body
+              // padding and sat flush against the card edge while the header
+              // and footer stayed inset. Apply it directly in that case.
+              style={
+                scrollable
+                  ? styles.content
+                  : [styles.content, styles.contentInner]
+              }
               contentContainerStyle={scrollable ? styles.contentInner : undefined}
               showsVerticalScrollIndicator={false}
               // Let buttons/inputs receive the tap on the first touch while
@@ -248,6 +257,10 @@ export const WebModal = ({
             )}
           </View>
         </View>
+
+        {/* Errors raised inside a modal must render above it. */}
+        <ModalToastHost />
+
       </KeyboardAvoidingView>
     </Modal>
   );

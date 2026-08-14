@@ -54,10 +54,16 @@ export interface CalRow {
   clientName?: string | null;
   autoClosedByCron?: boolean;
   unpaid?: boolean;
+  halfDay?: boolean;
+  halfDayPart?: string | null;
 }
 
 const catOf = (r?: CalRow): Cat => {
   if (!r) return "absent";
+  // Half-day leave is half a working day, so it reads as a half day rather
+  // than a full "on leave" — checked before the LEAVE branch, which would
+  // otherwise swallow it and show the day as entirely off.
+  if (r.halfDay) return "halfday";
   if (r.attendanceType === "LEAVE") return "leave";
   // Worked part of the day and took the rest off. Checked BEFORE the office /
   // WFH split: where the person sat matters less than that half the day is
@@ -105,6 +111,7 @@ export function AttendanceCalendar({
   onAddRecord,
   onEdit,
   onDelete,
+  onToggleUnpaid,
   correctionByDate = {},
 }: {
   monthStr: string; // "YYYY-MM"
@@ -121,6 +128,10 @@ export function AttendanceCalendar({
   /** HR actions on an existing record. */
   onEdit?: (rec: CalRow) => void;
   onDelete?: (rec: CalRow) => void;
+  /** HR only: mark/clear this day as unpaid (LOP) leave. Works on a day with
+   *  no record too — that's the common case, since an unpaid day is usually
+   *  one nobody checked in on. `next` is the state being moved TO. */
+  onToggleUnpaid?: (dayKey: string, next: boolean, rec?: CalRow) => void;
   /** Latest correction status per date, so the panel can show pending state. */
   correctionByDate?: Record<string, "PENDING" | "APPROVED" | "REJECTED">;
 }) {
@@ -192,7 +203,21 @@ export function AttendanceCalendar({
           ? { color: ATT.unpaid, softBg: ATT_BG.unpaid, letter: "U", label: "Unpaid leave", rec, key }
           : { color: ATT.leave, softBg: ATT_BG.leave, letter: "L", label: "On leave", rec, key };
       }
-      if (cat === "halfday") return { color: ATT.halfday, softBg: ATT_BG.halfday, letter: ATT_LETTER.halfday, label: "Half day — worked part of the day", rec, key };
+      if (cat === "halfday") {
+        // Two ways to land here: half a day of approved leave, or a short
+        // worked day. Same swatch, but the tooltip should say which.
+        const part = rec.halfDayPart === "SECOND" ? "second half" : "first half";
+        return {
+          color: ATT.halfday,
+          softBg: ATT_BG.halfday,
+          letter: ATT_LETTER.halfday,
+          label: rec.halfDay
+            ? `Half day leave — ${part} off`
+            : "Half day — worked part of the day",
+          rec,
+          key,
+        };
+      }
       if (cat === "absent") return { color: ATT.absent, softBg: ATT_BG.absent, letter: "N", label: "No record found", rec, key };
       if (cat === "client") return { color: ATT.present, softBg: ATT_BG.present, letter: "C", label: "At client", rec, key };
       if (cat === "wfh") return { color: ATT.wfh, softBg: ATT_BG.wfh, letter: "W", label: "Work from home", rec, key };
@@ -212,7 +237,11 @@ export function AttendanceCalendar({
   const selCorrection = sel ? correctionByDate[sel] : undefined;
   const isFuture = !!sel && sel > todayY;
   const interactive =
-    !!onRequestCorrection || !!onAddRecord || !!onEdit || !!onDelete;
+    !!onRequestCorrection ||
+    !!onAddRecord ||
+    !!onEdit ||
+    !!onDelete ||
+    !!onToggleUnpaid;
 
   return (
     <View>
@@ -417,6 +446,34 @@ export function AttendanceCalendar({
                   </Text>
                 </TouchableOpacity>
               )}
+              {!!onToggleUnpaid && (
+                <TouchableOpacity
+                  style={[styles.actionBtn, styles.actionUnpaid]}
+                  onPress={() =>
+                    onToggleUnpaid(
+                      selInfo.key,
+                      !selInfo.rec?.unpaid,
+                      selInfo.rec
+                    )
+                  }
+                  activeOpacity={0.85}
+                >
+                  <Ionicons
+                    name={
+                      selInfo.rec?.unpaid
+                        ? "close-circle-outline"
+                        : "remove-circle-outline"
+                    }
+                    size={15}
+                    color={ATT.unpaid}
+                  />
+                  <Text style={styles.actionUnpaidText}>
+                    {selInfo.rec?.unpaid
+                      ? "Remove unpaid leave"
+                      : "Mark unpaid leave"}
+                  </Text>
+                </TouchableOpacity>
+              )}
             </View>
           )}
         </View>
@@ -618,6 +675,13 @@ const makeStyles = (c: any) =>
       borderColor: "rgba(220,38,38,0.35)",
     },
     actionDangerText: { color: "#dc2626", fontSize: 12.5, fontWeight: "800" },
+
+    actionUnpaid: {
+      backgroundColor: ATT_BG.unpaid,
+      borderWidth: 1,
+      borderColor: ATT.unpaid,
+    },
+    actionUnpaidText: { color: ATT.unpaid, fontSize: 12.5, fontWeight: "800" },
 
     tapHint: { color: c.textFaint, fontSize: 12, textAlign: "center", marginTop: 14 },
   });

@@ -35,6 +35,7 @@ import { Ionicons } from "@expo/vector-icons";
 
 import { useTheme } from "../theme/ThemeProvider";
 import { User, hasRole, isManager, isCEO } from "../types";
+import { ModalToastHost } from "./ModalToastHost";
 
 interface Command {
   id: string;
@@ -377,6 +378,7 @@ export const CommandPalette = ({ visible, onClose, user }: Props) => {
           </View>
         </Pressable>
       </Pressable>
+      <ModalToastHost />
     </Modal>
   );
 };

@@ -70,6 +70,39 @@ export default function ManagerCorrections() {
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [bulkBusy, setBulkBusy] = useState(false);
 
+  // Filters run client-side over the already-loaded tab — the queue is a
+  // manager's own team, so it is small enough that refetching per keystroke
+  // would cost more than it saves.
+  const [query, setQuery] = useState("");
+  const [fromDate, setFromDate] = useState("");
+  const [toDate, setToDate] = useState("");
+  const [filtersOpen, setFiltersOpen] = useState(false);
+
+  const visibleItems = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    return items.filter((r) => {
+      if (q) {
+        const hay = `${r.user?.name || ""} ${r.user?.email || ""}`.toLowerCase();
+        if (!hay.includes(q)) return false;
+      }
+      // attendanceDate is the day being corrected — the field a reviewer
+      // actually thinks in, not the day the request was filed.
+      const d = r.attendanceDate || r.attendance?.date || "";
+      if (fromDate && (!d || d < fromDate)) return false;
+      if (toDate && (!d || d > toDate)) return false;
+      return true;
+    });
+  }, [items, query, fromDate, toDate]);
+
+  const filtersActive =
+    query.trim() !== "" || fromDate !== "" || toDate !== "";
+
+  const clearFilters = () => {
+    setQuery("");
+    setFromDate("");
+    setToDate("");
+  };
+
   const load = useCallback(async () => {
     try {
       const token = await AsyncStorage.getItem("token");
@@ -160,11 +193,17 @@ export default function ManagerCorrections() {
     });
   };
 
+  // Select-all and the bulk actions operate on what the manager can SEE.
+  // Acting on the unfiltered list would silently approve rows hidden by an
+  // active filter.
   const allSelected =
-    items.length > 0 && selectedIds.size === items.length;
+    visibleItems.length > 0 &&
+    visibleItems.every((i) => selectedIds.has(i.id));
 
   const toggleSelectAll = () => {
-    setSelectedIds(allSelected ? new Set() : new Set(items.map((i) => i.id)));
+    setSelectedIds(
+      allSelected ? new Set() : new Set(visibleItems.map((i) => i.id))
+    );
   };
 
   const confirmBulk = async (count: number): Promise<boolean> => {
@@ -213,9 +252,9 @@ export default function ManagerCorrections() {
     }
   };
 
-  const approveAll = () => approveMany(items);
+  const approveAll = () => approveMany(visibleItems);
   const approveSelected = () =>
-    approveMany(items.filter((i) => selectedIds.has(i.id)));
+    approveMany(visibleItems.filter((i) => selectedIds.has(i.id)));
 
   if (loading) {
     return (
@@ -248,7 +287,67 @@ export default function ManagerCorrections() {
         style={{ paddingHorizontal: 12, marginTop: 12 }}
       />
 
-      {tab === "PENDING" && items.length > 0 && (
+      <View style={styles.filterBar}>
+        <TouchableOpacity
+          style={styles.filterToggle}
+          onPress={() => setFiltersOpen((v) => !v)}
+        >
+          <Ionicons
+            name={filtersOpen ? "chevron-up" : "options-outline"}
+            size={18}
+            color={filtersActive ? c.accent : c.textMuted}
+          />
+          <Text
+            style={[
+              styles.filterToggleText,
+              filtersActive && { color: c.accent },
+            ]}
+          >
+            Filters{filtersActive ? " · on" : ""}
+          </Text>
+        </TouchableOpacity>
+        {filtersActive && (
+          <TouchableOpacity onPress={clearFilters}>
+            <Text style={styles.filterClear}>Clear</Text>
+          </TouchableOpacity>
+        )}
+      </View>
+
+      {filtersOpen && (
+        <View style={styles.filterPanel}>
+          <TextInput
+            style={styles.filterInput}
+            placeholder="Search employee name or email"
+            placeholderTextColor={c.textFaint}
+            value={query}
+            onChangeText={setQuery}
+            autoCapitalize="none"
+          />
+          <View style={styles.filterDates}>
+            <TextInput
+              style={[styles.filterInput, { flex: 1 }]}
+              placeholder="From (YYYY-MM-DD)"
+              placeholderTextColor={c.textFaint}
+              value={fromDate}
+              onChangeText={setFromDate}
+              autoCapitalize="none"
+            />
+            <TextInput
+              style={[styles.filterInput, { flex: 1 }]}
+              placeholder="To (YYYY-MM-DD)"
+              placeholderTextColor={c.textFaint}
+              value={toDate}
+              onChangeText={setToDate}
+              autoCapitalize="none"
+            />
+          </View>
+          <Text style={styles.filterCount}>
+            Showing {visibleItems.length} of {items.length}
+          </Text>
+        </View>
+      )}
+
+      {tab === "PENDING" && visibleItems.length > 0 && (
         <View style={styles.bulkBar}>
           <TouchableOpacity onPress={toggleSelectAll} style={styles.selectAll}>
             <Ionicons
@@ -288,10 +387,10 @@ export default function ManagerCorrections() {
       )}
 
       <FlatList
-        data={items}
+        data={visibleItems}
         keyExtractor={(r) => r.id}
         contentContainerStyle={
-          items.length === 0 ? styles.emptyWrap : { padding: 12 }
+          visibleItems.length === 0 ? styles.emptyWrap : { padding: 12 }
         }
         refreshControl={
           <RefreshControl
@@ -518,6 +617,28 @@ const makeStyles = (c: any) => StyleSheet.create({
     alignItems: "center" },
   who: { color: c.text, fontSize: 15, fontWeight: "700" },
   whoRow: { flexDirection: "row", alignItems: "center", gap: 8 },
+  filterBar: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    paddingHorizontal: 12,
+    paddingTop: 12,
+    paddingBottom: 4 },
+  filterToggle: { flexDirection: "row", alignItems: "center", gap: 6 },
+  filterToggleText: { color: c.textMuted, fontSize: 13, fontWeight: "700" },
+  filterClear: { color: c.accent, fontSize: 13, fontWeight: "700" },
+  filterPanel: { paddingHorizontal: 12, paddingBottom: 10, gap: 8 },
+  filterDates: { flexDirection: "row", gap: 8 },
+  filterInput: {
+    backgroundColor: c.surface,
+    borderWidth: 1,
+    borderColor: c.surfaceBorder,
+    borderRadius: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    color: c.text,
+    fontSize: 14 },
+  filterCount: { color: c.textMuted, fontSize: 12, fontWeight: "600" },
   bulkBar: {
     flexDirection: "row",
     alignItems: "center",

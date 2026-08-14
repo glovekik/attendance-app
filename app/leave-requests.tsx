@@ -36,6 +36,7 @@ import { PageHeader } from "../src/components/PageHeader";
 import { WebModal, ModalActions } from "../src/components/WebModal";
 import { ProButton, Avatar } from "../src/components/ProUI";
 import { FormField, WebTextArea } from "../src/components/WebFormFields";
+import { notify, notifySuccess } from "../src/utils/confirm";
 const BOTTOM_BAR_RESERVED_HEIGHT = 70;
 
 export default function LeaveRequests() {
@@ -66,19 +67,16 @@ export default function LeaveRequests() {
     useState<LeaveRequest | null>(null);
   const [rejectNote, setRejectNote] = useState("");
 
-  const [popup, setPopup] = useState({
-    visible: false,
-    type: "success" as "success" | "error",
-    message: "" });
 
+  // Routed through the shared toast host rather than an in-screen View:
+  // a screen-level popup renders BEHIND any open modal, so errors raised
+  // from inside a dialog were invisible. See components/ModalToastHost.
   const showPopup = (
     msg: string,
     kind: "success" | "error" = "success"
   ) => {
-    setPopup({ visible: true, type: kind, message: msg });
-    setTimeout(() => {
-      setPopup((p) => ({ ...p, visible: false }));
-    }, 2500);
+    if (kind === "error") notify(msg);
+    else notifySuccess(msg);
   };
 
   const load = async () => {
@@ -185,18 +183,7 @@ export default function LeaveRequests() {
   return (
     <SafeAreaView style={styles.safe}>
 
-      {popup.visible && (
-        <View
-          style={[
-            styles.popup,
-            popup.type === "success"
-              ? styles.successPopup
-              : styles.errorPopup,
-          ]}
-        >
-          <Text style={styles.popupText}>{popup.message}</Text>
-        </View>
-      )}
+      
 
       <ScrollView
         style={styles.container}
@@ -349,25 +336,29 @@ export default function LeaveRequests() {
                 </Text>
               ) : null}
 
-              <View style={styles.actions}>
-                <ProButton
-                  label="Reject"
-                  variant="danger"
-                  icon="close-outline"
-                  onPress={() => openReject(r)}
-                  disabled={busyId === r.id}
-                  style={{ flex: 1 }}
-                />
-                <ProButton
-                  label="Approve"
-                  variant="success"
-                  icon="checkmark-outline"
-                  onPress={() => doApprove(r)}
-                  loading={busyId === r.id}
-                  disabled={busyId === r.id}
-                  style={{ flex: 1 }}
-                />
-              </View>
+              {/* Decided requests are read-only — the Approved / Rejected
+                  tabs render the same card, where these used to stay live. */}
+              {r.status === "PENDING" && (
+                <View style={styles.actions}>
+                  <ProButton
+                    label="Reject"
+                    variant="danger"
+                    icon="close-outline"
+                    onPress={() => openReject(r)}
+                    disabled={busyId === r.id}
+                    style={{ flex: 1 }}
+                  />
+                  <ProButton
+                    label="Approve"
+                    variant="success"
+                    icon="checkmark-outline"
+                    onPress={() => doApprove(r)}
+                    loading={busyId === r.id}
+                    disabled={busyId === r.id}
+                    style={{ flex: 1 }}
+                  />
+                </View>
+              )}
 
             </Pressable>
           ))}

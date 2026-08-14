@@ -10,6 +10,7 @@ import {
 import { Ionicons } from "@expo/vector-icons";
 
 import { mediaUrl } from "../utils/media";
+import { ModalToastHost } from "./ModalToastHost";
 
 /**
  * Full-screen image lightbox. Tap the backdrop or the close button to dismiss.
@@ -55,6 +56,7 @@ export function FullScreenImage({
           <Ionicons name="close" size={26} color="#fff" />
         </TouchableOpacity>
       </View>
+      <ModalToastHost />
     </Modal>
   );
 }

@@ -20,6 +20,7 @@ import { Ionicons } from "@expo/vector-icons";
 
 import { useTheme } from "../src/theme/ThemeProvider";
 import { WebModal, ModalActions } from "../src/components/WebModal";
+import { notify, notifySuccess } from "../src/utils/confirm";
 import {
   hrListAssetReports,
   hrResolveAssetReport } from "../src/services/assets";
@@ -58,19 +59,16 @@ export default function AssetReports() {
   const [newAssetStatus, setNewAssetStatus] =
     useState<AssetStatus>("DAMAGED");
 
-  const [popup, setPopup] = useState({
-    visible: false,
-    type: "success" as "success" | "error",
-    message: "" });
 
+  // Routed through the shared toast host rather than an in-screen View:
+  // a screen-level popup renders BEHIND any open modal, so errors raised
+  // from inside a dialog were invisible. See components/ModalToastHost.
   const showPopup = (
     msg: string,
     kind: "success" | "error" = "success"
   ) => {
-    setPopup({ visible: true, type: kind, message: msg });
-    setTimeout(() => {
-      setPopup((p) => ({ ...p, visible: false }));
-    }, 2500);
+    if (kind === "error") notify(msg);
+    else notifySuccess(msg);
   };
 
   const load = async () => {
@@ -141,18 +139,7 @@ export default function AssetReports() {
   return (
     <SafeAreaView style={styles.safe}>
 
-      {popup.visible && (
-        <View
-          style={[
-            styles.popup,
-            popup.type === "success"
-              ? styles.successPopup
-              : styles.errorPopup,
-          ]}
-        >
-          <Text style={styles.popupText}>{popup.message}</Text>
-        </View>
-      )}
+      
 
       <ScrollView
         style={styles.container}

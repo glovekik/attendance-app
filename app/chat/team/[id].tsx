@@ -33,6 +33,7 @@ import {
   DeleteScope,
 } from "../../../src/services/chat";
 import { chatUnreadStore } from "../../../src/services/chatUnread";
+import { clearChatNotifications } from "../../../src/services/chatNotifications";
 import { uploadFile } from "../../../src/services/uploads";
 import { AttachInput } from "../../../src/components/ChatThread";
 import { ChatAttachment } from "../../../src/types";
@@ -76,6 +77,9 @@ export default function TeamChat() {
       }
       // Opening a team chat clears the dashboard unread badge.
       markChatRead(token).catch(() => {});
+      // Drops this team's grouped card + stored history, so already-read
+      // messages don't reappear in the next notification.
+      clearChatNotifications("team", teamId).catch(() => {});
       chatUnreadStore.set(0);
       try {
         const user = await getMe(token);

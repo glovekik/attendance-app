@@ -30,6 +30,7 @@ import { useTheme } from "../../src/theme/ThemeProvider";
 import { WebModal, ModalActions } from "../../src/components/WebModal";
 
 import { Avatar } from "../../src/components/Avatar";
+import { notify, notifySuccess } from "../../src/utils/confirm";
 
 export default function HROnboardings() {
 
@@ -48,19 +49,16 @@ export default function HROnboardings() {
   const [pickerVisible, setPickerVisible] = useState(false);
   const [saving, setSaving] = useState(false);
 
-  const [popup, setPopup] = useState({
-    visible: false,
-    type: "success" as "success" | "error",
-    message: "" });
 
+  // Routed through the shared toast host rather than an in-screen View:
+  // a screen-level popup renders BEHIND any open modal, so errors raised
+  // from inside a dialog were invisible. See components/ModalToastHost.
   const showPopup = (
     msg: string,
     kind: "success" | "error" = "success"
   ) => {
-    setPopup({ visible: true, type: kind, message: msg });
-    setTimeout(() => {
-      setPopup((p) => ({ ...p, visible: false }));
-    }, 2500);
+    if (kind === "error") notify(msg);
+    else notifySuccess(msg);
   };
 
   const load = async () => {
@@ -124,16 +122,7 @@ export default function HROnboardings() {
   return (
     <SafeAreaView style={s.safe}>
 
-      {popup.visible && (
-        <View
-          style={[
-            s.popup,
-            popup.type === "success" ? s.popupOk : s.popupErr,
-          ]}
-        >
-          <Text style={s.popupText}>{popup.message}</Text>
-        </View>
-      )}
+      
 
       <ScrollView
         style={s.container}

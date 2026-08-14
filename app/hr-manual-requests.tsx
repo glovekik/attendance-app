@@ -363,26 +363,28 @@ export default function HRManualRequests() {
         title="Decide request"
         size="md"
         footer={
-          <ModalActions align="spread">
-            <TouchableOpacity
-              style={[styles.btn, styles.btnReject]}
-              onPress={() => onDecide("REJECT")}
-              disabled={acting !== null}
-            >
-              <Text style={styles.btnText}>
-                {acting === "REJECT" ? "..." : "Reject"}
-              </Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={[styles.btn, styles.btnApprove]}
-              onPress={() => onDecide("APPROVE")}
-              disabled={acting !== null}
-            >
-              <Text style={styles.btnText}>
-                {acting === "APPROVE" ? "..." : "Approve"}
-              </Text>
-            </TouchableOpacity>
-          </ModalActions>
+          selected?.status === "PENDING" ? (
+            <ModalActions align="spread">
+              <TouchableOpacity
+                style={[styles.btn, styles.btnReject]}
+                onPress={() => onDecide("REJECT")}
+                disabled={acting !== null}
+              >
+                <Text style={styles.btnText}>
+                  {acting === "REJECT" ? "..." : "Reject"}
+                </Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.btn, styles.btnApprove]}
+                onPress={() => onDecide("APPROVE")}
+                disabled={acting !== null}
+              >
+                <Text style={styles.btnText}>
+                  {acting === "APPROVE" ? "..." : "Approve"}
+                </Text>
+              </TouchableOpacity>
+            </ModalActions>
+          ) : undefined
         }
       >
         {selected && (

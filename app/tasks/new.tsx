@@ -44,6 +44,7 @@ import {
 import { requestNotificationPermission } from "../../src/services/notifications";
 
 import { useTheme } from "../../src/theme/ThemeProvider";
+import { notify, notifySuccess } from "../../src/utils/confirm";
 import {
   Team,
   User,
@@ -93,19 +94,16 @@ export default function NewTask() {
 
   const [saving, setSaving] = useState(false);
 
-  const [popup, setPopup] = useState({
-    visible: false,
-    type: "success" as "success" | "error",
-    message: "" });
 
+  // Routed through the shared toast host rather than an in-screen View:
+  // a screen-level popup renders BEHIND any open modal, so errors raised
+  // from inside a dialog were invisible. See components/ModalToastHost.
   const showPopup = (
     msg: string,
     kind: "success" | "error" = "success"
   ) => {
-    setPopup({ visible: true, type: kind, message: msg });
-    setTimeout(() => {
-      setPopup((p) => ({ ...p, visible: false }));
-    }, 2500);
+    if (kind === "error") notify(msg);
+    else notifySuccess(msg);
   };
 
   // ================= LOAD TEAM =================
@@ -244,18 +242,7 @@ export default function NewTask() {
   return (
     <SafeAreaView style={styles.safe}>
 
-      {popup.visible && (
-        <View
-          style={[
-            styles.popup,
-            popup.type === "success"
-              ? styles.successPopup
-              : styles.errorPopup,
-          ]}
-        >
-          <Text style={styles.popupText}>{popup.message}</Text>
-        </View>
-      )}
+      
 
       <KbAwareScroll
         style={styles.container}

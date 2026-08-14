@@ -29,6 +29,7 @@ import {
   hrGetSalaryStructure,
   hrSetSalaryStructure } from "../src/services/payroll";
 import { breakdownFromCTC, PF_MONTHLY_CAP } from "../src/utils/salaryFormula";
+import { notify, notifySuccess } from "../src/utils/confirm";
 
 import {
   User,
@@ -86,6 +87,9 @@ export default function SalaryStructures() {
 
   // Form fields
   const [monthlyCTC, setMonthlyCTC] = useState("");
+  // Company-provided accommodation removes HRA (no rent being paid) and
+  // rolls its 20% into Other Allowance, keeping the total at 100% of CTC.
+  const [accommodation, setAccommodation] = useState(false);
   const [basic, setBasic] = useState("");
   const [hra, setHra] = useState("");
   const [comm, setComm] = useState("");
@@ -104,19 +108,16 @@ export default function SalaryStructures() {
   const [bankName, setBankName] = useState("");
   const [tdsRegime, setTdsRegime] = useState<TDSRegime>("NEW");
 
-  const [popup, setPopup] = useState({
-    visible: false,
-    type: "success" as "success" | "error",
-    message: "" });
 
+  // Routed through the shared toast host rather than an in-screen View:
+  // a screen-level popup renders BEHIND any open modal, so errors raised
+  // from inside a dialog were invisible. See components/ModalToastHost.
   const showPopup = (
     msg: string,
     kind: "success" | "error" = "success"
   ) => {
-    setPopup({ visible: true, type: kind, message: msg });
-    setTimeout(() => {
-      setPopup((p) => ({ ...p, visible: false }));
-    }, 2500);
+    if (kind === "error") notify(msg);
+    else notifySuccess(msg);
   };
 
   const load = async () => {
@@ -170,6 +171,7 @@ export default function SalaryStructures() {
       const ss = await hrGetSalaryStructure(token, u.id);
       if (ss) {
         setCurrent(ss);
+        setAccommodation(!!(ss as any).accommodation);
         setBasic(String(ss.basic));
         setHra(String(ss.hra));
         setComm(String(ss.communicationAllowance));
@@ -211,6 +213,7 @@ export default function SalaryStructures() {
       const token = await AsyncStorage.getItem("token");
       if (!token) return;
       await hrSetSalaryStructure(token, target.id, {
+        accommodation,
         basic: num(basic),
         hra: num(hra),
         communicationAllowance: num(comm),
@@ -247,16 +250,7 @@ export default function SalaryStructures() {
   return (
     <SafeAreaView style={s.safe}>
 
-      {popup.visible && (
-        <View
-          style={[
-            s.popup,
-            popup.type === "success" ? s.popupOk : s.popupErr,
-          ]}
-        >
-          <Text style={s.popupText}>{popup.message}</Text>
-        </View>
-      )}
+      
 
       <ScrollView
         style={s.container}
@@ -352,9 +346,27 @@ export default function SalaryStructures() {
                 styles={s}
                 faintColor={c.textFaint}
               />
+              <TouchableOpacity
+                style={s.accomRow}
+                onPress={() => setAccommodation((v) => !v)}
+                activeOpacity={0.7}
+              >
+                <Ionicons
+                  name={accommodation ? "checkbox" : "square-outline"}
+                  size={20}
+                  color={accommodation ? c.accent : c.textMuted}
+                />
+                <View style={{ flex: 1 }}>
+                  <Text style={s.accomLabel}>Company accommodation provided</Text>
+                  <Text style={s.accomHint}>
+                    Removes HRA — its share moves to Other Allowance.
+                  </Text>
+                </View>
+              </TouchableOpacity>
               <Text style={s.note}>
-                Basic 50% · HRA 20% · Comm 5% · Other 19% · Employer PF 6%
-                (cap ₹{PF_MONTHLY_CAP})
+                {accommodation
+                  ? `Basic 50% · HRA 0% · Comm 5% · Other 39% · Employer PF 6% (cap ₹${PF_MONTHLY_CAP})`
+                  : `Basic 50% · HRA 20% · Comm 5% · Other 19% · Employer PF 6% (cap ₹${PF_MONTHLY_CAP})`}
               </Text>
               <TouchableOpacity
                 style={s.fillBtn}
@@ -364,7 +376,7 @@ export default function SalaryStructures() {
                     showPopup("Enter a valid monthly CTC", "error");
                     return;
                   }
-                  const b = breakdownFromCTC(ctc);
+                  const b = breakdownFromCTC(ctc, accommodation);
                   setBasic(String(b.basic));
                   setHra(String(b.hra));
                   setComm(String(b.communicationAllowance));
@@ -513,6 +525,18 @@ const makeStyles = (c: any) => StyleSheet.create({
   toggleBtn: { paddingHorizontal: 14, paddingVertical: 6, backgroundColor: c.surfaceMuted, borderRadius: 999, borderWidth: 1, borderColor: c.surfaceBorder },
   toggleOn: { backgroundColor: c.accent, borderColor: c.accent },
   toggleText: { color: c.textMuted, fontWeight: "700", fontSize: 11 },
+  accomRow: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    gap: 10,
+    marginTop: 10,
+    padding: 12,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: c.surfaceBorder,
+    backgroundColor: c.surface },
+  accomLabel: { color: c.text, fontSize: 14, fontWeight: "700" },
+  accomHint: { color: c.textMuted, fontSize: 12, marginTop: 2 },
   note: { color: c.textMuted, fontSize: 11, fontStyle: "italic", marginTop: 4 },
 
   chipPicker: { flexDirection: "row", gap: 6, flexWrap: "wrap" },

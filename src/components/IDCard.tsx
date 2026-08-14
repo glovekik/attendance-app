@@ -38,7 +38,10 @@ const ADDRESS_LINES = [
   "Musheerabad (ND), Hyderabad – 500020, Telangana",
 ];
 
-const LOGO = require("../../assets/images/logo.jpg");
+// Kept in step with the server-rendered badge (backend/assets/company-logo.png,
+// drawn by utils/id_card_render.py) so the on-screen card and the downloaded
+// PDF/JPG show the same mark. Update both together or they drift apart.
+const LOGO = require("../../assets/images/idcard-logo.png");
 
 // The logo now sits in its own framed box at the TOP of the card, so it no
 // longer has to be notched into the photo's corner — the reference design
@@ -46,7 +49,10 @@ const LOGO = require("../../assets/images/logo.jpg");
 const LOGO_BOX_W = 206;
 const LOGO_BOX_PAD = 7;
 const LOGO_W = 190;
-const LOGO_H = 56; // logo.jpg's true 3.395:1 aspect
+// Matches idcard-logo.png's true 2.52:1 aspect (1895x753). resizeMode is
+// "contain", so a height sized for a different ratio wouldn't distort the
+// mark — it would letterbox it and render it smaller than the box allows.
+const LOGO_H = 75;
 // +2 for the hairline: RN heights include the border, so without it the box's
 // content area is 2px short of the logo and clips it.
 const LOGO_BOX_H = LOGO_H + LOGO_BOX_PAD * 2 + 2;
@@ -333,7 +339,7 @@ const styles = StyleSheet.create({
   },
 
   // ===== front =====
-  // Framed wordmark at the head of the card. logo.jpg carries its own white
+  // Framed wordmark at the head of the card. The logo carries its own white
   // background, so a white box with a hairline reads as an intentional frame
   // rather than an image that failed to knock out.
   logoBox: {

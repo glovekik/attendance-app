@@ -925,6 +925,7 @@ const SimpleKpi = ({
 
 const CategoryTile = ({
   icon,
+  iconImage,
   label,
   tint,
   iconColor,
@@ -932,7 +933,9 @@ const CategoryTile = ({
   count,
   theme,
   styles }: {
-  icon: keyof typeof Ionicons.glyphMap;
+  // Either a glyph or, for brand marks the icon set can't express, an image.
+  icon?: keyof typeof Ionicons.glyphMap;
+  iconImage?: any;
   label: string;
   tint: string;
   iconColor: string;
@@ -955,7 +958,17 @@ const CategoryTile = ({
     ]}
   >
     <View style={[styles.tileIcon, { backgroundColor: tint }]}>
-      <Ionicons name={icon} size={22} color={iconColor} />
+      {iconImage ? (
+        // The logo is a wide lockup, so it's contained rather than cropped —
+        // letterboxing inside the square swatch beats a squashed mark.
+        <Image
+          source={iconImage}
+          style={styles.tileIconImage}
+          resizeMode="contain"
+        />
+      ) : (
+        <Ionicons name={icon!} size={22} color={iconColor} />
+      )}
     </View>
     <Text
       style={[styles.tileLabel, { color: theme.colors.text }]}
@@ -1146,6 +1159,7 @@ const makeStyles = (c: any, isDesktop: boolean, spacing: any) => StyleSheet.crea
     alignItems: "center",
     justifyContent: "center",
     marginBottom: 8 },
+  tileIconImage: { width: 40, height: 40 },
   tileLabel: { fontSize: 12, fontWeight: "700", textAlign: "center" },
   tileCountBadge: {
     position: "absolute",

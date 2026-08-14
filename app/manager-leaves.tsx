@@ -25,6 +25,7 @@ import { LeaveRequest } from "../src/types";
 
 import { useTheme } from "../src/theme/ThemeProvider";
 import { StatusTabs } from "../src/components/StatusTabs";
+import { formatDays, formatDayCount } from "../src/utils/leaveDays";
 export default function ManagerLeaves() {
   const router = useRouter();
   const { theme } = useTheme();
@@ -39,6 +40,8 @@ export default function ManagerLeaves() {
   const [refreshing, setRefreshing] = useState(false);
   const [selected, setSelected] = useState<LeaveRequest | null>(null);
   const [note, setNote] = useState("");
+  // Approve-as-LOP: grants the days without charging the paid balance.
+  const [unpaid, setUnpaid] = useState(false);
   const [acting, setActing] = useState<"APPROVE" | "REJECT" | null>(null);
 
   const load = useCallback(async () => {
@@ -73,11 +76,13 @@ export default function ManagerLeaves() {
   const openDetail = (req: LeaveRequest) => {
     setSelected(req);
     setNote("");
+    setUnpaid(false);
   };
 
   const close = () => {
     setSelected(null);
     setNote("");
+    setUnpaid(false);
     setActing(null);
   };
 
@@ -93,7 +98,8 @@ export default function ManagerLeaves() {
       if (!token) return;
       await decideManagerLeave(token, selected.id, {
         action,
-        note: note.trim() || undefined });
+        note: note.trim() || undefined,
+        unpaid: action === "APPROVE" ? unpaid : undefined });
       setItems((prev) => prev.filter((x) => x.id !== selected.id));
       close();
     } catch (err: any) {
@@ -173,8 +179,8 @@ export default function ManagerLeaves() {
             <Text style={styles.dates}>
               {item.fromDate} → {item.toDate}
               {item.halfDay
-                ? `  · half-day (${item.halfDayPart})`
-                : `  · ${item.totalDays} day(s)`}
+                ? `  · ${formatDayCount(item.totalDays)} (${item.halfDayPart})`
+                : `  · ${formatDayCount(item.totalDays)}`}
             </Text>
             {!!item.reason && (
               <Text style={styles.reason} numberOfLines={2}>
@@ -202,26 +208,40 @@ export default function ManagerLeaves() {
         title="Decide leave"
         size="md"
         footer={
-          <ModalActions align="spread">
-            <TouchableOpacity
-              style={[styles.btn, styles.btnReject]}
-              onPress={() => onDecide("REJECT")}
-              disabled={acting !== null}
-            >
-              <Text style={styles.btnText}>
-                {acting === "REJECT" ? "..." : "Reject"}
+          // Only a PENDING request is still decidable. The Approved/Rejected
+          // tabs open the same modal, where these buttons used to stay live
+          // and let an already-decided request be decided again.
+          selected?.status === "PENDING" ? (
+            <ModalActions align="spread">
+              <TouchableOpacity
+                style={[styles.btn, styles.btnReject]}
+                onPress={() => onDecide("REJECT")}
+                disabled={acting !== null}
+              >
+                <Text style={styles.btnText}>
+                  {acting === "REJECT" ? "..." : "Reject"}
+                </Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.btn, styles.btnApprove]}
+                onPress={() => onDecide("APPROVE")}
+                disabled={acting !== null}
+              >
+                <Text style={styles.btnText}>
+                  {acting === "APPROVE" ? "..." : "Approve"}
+                </Text>
+              </TouchableOpacity>
+            </ModalActions>
+          ) : (
+            <ModalActions align="spread">
+              <Text style={styles.decidedText}>
+                Already {selected?.status === "APPROVED" ? "approved" : "rejected"}
+                {selected?.decidedAt
+                  ? ` on ${new Date(selected.decidedAt).toLocaleDateString()}`
+                  : ""}
               </Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={[styles.btn, styles.btnApprove]}
-              onPress={() => onDecide("APPROVE")}
-              disabled={acting !== null}
-            >
-              <Text style={styles.btnText}>
-                {acting === "APPROVE" ? "..." : "Approve"}
-              </Text>
-            </TouchableOpacity>
-          </ModalActions>
+            </ModalActions>
+          )
         }
       >
         {selected && (
@@ -254,8 +274,8 @@ export default function ManagerLeaves() {
                   <Text style={styles.detailLabel}>Total days</Text>
                   <Text style={styles.detailValue}>
                     {selected.halfDay
-                      ? `0.5 (${selected.halfDayPart})`
-                      : selected.totalDays}
+                      ? `${formatDays(selected.totalDays)} (${selected.halfDayPart})`
+                      : formatDays(selected.totalDays)}
                   </Text>
                 </View>
                 {!!selected.reason && (
@@ -265,6 +285,29 @@ export default function ManagerLeaves() {
                       {selected.reason}
                     </Text>
                   </>
+                )}
+
+                {selected.status === "PENDING" && (
+                  <TouchableOpacity
+                    style={styles.unpaidRow}
+                    onPress={() => setUnpaid((v) => !v)}
+                    activeOpacity={0.7}
+                  >
+                    <Ionicons
+                      name={unpaid ? "checkbox" : "square-outline"}
+                      size={20}
+                      color={unpaid ? c.dangerText : c.textMuted}
+                    />
+                    <View style={{ flex: 1 }}>
+                      <Text style={styles.unpaidLabel}>
+                        Mark as unpaid leave (LOP)
+                      </Text>
+                      <Text style={styles.unpaidHint}>
+                        Approves the days without deducting the paid balance.
+                        Payroll treats them as loss of pay.
+                      </Text>
+                    </View>
+                  </TouchableOpacity>
                 )}
 
                 <Text style={styles.detailLabel}>
@@ -378,5 +421,22 @@ const makeStyles = (c: any) => StyleSheet.create({
     alignItems: "center" },
   btnReject: { backgroundColor: "#dc2626" },
   btnApprove: { backgroundColor: "#16a34a" },
-  btnText: { color: c.text, fontWeight: "800" } });
+  btnText: { color: c.text, fontWeight: "800" },
+  decidedText: { color: c.textMuted, fontWeight: "600", fontSize: 13 },
+  unpaidRow: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    gap: 10,
+    marginTop: 14,
+    padding: 12,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: c.surfaceBorder,
+    backgroundColor: c.surface },
+  unpaidLabel: { color: c.text, fontWeight: "700", fontSize: 14 },
+  unpaidHint: {
+    color: c.textMuted,
+    fontSize: 12,
+    marginTop: 2,
+    lineHeight: 16 } });
 
