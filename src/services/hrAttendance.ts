@@ -26,6 +26,8 @@ export interface HrAttendanceRow {
   workNotes?: string;
   /** HR-marked unpaid (LOP) leave day — excluded from paid days in payroll. */
   unpaid?: boolean;
+  /** Why it was marked unpaid, if HR gave a reason. */
+  unpaidReason?: string | null;
 }
 
 export interface HrAttendanceFilters {
@@ -52,9 +54,11 @@ export const hrMarkUnpaidLeave = (
   token: string,
   userId: string,
   date: string,
-  unpaid: boolean
+  unpaid: boolean,
+  /** Optional free-text note kept against the day. */
+  reason?: string
 ) =>
   apiCall<{ message: string; unpaid: boolean }>(
     "/hr/attendance/unpaid-leave",
-    { method: "POST", body: { userId, date, unpaid }, token }
+    { method: "POST", body: { userId, date, unpaid, reason }, token }
   );

@@ -186,3 +186,28 @@ export const listUserDirectory = (
   const qs = parts.length ? `?${parts.join("&")}` : "";
   return apiCall<DirectoryPage>(`/users/directory${qs}`, { token });
 };
+
+/**
+ * Basic profile any signed-in colleague may view — used by the chat profile
+ * card. Deliberately narrow on the server (GET /users/{id}/card): no salary,
+ * bank, statutory IDs or home address.
+ */
+export interface UserCard {
+  id: string;
+  name?: string;
+  email?: string;
+  profilePictureUrl?: string;
+  employeeCode?: string;
+  tag?: string;
+  status?: string;
+  designation?: string | null;
+  department?: string | null;
+  workLocation?: string | null;
+  workPhone?: string | null;
+  joiningDate?: string | null;
+  /** "MM-DD" — no year, so a colleague can't derive age. */
+  birthday?: string | null;
+}
+
+export const getUserCard = (token: string, id: string) =>
+  apiCall<UserCard>(`/users/${id}/card`, { token });

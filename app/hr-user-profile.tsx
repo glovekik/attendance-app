@@ -16,7 +16,7 @@ import {
 import { KeyboardAvoidingView } from "react-native-keyboard-controller";
 import { SafeAreaView } from "react-native-safe-area-context";
 
-import { WebModal } from "../src/components/WebModal";
+import { WebModal, ModalActions } from "../src/components/WebModal";
 import { FullScreenImage } from "../src/components/FullScreenImage";
 import { Avatar } from "../src/components/Avatar";
 import { openMedia, mediaUrl } from "../src/utils/media";
@@ -1252,6 +1252,11 @@ export default function HrUserProfile() {
     setShowPw(false);
     setShowPwModal(true);
   };
+
+  // Single source of truth for "can submit" — the button, its disabled tint
+  // and the checklist all read this, so they can't disagree.
+  const pwValid =
+    !savingPw && newPw.length >= 6 && newPw === confirmPw;
 
   const submitSetPassword = async () => {
     if (savingPw) return;
@@ -2760,80 +2765,146 @@ export default function HrUserProfile() {
         visible={showPwModal}
         onClose={() => setShowPwModal(false)}
         title="Set new password"
-        size="sm"
+        size="md"
         scrollable={false}
+        footer={
+          <ModalActions align="spread">
+            <TouchableOpacity
+              style={styles.pwCancel}
+              onPress={() => setShowPwModal(false)}
+              disabled={savingPw}
+            >
+              <Text style={styles.pwCancelText}>Cancel</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[styles.pwSubmit, !pwValid && styles.pwSubmitDisabled]}
+              onPress={submitSetPassword}
+              disabled={!pwValid}
+            >
+              {savingPw ? (
+                <ActivityIndicator color="#fff" size="small" />
+              ) : (
+                <Text style={styles.pwSubmitText}>Update password</Text>
+              )}
+            </TouchableOpacity>
+          </ModalActions>
+        }
       >
-        <Text style={styles.hint}>
-          Sets {user?.name || "this user"}'s password directly — no email is
-          sent. Share it with them securely.
-        </Text>
-
-        <Text style={styles.pwLabel}>New password</Text>
-        <View style={styles.pwField}>
-          <Ionicons name="lock-closed-outline" size={17} color={c.textMuted} />
-          <TextInput
-            style={styles.pwInput}
-            value={newPw}
-            onChangeText={setNewPw}
-            placeholder="Enter a new password"
-            placeholderTextColor={c.textFaint}
-            autoCapitalize="none"
-            secureTextEntry={!showPw}
-            editable={!savingPw}
-          />
-          <TouchableOpacity onPress={() => setShowPw((v) => !v)} hitSlop={8}>
-            <Ionicons
-              name={showPw ? "eye-off-outline" : "eye-outline"}
-              size={18}
-              color={c.textMuted}
-            />
-          </TouchableOpacity>
+        {/* Who this affects, stated plainly — the destructive part of this
+            action is doing it to the wrong person. */}
+        <View style={styles.pwWho}>
+          <View style={styles.pwWhoIcon}>
+            <Ionicons name="key" size={18} color={c.accentText} />
+          </View>
+          <View style={{ flex: 1 }}>
+            <Text style={styles.pwWhoName} numberOfLines={1}>
+              {user?.name || "This user"}
+            </Text>
+            <Text style={styles.pwWhoMail} numberOfLines={1}>
+              {user?.email || ""}
+            </Text>
+          </View>
         </View>
 
-        <Text style={styles.pwLabel}>Confirm password</Text>
-        <View
-          style={[
-            styles.pwField,
-            !!confirmPw && confirmPw !== newPw && { borderColor: c.dangerText },
-          ]}
-        >
-          <Ionicons name="lock-closed-outline" size={17} color={c.textMuted} />
-          <TextInput
-            style={styles.pwInput}
-            value={confirmPw}
-            onChangeText={setConfirmPw}
-            placeholder="Re-enter the password"
-            placeholderTextColor={c.textFaint}
-            autoCapitalize="none"
-            secureTextEntry={!showPw}
-            editable={!savingPw}
-          />
-          {!!confirmPw && confirmPw === newPw && (
-            <Ionicons name="checkmark-circle" size={18} color={c.successText} />
-          )}
-        </View>
-
-        <Text style={styles.pwHelp}>
-          {confirmPw && confirmPw !== newPw
-            ? "Passwords don't match yet."
-            : "Use at least 6 characters."}
+        <Text style={styles.pwNote}>
+          Sets the password immediately — no email is sent. Any pending reset
+          links stop working. Share the new password securely.
         </Text>
 
+        {/* Side by side on desktop so the wider box is actually used;
+            stacked on phones, where two fields per row would be cramped. */}
+        <View style={styles.pwFieldRow}>
+          <View style={styles.pwFieldCol}>
+            <Text style={styles.pwLabel}>NEW PASSWORD</Text>
+            <View style={styles.pwField}>
+              <Ionicons
+                name="lock-closed-outline"
+                size={17}
+                color={c.textMuted}
+              />
+              <TextInput
+                style={styles.pwInput}
+                value={newPw}
+                onChangeText={setNewPw}
+                placeholder="Enter a new password"
+                placeholderTextColor={c.textFaint}
+                autoCapitalize="none"
+                secureTextEntry={!showPw}
+                editable={!savingPw}
+              />
+            </View>
+          </View>
+
+          <View style={styles.pwFieldCol}>
+            <Text style={styles.pwLabel}>CONFIRM PASSWORD</Text>
+            <View
+              style={[
+                styles.pwField,
+                !!confirmPw &&
+                  confirmPw !== newPw && { borderColor: c.dangerText },
+              ]}
+            >
+              <Ionicons
+                name="lock-closed-outline"
+                size={17}
+                color={c.textMuted}
+              />
+              <TextInput
+                style={styles.pwInput}
+                value={confirmPw}
+                onChangeText={setConfirmPw}
+                placeholder="Re-enter the password"
+                placeholderTextColor={c.textFaint}
+                autoCapitalize="none"
+                secureTextEntry={!showPw}
+                editable={!savingPw}
+              />
+              {!!confirmPw && confirmPw === newPw && (
+                <Ionicons
+                  name="checkmark-circle"
+                  size={18}
+                  color={c.successText}
+                />
+              )}
+            </View>
+          </View>
+        </View>
+
+        {/* One toggle governing BOTH fields, so it lives outside them —
+            inside the first field it read as applying only to that one. */}
         <TouchableOpacity
-          style={[
-            styles.pwSubmit,
-            { marginTop: 16 },
-            (savingPw || newPw.length < 6 || newPw !== confirmPw) && { opacity: 0.5 },
-          ]}
-          onPress={submitSetPassword}
-          disabled={savingPw || newPw.length < 6 || newPw !== confirmPw}
+          style={styles.pwShowToggle}
+          onPress={() => setShowPw((v) => !v)}
+          hitSlop={8}
+          accessibilityRole="button"
+          accessibilityLabel={showPw ? "Hide passwords" : "Show passwords"}
         >
-          {savingPw ? (
-            <ActivityIndicator color="#fff" />
-          ) : (
-            <Text style={styles.pwSubmitText}>Update password</Text>
-          )}
+          <Ionicons
+            name={showPw ? "eye-off-outline" : "eye-outline"}
+            size={16}
+            color={c.accent}
+          />
+          <Text style={styles.pwShowText}>
+            {showPw ? "Hide passwords" : "Show passwords"}
+          </Text>
         </TouchableOpacity>
+
+        {/* Live checklist instead of one line that only reports the first
+            problem — the rules and the current state are both visible. */}
+        <View style={styles.pwRules}>
+          <PwRule
+            ok={newPw.length >= 6}
+            label="At least 6 characters"
+            c={c}
+            styles={styles}
+          />
+          <PwRule
+            ok={!!confirmPw && confirmPw === newPw}
+            label="Both entries match"
+            c={c}
+            styles={styles}
+          />
+        </View>
       </WebModal>
 
       {/* Profile photo — click the avatar to change or delete it. */}
@@ -2927,6 +2998,30 @@ export default function HrUserProfile() {
     </SafeAreaView>
   );
 }
+
+/** One requirement line in the set-password checklist. */
+const PwRule = ({
+  ok,
+  label,
+  c,
+  styles,
+}: {
+  ok: boolean;
+  label: string;
+  c: any;
+  styles: any;
+}) => (
+  <View style={styles.pwRule}>
+    <Ionicons
+      name={ok ? "checkmark-circle" : "ellipse-outline"}
+      size={15}
+      color={ok ? c.successText : c.textFaint}
+    />
+    <Text style={[styles.pwRuleText, ok && { color: c.successText }]}>
+      {label}
+    </Text>
+  </View>
+);
 
 const makeStyles = (c: any, isDesktop: boolean) => StyleSheet.create({
   safe: { flex: 1, backgroundColor: c.bg },
@@ -3497,18 +3592,62 @@ const makeStyles = (c: any, isDesktop: boolean) => StyleSheet.create({
   quickLinkPrimary: { backgroundColor: c.accent, borderColor: c.accent },
   quickLinkText: { color: c.text, fontSize: 12, fontWeight: "700" },
   pwSubmit: {
+    flex: 1,
     backgroundColor: c.accent,
     paddingVertical: 13,
     borderRadius: 12,
     alignItems: "center",
-    marginTop: 14,
+    justifyContent: "center",
+    minHeight: 46,
     ...(Platform.OS === "web" ? { cursor: "pointer" } : {}) },
+  pwSubmitDisabled: { opacity: 0.45 },
   pwSubmitText: { color: "#fff", fontSize: 15, fontWeight: "700" },
-  pwLabel: {
+  pwCancel: {
+    flex: 1,
+    paddingVertical: 13,
+    borderRadius: 12,
+    alignItems: "center",
+    justifyContent: "center",
+    minHeight: 46,
+    borderWidth: 1,
+    borderColor: c.surfaceBorder,
+    ...(Platform.OS === "web" ? { cursor: "pointer" } : {}) },
+  pwCancelText: { color: c.text, fontSize: 15, fontWeight: "600" },
+  pwWho: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+    padding: 12,
+    borderRadius: 12,
+    backgroundColor: c.accentSoft,
+  },
+  pwWhoIcon: {
+    width: 38,
+    height: 38,
+    borderRadius: 19,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: c.surface,
+  },
+  pwWhoName: { color: c.text, fontSize: 15, fontWeight: "700" },
+  pwWhoMail: { color: c.textMuted, fontSize: 12, marginTop: 1 },
+  pwNote: {
     color: c.textMuted,
     fontSize: 12,
+    lineHeight: 17,
+    marginTop: 12,
+  },
+  pwFieldRow: {
+    flexDirection: isDesktop ? "row" : "column",
+    gap: isDesktop ? 12 : 0,
+  },
+  pwFieldCol: { flex: isDesktop ? 1 : undefined, minWidth: 0 },
+  pwLabel: {
+    color: c.textFaint,
+    fontSize: 11,
     fontWeight: "700",
-    marginTop: 14,
+    letterSpacing: 0.6,
+    marginTop: 16,
     marginBottom: 6,
   },
   pwField: {
@@ -3523,7 +3662,18 @@ const makeStyles = (c: any, isDesktop: boolean) => StyleSheet.create({
     height: 48,
   },
   pwInput: { flex: 1, color: c.text, fontSize: 15, padding: 0 },
-  pwHelp: { color: c.textFaint, fontSize: 12, marginTop: 8 },
+  pwShowToggle: {
+    flexDirection: "row",
+    alignItems: "center",
+    alignSelf: "flex-start",
+    gap: 6,
+    marginTop: 12,
+    paddingVertical: 4,
+    ...(Platform.OS === "web" ? { cursor: "pointer" } : {}) },
+  pwShowText: { color: c.accent, fontSize: 12, fontWeight: "700" },
+  pwRules: { marginTop: 12, gap: 6 },
+  pwRule: { flexDirection: "row", alignItems: "center", gap: 8 },
+  pwRuleText: { color: c.textMuted, fontSize: 12, fontWeight: "600" },
 
   // ===== TABS (underline indicator) =====
   tabsBar: {

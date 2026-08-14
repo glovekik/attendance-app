@@ -24,6 +24,11 @@ import { checkForOtaUpdate } from "../src/utils/otaUpdates";
 import { ensureFreshToken } from "../src/services/session";
 import { setSessionExpiredHandler } from "../src/services/http";
 import { logDeviceTokenForDev } from "../src/services/notifications";
+import { registerChatBackgroundTask } from "../src/services/chatNotificationTask";
+import {
+  showChatMessage,
+  isChatPush,
+} from "../src/services/chatNotifications";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { getMe } from "../src/services/api";
 import { SidebarNav } from "../src/components/SidebarNav";
@@ -100,6 +105,33 @@ export default function RootLayout() {
   // production.
   useEffect(() => {
     logDeviceTokenForDev();
+  }, []);
+
+  // Chat pushes arrive data-only on Android so the client can build one
+  // grouped MessagingStyle card per conversation. Nothing displays unless
+  // this task is registered, so do it on every launch (idempotent).
+  useEffect(() => {
+    registerChatBackgroundTask();
+  }, []);
+
+  // Foreground path: a data-only message never reaches the OS shade on its
+  // own, and the background task doesn't run while the app is open — so the
+  // card has to be built here too, or messages received in-app are lost.
+  useEffect(() => {
+    if (Platform.OS !== "android") return;
+    const sub = Notifications.addNotificationReceivedListener((n) => {
+      const payload: any = n.request.content.data;
+      if (!isChatPush(payload)) return;
+      showChatMessage({
+        channelType: payload.channelType,
+        channelId: payload.channelId,
+        authorName: payload.authorName,
+        authorId: payload.authorId,
+        body: payload.body,
+        channelName: payload.channelName,
+      });
+    });
+    return () => sub.remove();
   }, []);
 
   // Keep the access token fresh so the user never gets a silent logout

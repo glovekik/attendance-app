@@ -18,6 +18,7 @@ import { Ionicons } from "@expo/vector-icons";
 
 import { useTheme } from "../src/theme/ThemeProvider";
 import { Avatar } from "../src/components/Avatar";
+import { formatDays } from "../src/utils/leaveDays";
 import {
   listTeamLeaveBalances,
   TeamLeaveBalanceRow } from "../src/services/managerTeam";
@@ -166,11 +167,15 @@ export default function ManagerLeaveBalances() {
                       <Text style={styles.balanceCode} numberOfLines={1}>
                         {b.leaveType?.name || b.leaveTypeCode}
                       </Text>
-                      <Text style={styles.balanceVal}>{remaining}</Text>
-                      <Text style={styles.balanceUnit}>of {allocated}</Text>
+                      <Text style={styles.balanceVal}>
+                        {formatDays(remaining)}
+                      </Text>
+                      <Text style={styles.balanceUnit}>
+                        of {formatDays(allocated)}
+                      </Text>
                       {Number(b.pending ?? 0) > 0 && (
                         <Text style={styles.pending}>
-                          {b.pending} pending
+                          {formatDays(b.pending)} pending
                         </Text>
                       )}
                     </View>

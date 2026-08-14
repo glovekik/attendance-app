@@ -1575,13 +1575,16 @@ const PersonalRow = ({
 
 const LinkRow = ({
   icon,
+  iconImage,
   tint,
   iconColor,
   label,
   onPress,
   theme,
   showDivider }: {
-  icon: keyof typeof Ionicons.glyphMap;
+  // Either a glyph or, for brand marks the icon set can't express, an image.
+  icon?: keyof typeof Ionicons.glyphMap;
+  iconImage?: any;
   tint: string;
   iconColor: string;
   label: string;
@@ -1610,7 +1613,15 @@ const LinkRow = ({
         alignItems: "center",
         justifyContent: "center" }}
     >
-      <Ionicons name={icon} size={18} color={iconColor} />
+      {iconImage ? (
+        <Image
+          source={iconImage}
+          style={{ width: 32, height: 32 }}
+          resizeMode="contain"
+        />
+      ) : (
+        <Ionicons name={icon!} size={18} color={iconColor} />
+      )}
     </View>
     <Text
       style={{

@@ -31,6 +31,8 @@ import { useTheme } from "../src/theme/ThemeProvider";
 import { StatusTabs } from "../src/components/StatusTabs";
 import { WebModal, ModalActions } from "../src/components/WebModal";
 import { Avatar } from "../src/components/Avatar";
+import { WebDateField } from "../src/components/WebDateField";
+import { notify, notifySuccess } from "../src/utils/confirm";
 export default function Corrections() {
 
   const router = useRouter();
@@ -53,19 +55,16 @@ export default function Corrections() {
     useState<AttendanceCorrection | null>(null);
   const [rejectReason, setRejectReason] = useState("");
 
-  const [popup, setPopup] = useState({
-    visible: false,
-    type: "success" as "success" | "error",
-    message: "" });
 
+  // Routed through the shared toast host rather than an in-screen View:
+  // a screen-level popup renders BEHIND any open modal, so errors raised
+  // from inside a dialog were invisible. See components/ModalToastHost.
   const showPopup = (
     msg: string,
     kind: "success" | "error" = "success"
   ) => {
-    setPopup({ visible: true, type: kind, message: msg });
-    setTimeout(() => {
-      setPopup((p) => ({ ...p, visible: false }));
-    }, 2500);
+    if (kind === "error") notify(msg);
+    else notifySuccess(msg);
   };
 
   const load = async () => {
@@ -146,10 +145,73 @@ export default function Corrections() {
     });
   };
 
-  const allSelected = items.length > 0 && selected.size === items.length;
+  // Filters run client-side over the loaded tab. Same shape as the manager
+  // screen so both correction queues behave identically.
+  const [query, setQuery] = useState("");
+  const [fromDate, setFromDate] = useState("");
+  const [toDate, setToDate] = useState("");
+  const [filtersOpen, setFiltersOpen] = useState(false);
+
+  // Employee dropdown options come from the loaded rows, not a user fetch:
+  // only people who actually have corrections can be filtered to, so the
+  // list can never offer a choice that yields nothing.
+  const [employeeId, setEmployeeId] = useState<string>("");
+  const [employeeOpen, setEmployeeOpen] = useState(false);
+
+  const employeeOptions = useMemo(() => {
+    const map = new Map<string, { id: string; name: string; count: number }>();
+    for (const r of items) {
+      const id = r.userId || r.user?.id || "";
+      if (!id) continue;
+      const hit = map.get(id);
+      if (hit) hit.count += 1;
+      else map.set(id, { id, name: r.user?.name || "Unknown", count: 1 });
+    }
+    return [...map.values()].sort((a, b) => a.name.localeCompare(b.name));
+  }, [items]);
+
+  const selectedEmployeeName =
+    employeeOptions.find((e) => e.id === employeeId)?.name || "All employees";
+
+  const visibleItems = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    return items.filter((r) => {
+      if (employeeId && (r.userId || r.user?.id) !== employeeId) return false;
+      if (q) {
+        const hay = `${r.user?.name || ""} ${r.user?.email || ""}`.toLowerCase();
+        if (!hay.includes(q)) return false;
+      }
+      // The day being corrected — what a reviewer thinks in, not the day the
+      // request happened to be filed.
+      const d = r.attendanceDate || r.attendance?.date || "";
+      if (fromDate && (!d || d < fromDate)) return false;
+      if (toDate && (!d || d > toDate)) return false;
+      return true;
+    });
+  }, [items, query, fromDate, toDate, employeeId]);
+
+  const filtersActive =
+    query.trim() !== "" ||
+    fromDate !== "" ||
+    toDate !== "" ||
+    employeeId !== "";
+
+  const clearFilters = () => {
+    setQuery("");
+    setFromDate("");
+    setToDate("");
+    setEmployeeId("");
+  };
+
+  // Select-all and bulk approve act on what's VISIBLE — acting on the
+  // unfiltered list would silently approve rows hidden by a filter.
+  const allSelected =
+    visibleItems.length > 0 && visibleItems.every((i) => selected.has(i.id));
 
   const toggleSelectAll = () => {
-    setSelected(allSelected ? new Set() : new Set(items.map((i) => i.id)));
+    setSelected(
+      allSelected ? new Set() : new Set(visibleItems.map((i) => i.id))
+    );
   };
 
   const confirmBulk = async (count: number): Promise<boolean> => {
@@ -198,9 +260,9 @@ export default function Corrections() {
     }
   };
 
-  const approveAll = () => approveMany(items);
+  const approveAll = () => approveMany(visibleItems);
   const approveSelected = () =>
-    approveMany(items.filter((i) => selected.has(i.id)));
+    approveMany(visibleItems.filter((i) => selected.has(i.id)));
 
   const openReject = (c: AttendanceCorrection) => {
     setRejectTarget(c);
@@ -260,18 +322,7 @@ export default function Corrections() {
   return (
     <SafeAreaView style={styles.safe}>
 
-      {popup.visible && (
-        <View
-          style={[
-            styles.popup,
-            popup.type === "success"
-              ? styles.successPopup
-              : styles.errorPopup,
-          ]}
-        >
-          <Text style={styles.popupText}>{popup.message}</Text>
-        </View>
-      )}
+      
 
       <ScrollView
         style={styles.container}
@@ -312,7 +363,140 @@ export default function Corrections() {
           style={{ marginBottom: 4 }}
         />
 
-        {tab === "PENDING" && items.length > 0 && (
+        <View style={styles.filterBar}>
+          <TouchableOpacity
+            style={styles.filterToggle}
+            onPress={() => setFiltersOpen((v) => !v)}
+          >
+            <Ionicons
+              name={filtersOpen ? "chevron-up" : "options-outline"}
+              size={18}
+              color={filtersActive ? c.accent : c.textMuted}
+            />
+            <Text
+              style={[
+                styles.filterToggleText,
+                filtersActive && { color: c.accent },
+              ]}
+            >
+              Filters{filtersActive ? " · on" : ""}
+            </Text>
+          </TouchableOpacity>
+          <Text style={styles.filterCount}>
+            {visibleItems.length} of {items.length}
+          </Text>
+          {filtersActive && (
+            <TouchableOpacity onPress={clearFilters}>
+              <Text style={styles.filterClear}>Clear</Text>
+            </TouchableOpacity>
+          )}
+        </View>
+
+        {filtersOpen && (
+          <View style={styles.filterPanel}>
+            <TextInput
+              style={styles.filterInput}
+              placeholder="Search employee name or email"
+              placeholderTextColor={c.textFaint}
+              value={query}
+              onChangeText={setQuery}
+              autoCapitalize="none"
+            />
+
+            <Text style={styles.filterLabel}>EMPLOYEE</Text>
+            <TouchableOpacity
+              style={styles.filterSelect}
+              onPress={() => setEmployeeOpen(true)}
+            >
+              <Ionicons name="person-outline" size={16} color={c.textMuted} />
+              <Text
+                style={[
+                  styles.filterSelectText,
+                  !employeeId && { color: c.textFaint },
+                ]}
+                numberOfLines={1}
+              >
+                {selectedEmployeeName}
+              </Text>
+              <Ionicons name="chevron-down" size={16} color={c.textMuted} />
+            </TouchableOpacity>
+
+            <Text style={styles.filterLabel}>DATE RANGE</Text>
+            <View style={styles.filterDates}>
+              <View style={styles.dateCell}>
+                <Text style={styles.dateCap}>From</Text>
+                <WebDateField
+                  mode="date"
+                  value={fromDate}
+                  onChange={setFromDate}
+                  max={toDate || undefined}
+                  variant="bordered"
+                  placeholder="Any"
+                />
+              </View>
+              <View style={styles.dateCell}>
+                <Text style={styles.dateCap}>To</Text>
+                <WebDateField
+                  mode="date"
+                  value={toDate}
+                  onChange={setToDate}
+                  min={fromDate || undefined}
+                  variant="bordered"
+                  placeholder="Any"
+                />
+              </View>
+            </View>
+          </View>
+        )}
+
+        {/* Employee picker — options are derived from the loaded corrections,
+            so every name listed has at least one row behind it. */}
+        <WebModal
+          visible={employeeOpen}
+          onClose={() => setEmployeeOpen(false)}
+          title="Filter by employee"
+          size="sm"
+        >
+          <TouchableOpacity
+            style={styles.pickRow}
+            onPress={() => {
+              setEmployeeId("");
+              setEmployeeOpen(false);
+            }}
+          >
+            <Ionicons
+              name={!employeeId ? "radio-button-on" : "radio-button-off"}
+              size={18}
+              color={!employeeId ? c.accent : c.textMuted}
+            />
+            <Text style={styles.pickName}>All employees</Text>
+            <Text style={styles.pickCount}>{items.length}</Text>
+          </TouchableOpacity>
+          {employeeOptions.map((e) => (
+            <TouchableOpacity
+              key={e.id}
+              style={styles.pickRow}
+              onPress={() => {
+                setEmployeeId(e.id);
+                setEmployeeOpen(false);
+              }}
+            >
+              <Ionicons
+                name={
+                  employeeId === e.id ? "radio-button-on" : "radio-button-off"
+                }
+                size={18}
+                color={employeeId === e.id ? c.accent : c.textMuted}
+              />
+              <Text style={styles.pickName} numberOfLines={1}>
+                {e.name}
+              </Text>
+              <Text style={styles.pickCount}>{e.count}</Text>
+            </TouchableOpacity>
+          ))}
+        </WebModal>
+
+        {tab === "PENDING" && visibleItems.length > 0 && (
           <View style={styles.bulkBar}>
             <TouchableOpacity
               style={styles.selectAllBtn}
@@ -361,7 +545,7 @@ export default function Corrections() {
           </View>
         )}
 
-        {items.length === 0 && (
+        {visibleItems.length === 0 && (
           <View style={styles.emptyBox}>
             <Ionicons
               name="checkmark-done-outline"
@@ -372,18 +556,20 @@ export default function Corrections() {
               {tab === "PENDING" ? "All clear" : "Nothing here"}
             </Text>
             <Text style={styles.emptySub}>
-              No{" "}
-              {tab === "PENDING"
-                ? "pending"
-                : tab === "APPROVED"
-                ? "approved"
-                : "rejected"}{" "}
-              corrections.
+              {filtersActive
+                ? "No corrections match these filters."
+                : `No ${
+                    tab === "PENDING"
+                      ? "pending"
+                      : tab === "APPROVED"
+                      ? "approved"
+                      : "rejected"
+                  } corrections.`}
             </Text>
           </View>
         )}
 
-        {items.map((corr) => (
+        {visibleItems.map((corr) => (
           <View
             key={corr.id}
             style={[styles.card, selected.has(corr.id) && styles.cardSelected]}
@@ -639,6 +825,58 @@ const makeStyles = (c: any) => StyleSheet.create({
     marginTop: 6,
     textAlign: "center" },
 
+  filterBar: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+    paddingVertical: 8 },
+  filterToggle: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    flex: 1 },
+  filterToggleText: { color: c.textMuted, fontSize: 13, fontWeight: "700" },
+  filterCount: { color: c.textFaint, fontSize: 12, fontWeight: "600" },
+  filterClear: { color: c.accent, fontSize: 13, fontWeight: "700" },
+  filterPanel: { gap: 8, paddingBottom: 10 },
+  filterLabel: {
+    color: c.textFaint,
+    fontSize: 11,
+    fontWeight: "700",
+    letterSpacing: 0.6,
+    marginTop: 4 },
+  filterSelect: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    backgroundColor: c.surface,
+    borderWidth: 1,
+    borderColor: c.surfaceBorder,
+    borderRadius: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 11 },
+  filterSelectText: { flex: 1, color: c.text, fontSize: 14, fontWeight: "600" },
+  filterDates: { flexDirection: "row", gap: 8 },
+  dateCell: { flex: 1, gap: 4 },
+  dateCap: { color: c.textMuted, fontSize: 11, fontWeight: "600" },
+  pickRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+    paddingVertical: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: c.surfaceBorder },
+  pickName: { flex: 1, color: c.text, fontSize: 14, fontWeight: "600" },
+  pickCount: { color: c.textMuted, fontSize: 12, fontWeight: "700" },
+  filterInput: {
+    backgroundColor: c.surface,
+    borderWidth: 1,
+    borderColor: c.surfaceBorder,
+    borderRadius: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    color: c.text,
+    fontSize: 14 },
   bulkBar: {
     flexDirection: "row",
     alignItems: "center",

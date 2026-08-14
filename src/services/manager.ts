@@ -11,6 +11,12 @@ export type DecideAction = "APPROVE" | "REJECT";
 export interface DecidePayload {
   action: DecideAction;
   note?: string;
+  /**
+   * Approve as loss-of-pay: the days are granted but not charged to the
+   * employee's paid balance, and payroll deducts salary for them.
+   * Ignored when action is REJECT.
+   */
+  unpaid?: boolean;
 }
 
 export interface CorrectionDecidePayload extends DecidePayload {
