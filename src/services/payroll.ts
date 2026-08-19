@@ -133,6 +133,17 @@ export const hrUpdatePayslip = (
     token,
   });
 
+/**
+ * Delete ONE payslip. Scoped to that document — the run, its other payslips
+ * and the employee's salary structure are untouched. Refused when the parent
+ * run is LOCKED. Note a re-process regenerates it.
+ */
+export const hrDeletePayslip = (token: string, id: string) =>
+  apiCall<{ message: string }>(`/hr/payslips/${id}`, {
+    method: "DELETE",
+    token,
+  });
+
 export const hrEmailPayslip = (token: string, id: string) =>
   apiCall<{ message: string }>(`/hr/payslips/${id}/email`, {
     method: "POST",

@@ -27,6 +27,7 @@ import { listUsers } from "../src/services/users";
 import { useTheme } from "../src/theme/ThemeProvider";
 import {
   hrGetSalaryStructure,
+  hrGetSalaryHistory,
   hrSetSalaryStructure } from "../src/services/payroll";
 import { breakdownFromCTC, PF_MONTHLY_CAP } from "../src/utils/salaryFormula";
 import { notify, notifySuccess } from "../src/utils/confirm";
@@ -82,6 +83,12 @@ export default function SalaryStructures() {
   const [modalVisible, setModalVisible] = useState(false);
   const [target, setTarget] = useState<User | null>(null);
   const [current, setCurrent] = useState<SalaryStructure | null>(null);
+  // Every version ever saved, newest first. Saving supersedes rather than
+  // edits, so without this the older versions are invisible — which matters
+  // when correcting a past month, since the run picks the structure whose
+  // effective window covers that month, not the newest one.
+  const [history, setHistory] = useState<SalaryStructure[]>([]);
+  const [historyOpen, setHistoryOpen] = useState(false);
   const [loadingStructure, setLoadingStructure] = useState(false);
   const [saving, setSaving] = useState(false);
 
@@ -144,6 +151,8 @@ export default function SalaryStructures() {
     setModalVisible(true);
     setLoadingStructure(true);
     setCurrent(null);
+    setHistory([]);
+    setHistoryOpen(false);
 
     // Reset to defaults
     setMonthlyCTC("");
@@ -168,10 +177,29 @@ export default function SalaryStructures() {
     try {
       const token = await AsyncStorage.getItem("token");
       if (!token) return;
-      const ss = await hrGetSalaryStructure(token, u.id);
+      const [ss, hist] = await Promise.all([
+        hrGetSalaryStructure(token, u.id),
+        hrGetSalaryHistory(token, u.id).catch(() => [] as SalaryStructure[]),
+      ]);
+      setHistory(hist || []);
       if (ss) {
         setCurrent(ss);
         setAccommodation(!!(ss as any).accommodation);
+        // CTC was pure local state — typed in for the quick-fill and lost on
+        // every refresh, so HR reopened a saved structure with a blank CTC.
+        // Derive it from the stored components instead of persisting another
+        // field: that stays correct even if HR hand-edits a line, and works
+        // for structures saved before totalCTC existed.
+        const ctcFromParts =
+          (Number(ss.basic) || 0) +
+          (Number(ss.hra) || 0) +
+          (Number(ss.communicationAllowance) || 0) +
+          (Number(ss.otherAllowance) || 0) +
+          (Number(ss.employerPF) || 0) +
+          (Number(ss.employerInsurance) || 0);
+        const storedCtc = Number((ss as any).totalCTC) || 0;
+        const ctc = storedCtc || ctcFromParts;
+        setMonthlyCTC(ctc > 0 ? String(Math.round(ctc)) : "");
         setBasic(String(ss.basic));
         setHra(String(ss.hra));
         setComm(String(ss.communicationAllowance));
@@ -335,6 +363,65 @@ export default function SalaryStructures() {
 
               {loadingStructure && (
                 <ActivityIndicator color={c.accent} style={{ marginTop: 14 }} />
+              )}
+
+              {/* PREVIOUS VERSIONS — the effective window is what the payroll
+                  run matches against, so it is shown per row rather than
+                  buried. "Active" is the one with no end date. */}
+              {history.length > 0 && (
+                <>
+                  <TouchableOpacity
+                    style={s.histToggle}
+                    onPress={() => setHistoryOpen((v) => !v)}
+                    activeOpacity={0.7}
+                  >
+                    <Ionicons
+                      name={historyOpen ? "chevron-down" : "chevron-forward"}
+                      size={16}
+                      color={c.textMuted}
+                    />
+                    <Text style={s.histToggleText}>
+                      Previous versions ({history.length})
+                    </Text>
+                  </TouchableOpacity>
+
+                  {historyOpen && (
+                    <View style={s.histList}>
+                      {history.map((h) => {
+                        const active = !h.effectiveTo;
+                        const gross =
+                          (Number(h.basic) || 0) +
+                          (Number(h.hra) || 0) +
+                          (Number(h.communicationAllowance) || 0) +
+                          (Number(h.otherAllowance) || 0);
+                        const ctc =
+                          gross +
+                          (Number(h.employerPF) || 0) +
+                          (Number(h.employerInsurance) || 0);
+                        return (
+                          <View key={h.id} style={s.histRow}>
+                            <View style={{ flex: 1 }}>
+                              <Text style={s.histWhen}>
+                                {h.effectiveFrom} →{" "}
+                                {h.effectiveTo || "present"}
+                              </Text>
+                              <Text style={s.histAmt}>
+                                CTC ₹{Math.round(ctc).toLocaleString("en-IN")}
+                                {"  ·  "}Basic ₹
+                                {Math.round(Number(h.basic) || 0).toLocaleString("en-IN")}
+                              </Text>
+                            </View>
+                            {active && (
+                              <View style={s.histPill}>
+                                <Text style={s.histPillText}>ACTIVE</Text>
+                              </View>
+                            )}
+                          </View>
+                        );
+                      })}
+                    </View>
+                  )}
+                </>
               )}
 
               {/* QUICK FILL FROM MONTHLY CTC */}
@@ -515,6 +602,21 @@ const makeStyles = (c: any) => StyleSheet.create({
   modalTitle: { color: c.text, fontSize: 22, fontWeight: "800" },
   hint: { color: c.textMuted, fontSize: 11, marginTop: 4 },
 
+  histToggle: {
+    flexDirection: "row", alignItems: "center", gap: 6,
+    marginTop: 14, paddingVertical: 6 },
+  histToggleText: { color: c.textMuted, fontSize: 13, fontWeight: "700" },
+  histList: { gap: 6, marginBottom: 4 },
+  histRow: {
+    flexDirection: "row", alignItems: "center", gap: 10,
+    backgroundColor: c.surface, borderWidth: 1, borderColor: c.surfaceBorder,
+    borderRadius: 10, paddingHorizontal: 12, paddingVertical: 10 },
+  histWhen: { color: c.text, fontSize: 13, fontWeight: "700" },
+  histAmt: { color: c.textMuted, fontSize: 12, marginTop: 2 },
+  histPill: {
+    backgroundColor: c.accentSoft, paddingHorizontal: 8, paddingVertical: 3,
+    borderRadius: 999 },
+  histPillText: { color: c.accentText, fontSize: 10, fontWeight: "800" },
   section: { color: c.textMuted, fontSize: 11, letterSpacing: 1.5, fontWeight: "700", marginTop: 16, marginBottom: 8 },
 
   label: { color: c.textMuted, fontSize: 12, fontWeight: "600", marginBottom: 4, marginTop: 8 },
