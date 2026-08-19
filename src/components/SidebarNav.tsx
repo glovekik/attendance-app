@@ -518,21 +518,22 @@ export const SidebarNav = ({
     <View style={styles.container}>
       {/* Logo / Brand - Clean Keka-style header */}
       <View style={styles.header}>
-        <View style={styles.logoContainer}>
-          {/* Transparent PNG, not the JPEG: the JPEG carries an opaque white
-              background that renders as a white box on the dark theme. */}
+        {/* The lockup already carries the wordmark and "People Operations",
+            so adjacent brand text would just repeat it. Collapsed shows the
+            square app icon instead — a 2.7:1 lockup is illegible at 40px. */}
+        {collapsed ? (
           <Image
-            source={require("../../assets/images/company-logo.png")}
+            source={require("../../assets/images/icon.png")}
+            style={styles.logoMark}
+            resizeMode="contain"
+          />
+        ) : (
+          <Image
+            source={require("../../assets/images/lockup.png")}
             style={styles.logoImg}
             resizeMode="contain"
           />
-          {!collapsed && (
-            <View>
-              <Text style={styles.brandText}>4SightHub</Text>
-              <Text style={styles.brandSubtext}>HR Platform</Text>
-            </View>
-          )}
-        </View>
+        )}
       </View>
 
       {/* Navigation Items */}
@@ -631,31 +632,24 @@ const makeStyles = (colors: any, collapsed: boolean) =>
       }),
     },
     header: {
-      paddingVertical: 20,
-      paddingHorizontal: collapsed ? 16 : 20,
-    },
-    logoContainer: {
-      flexDirection: "row",
+      paddingVertical: collapsed ? 16 : 18,
+      paddingHorizontal: collapsed ? 16 : 18,
       alignItems: "center",
-      gap: 12,
-      justifyContent: collapsed ? "center" : "flex-start",
     },
+    // Sidebar is 260 wide; 18px padding each side leaves 224. The lockup is
+    // 1268x464 (2.73:1), so a 224-wide box is ~82 tall — height is set from
+    // that ratio rather than guessed, or "contain" would letterbox it and
+    // render the mark smaller than the space allows.
     logoImg: {
+      width: "100%",
+      height: 82,
+    },
+    // Collapsed rail is 72 wide; the square app icon reads at this size where
+    // the wide lockup would not.
+    logoMark: {
       width: 40,
       height: 40,
-      borderRadius: 8,
-    },
-    brandText: {
-      fontSize: 17,
-      fontWeight: "700",
-      color: colors.text,
-      letterSpacing: -0.3,
-    },
-    brandSubtext: {
-      fontSize: 11,
-      fontWeight: "500",
-      color: colors.textMuted,
-      marginTop: 1,
+      borderRadius: 10,
     },
     navScroll: {
       flex: 1,

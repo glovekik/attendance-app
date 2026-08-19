@@ -26,7 +26,8 @@ import { mediaUrl } from "../utils/media";
 export const CARD_W = 320;
 export const CARD_H = Math.round(CARD_W * (85.6 / 54)); // 507
 
-// Sampled from assets/images/logo.jpg — 4SightAI's own blues.
+// Sampled from the 4SightAI lockup — the legal entity brand used on
+// formal documents (ID card, payslip), not the 4SightHUB app lockup.
 const NAVY = "#10305F";
 const INK = "#3D4658";
 const MUTED = "#9AA3AE";

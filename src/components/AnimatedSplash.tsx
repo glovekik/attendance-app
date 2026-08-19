@@ -116,7 +116,7 @@ export function AnimatedSplash({ onFinish }: { onFinish: () => void }) {
           ]}
         >
           <Image
-            source={require("../../assets/images/logo.jpg")}
+            source={require("../../assets/images/lockup.png")}
             style={styles.logo}
             resizeMode="contain"
           />
