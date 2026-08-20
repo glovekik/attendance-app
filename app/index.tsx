@@ -360,7 +360,7 @@ export default function Home() {
       >
         {/* ===== BRAND ===== */}
         <Image
-          source={require("../assets/images/logo.jpg")}
+          source={require("../assets/images/lockup.png")}
           style={styles.brandLogo}
           resizeMode="contain"
         />

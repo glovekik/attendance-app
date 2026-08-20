@@ -201,7 +201,7 @@ export default function Login() {
                 {/* Logo. */}
                 <View style={styles.logoBadge}>
                   <Image
-                    source={require("../assets/images/logo.jpg")}
+                    source={require("../assets/images/lockup.png")}
                     style={styles.logo}
                     resizeMode="contain"
                   />

@@ -36,6 +36,7 @@ import {
   hrEmailPayslip,
   hrPayslipPdfUrl,
   hrUpdatePayslip,
+  hrDeletePayslip,
   hrSendPayslip,
   hrSendAllPayslips,
 } from "../../src/services/payroll";
@@ -119,6 +120,13 @@ export default function HRPayrollRun() {
 
   // Per-payslip working-days edit
   const [editPayslip, setEditPayslip] = useState<Payslip | null>(null);
+  // Full line-item editor, separate from the days-only modal above. Edits
+  // land on THIS payslip alone: the salary structure, the payroll run and
+  // every other payslip are untouched.
+  const [amountsFor, setAmountsFor] = useState<Payslip | null>(null);
+  const [amounts, setAmounts] = useState<Record<string, string>>({});
+  const [savingAmounts, setSavingAmounts] = useState(false);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
   const [editWorkingDays, setEditWorkingDays] = useState("");
   const [editAttendedDays, setEditAttendedDays] = useState("");
   const [savingEdit, setSavingEdit] = useState(false);
@@ -297,6 +305,114 @@ export default function HRPayrollRun() {
       showPopup(err?.message || "Failed to send", "error");
     } finally {
       setBusy(false);
+    }
+  };
+
+  // Every amount the backend accepts as an override (PayslipOverride).
+  const AMOUNT_FIELDS: { key: string; label: string; group: "earn" | "ded" | "emp" }[] = [
+    { key: "basic", label: "Basic", group: "earn" },
+    { key: "hra", label: "HRA", group: "earn" },
+    { key: "communicationAllowance", label: "Communication", group: "earn" },
+    { key: "otherAllowance", label: "Other Allowance", group: "earn" },
+    { key: "employeePF", label: "PF (Employee)", group: "ded" },
+    { key: "professionalTax", label: "Professional Tax", group: "ded" },
+    { key: "tds", label: "TDS", group: "ded" },
+    { key: "employeeInsurance", label: "ESI (Employee)", group: "ded" },
+    { key: "employerPF", label: "Employer PF", group: "emp" },
+    { key: "employerInsurance", label: "Health Insurance", group: "emp" },
+  ];
+
+  const openAmounts = (p: Payslip) => {
+    const seed: Record<string, string> = {};
+    for (const f of AMOUNT_FIELDS) {
+      seed[f.key] = String((p as any)[f.key] ?? 0);
+    }
+    seed.lopDays = String(p.lopDays ?? 0);
+    setAmounts(seed);
+    setAmountsFor(p);
+  };
+
+  const num = (v: string) => {
+    const n = parseFloat(v);
+    return Number.isFinite(n) ? n : 0;
+  };
+
+  // Mirrors the server's compute_totals so the preview matches what will be
+  // saved — cash gross only, employer cost reported separately.
+  const preview = useMemo(() => {
+    const cash =
+      num(amounts.basic || "0") +
+      num(amounts.hra || "0") +
+      num(amounts.communicationAllowance || "0") +
+      num(amounts.otherAllowance || "0");
+    const employer =
+      num(amounts.employerPF || "0") + num(amounts.employerInsurance || "0");
+    const ded =
+      num(amounts.employeePF || "0") +
+      num(amounts.professionalTax || "0") +
+      num(amounts.tds || "0") +
+      num(amounts.employeeInsurance || "0");
+    const wd = Number(amountsFor?.workingDays || 0);
+    const lop = num(amounts.lopDays || "0");
+    const lopDed = wd > 0 && lop > 0 ? Math.min((cash / wd) * lop, cash) : 0;
+    const gross = Math.round((cash - lopDed) * 100) / 100;
+    return {
+      gross,
+      employer,
+      ctc: Math.round((gross + employer) * 100) / 100,
+      ded,
+      lopDed: Math.round(lopDed * 100) / 100,
+      net: Math.round((gross - ded) * 100) / 100,
+    };
+  }, [amounts, amountsFor]);
+
+  const saveAmounts = async () => {
+    if (!amountsFor || savingAmounts) return;
+    try {
+      setSavingAmounts(true);
+      const token = await AsyncStorage.getItem("token");
+      if (!token) return;
+      const body: Record<string, number> = {};
+      for (const f of AMOUNT_FIELDS) body[f.key] = num(amounts[f.key]);
+      body.lopDays = num(amounts.lopDays);
+      await hrUpdatePayslip(token, amountsFor.id, body as any);
+      showPopup("Payslip updated");
+      setAmountsFor(null);
+      await load();
+    } catch (err: any) {
+      showPopup(err?.message || "Failed to update payslip", "error");
+    } finally {
+      setSavingAmounts(false);
+    }
+  };
+
+  const removePayslip = async (p: Payslip) => {
+    const who = p.user?.name || "this employee";
+    const msg =
+      `Delete the payslip for ${who}?\n\n` +
+      "Only this payslip is removed — the payroll run and everyone else's " +
+      "payslips are untouched. Re-processing the run will regenerate it.";
+    const ok =
+      Platform.OS === "web"
+        ? typeof window !== "undefined" && window.confirm(msg)
+        : await new Promise<boolean>((resolve) =>
+            Alert.alert("Delete payslip?", msg, [
+              { text: "Cancel", style: "cancel", onPress: () => resolve(false) },
+              { text: "Delete", style: "destructive", onPress: () => resolve(true) },
+            ])
+          );
+    if (!ok) return;
+    try {
+      setDeletingId(p.id);
+      const token = await AsyncStorage.getItem("token");
+      if (!token) return;
+      await hrDeletePayslip(token, p.id);
+      showPopup("Payslip deleted");
+      await load();
+    } catch (err: any) {
+      showPopup(err?.message || "Failed to delete", "error");
+    } finally {
+      setDeletingId(null);
     }
   };
 
@@ -613,6 +729,31 @@ export default function HRPayrollRun() {
                   <Text style={s.smallBtnText}>Edit days</Text>
                 </TouchableOpacity>
               )}
+              {run.status !== "LOCKED" && (
+                <TouchableOpacity
+                  style={[s.smallBtn, { backgroundColor: "#7c3aed" }]}
+                  onPress={() => openAmounts(p)}
+                >
+                  <Ionicons name="cash-outline" size={14} color="#fff" />
+                  <Text style={s.smallBtnText}>Edit payslip</Text>
+                </TouchableOpacity>
+              )}
+              {run.status !== "LOCKED" && (
+                <TouchableOpacity
+                  style={[s.smallBtn, { backgroundColor: "#dc2626" }]}
+                  onPress={() => removePayslip(p)}
+                  disabled={deletingId === p.id}
+                >
+                  {deletingId === p.id ? (
+                    <ActivityIndicator color="#fff" size="small" />
+                  ) : (
+                    <>
+                      <Ionicons name="trash-outline" size={14} color="#fff" />
+                      <Text style={s.smallBtnText}>Delete</Text>
+                    </>
+                  )}
+                </TouchableOpacity>
+              )}
               <TouchableOpacity
                 style={[s.smallBtn, { backgroundColor: "#2563eb" }]}
                 onPress={() => sendOne(p)}
@@ -678,6 +819,139 @@ export default function HRPayrollRun() {
         ))}
 
       </ScrollView>
+
+      {/* ===== EDIT PAYSLIP (line items) ===== */}
+      <WebModal
+        visible={!!amountsFor}
+        onClose={() => setAmountsFor(null)}
+        title="Edit payslip"
+        subtitle={
+          amountsFor
+            ? `${amountsFor.user?.name ?? ""}  ·  ${
+                amountsFor.month
+              }/${amountsFor.year}`
+            : undefined
+        }
+        size="lg"
+        footer={
+          <ModalActions align="spread">
+            <TouchableOpacity
+              style={s.modalGhost}
+              onPress={() => setAmountsFor(null)}
+              disabled={savingAmounts}
+            >
+              <Text style={s.modalGhostText}>Cancel</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[s.modalPrimary, savingAmounts && { opacity: 0.6 }]}
+              onPress={saveAmounts}
+              disabled={savingAmounts}
+            >
+              {savingAmounts ? (
+                <ActivityIndicator color="#fff" size="small" />
+              ) : (
+                <Text style={[s.modalBtnText, { color: "#fff" }]}>
+                  Save changes
+                </Text>
+              )}
+            </TouchableOpacity>
+          </ModalActions>
+        }
+      >
+        <Text style={s.editNote}>
+          Edits apply to this payslip only — the salary structure, the payroll
+          run and other employees are untouched. Re-processing the run will
+          overwrite these values.
+        </Text>
+
+        {(["earn", "ded", "emp"] as const).map((g) => (
+          <View key={g}>
+            <Text style={s.section}>
+              {g === "earn"
+                ? "EARNINGS"
+                : g === "ded"
+                ? "DEDUCTIONS"
+                : "EMPLOYER CONTRIBUTION (not part of net)"}
+            </Text>
+            {AMOUNT_FIELDS.filter((f) => f.group === g).map((f) => (
+              <View key={f.key} style={s.editRow}>
+                <Text style={s.editLabel}>{f.label}</Text>
+                <TextInput
+                  style={s.editInput}
+                  value={amounts[f.key] ?? ""}
+                  onChangeText={(v) =>
+                    setAmounts((prev) => ({ ...prev, [f.key]: v }))
+                  }
+                  keyboardType="numeric"
+                  placeholderTextColor={c.textFaint}
+                />
+              </View>
+            ))}
+          </View>
+        ))}
+
+        <Text style={s.section}>LOSS OF PAY</Text>
+        <View style={s.editRow}>
+          <Text style={s.editLabel}>
+            LOP days{" "}
+            <Text style={s.editHint}>
+              (of {amountsFor?.workingDays ?? 0})
+            </Text>
+          </Text>
+          <TextInput
+            style={s.editInput}
+            value={amounts.lopDays ?? ""}
+            onChangeText={(v) =>
+              setAmounts((prev) => ({ ...prev, lopDays: v }))
+            }
+            keyboardType="numeric"
+          />
+        </View>
+
+        {/* Live preview using the same arithmetic as the server. */}
+        <View style={s.previewBox}>
+          <View style={s.previewRow}>
+            <Text style={s.previewLabel}>Gross (A)</Text>
+            <Text style={s.previewValue}>
+              ₹ {preview.gross.toLocaleString("en-IN")}
+            </Text>
+          </View>
+          {preview.lopDed > 0 && (
+            <View style={s.previewRow}>
+              <Text style={s.previewLabel}>LOP deduction</Text>
+              <Text style={[s.previewValue, { color: ATT.unpaid }]}>
+                − ₹ {preview.lopDed.toLocaleString("en-IN")}
+              </Text>
+            </View>
+          )}
+          <View style={s.previewRow}>
+            <Text style={s.previewLabel}>Deductions (B)</Text>
+            <Text style={s.previewValue}>
+              ₹ {preview.ded.toLocaleString("en-IN")}
+            </Text>
+          </View>
+          <View style={s.previewRow}>
+            <Text style={[s.previewLabel, { fontWeight: "800" }]}>
+              Net pay (A − B)
+            </Text>
+            <Text style={[s.previewValue, { fontWeight: "800" }]}>
+              ₹ {preview.net.toLocaleString("en-IN")}
+            </Text>
+          </View>
+          <View style={s.previewRow}>
+            <Text style={s.previewLabel}>Employer cost (C)</Text>
+            <Text style={s.previewValue}>
+              ₹ {preview.employer.toLocaleString("en-IN")}
+            </Text>
+          </View>
+          <View style={s.previewRow}>
+            <Text style={s.previewLabel}>Total CTC (A + C)</Text>
+            <Text style={s.previewValue}>
+              ₹ {preview.ctc.toLocaleString("en-IN")}
+            </Text>
+          </View>
+        </View>
+      </WebModal>
 
       <WebModal
         visible={!!editPayslip}
@@ -920,6 +1194,26 @@ const makeStyles = (c: any) => StyleSheet.create({
   modalCancel: { flex: 1, backgroundColor: c.surfaceMuted, padding: 13, borderRadius: 11, alignItems: "center" },
   modalSave: { flex: 1, backgroundColor: "#16a34a", padding: 13, borderRadius: 11, alignItems: "center" },
   modalBtnText: { color: c.text, fontWeight: "700" },
+  modalGhost: {
+    flex: 1, minHeight: 44, borderRadius: 10, borderWidth: 1,
+    borderColor: c.surfaceBorder, alignItems: "center", justifyContent: "center" },
+  modalGhostText: { color: c.text, fontSize: 14, fontWeight: "600" },
+  modalPrimary: {
+    flex: 1, minHeight: 44, borderRadius: 10, backgroundColor: c.accent,
+    alignItems: "center", justifyContent: "center" },
+  editNote: {
+    color: c.textMuted, fontSize: 12, lineHeight: 17, marginBottom: 4 },
+  section: {
+    color: c.textFaint, fontSize: 11, fontWeight: "800", letterSpacing: 0.6,
+    marginTop: 16, marginBottom: 6 },
+  editRow: {
+    flexDirection: "row", alignItems: "center", gap: 12, paddingVertical: 5 },
+  editLabel: { flex: 1, color: c.text, fontSize: 13, fontWeight: "600" },
+  editHint: { color: c.textMuted, fontSize: 11, fontWeight: "400" },
+  editInput: {
+    width: 130, backgroundColor: c.surface, borderWidth: 1,
+    borderColor: c.surfaceBorder, borderRadius: 8, paddingHorizontal: 10,
+    paddingVertical: 8, color: c.text, fontSize: 14, textAlign: "right" },
 
   previewBox: { backgroundColor: c.surfaceMuted, borderRadius: 12, borderWidth: 1, borderColor: c.surfaceBorder, padding: 12, marginTop: 12 },
   previewRow: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", paddingVertical: 3 },
