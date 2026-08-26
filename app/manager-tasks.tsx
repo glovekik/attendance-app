@@ -25,7 +25,8 @@ import {
   ManagerTask,
   TeamMember } from "../src/services/managerTeam";
 import { getMyTasks } from "../src/services/tasks";
-import { TaskStatus, TaskPriority, TASK_PRIORITIES } from "../src/types";
+import { TaskStatus, TaskPriority, TASK_PRIORITIES, Project } from "../src/types";
+import { listProjects } from "../src/services/projects";
 import { confirmAction, notify } from "../src/utils/confirm";
 import { useTheme } from "../src/theme/ThemeProvider";
 import { taskPriorityColor, taskStatusColor } from "../src/theme/statusColors";
@@ -69,7 +70,9 @@ export default function ManagerTasks() {
   const [cDesc, setCDesc] = useState("");
   const [cPriority, setCPriority] = useState<TaskPriority>("MEDIUM");
   const [cDue, setCDue] = useState("");
+  const [cProject, setCProject] = useState<string | null>(null);
   const [cSaving, setCSaving] = useState(false);
+  const [projects, setProjects] = useState<Project[]>([]);
 
   const openCreate = () => {
     setCAssignee(null);
@@ -77,8 +80,25 @@ export default function ManagerTasks() {
     setCDesc("");
     setCPriority("MEDIUM");
     setCDue("");
+    setCProject(null);
     setCreateOpen(true);
   };
+
+  const projectsForAssignee = useMemo(() => {
+    if (!cAssignee) return [];
+    return projects.filter(
+      (p) =>
+        (p.memberIds || []).includes(cAssignee) ||
+        (p.managerIds || []).includes(cAssignee)
+    );
+  }, [projects, cAssignee]);
+
+  // Switching to someone who isn't on the chosen project would fail on save.
+  useEffect(() => {
+    if (cProject && !projectsForAssignee.some((p) => p.id === cProject)) {
+      setCProject(null);
+    }
+  }, [cProject, projectsForAssignee]);
 
   const onCreate = async () => {
     if (cSaving) return;
@@ -94,6 +114,7 @@ export default function ManagerTasks() {
         assigneeId: cAssignee,
         priority: cPriority,
         dueDate: cDue.trim() || undefined,
+        projectId: cProject || undefined,
       });
       setCreateOpen(false);
       setCSaving(false);
@@ -118,6 +139,14 @@ export default function ManagerTasks() {
           ? await getMyTasks(token, { status })
           : await listManagerTasks(token, { status });
       setTasks((data as ManagerTask[]) || []);
+
+      // Drives the project picker. Non-fatal: a task with no project is
+      // still perfectly valid, so a failure here shouldn't block the screen.
+      try {
+        setProjects(await listProjects(token));
+      } catch {
+        setProjects([]);
+      }
     } catch (err: any) {
       Alert.alert("Couldn't load tasks", err?.message || "Pull down to retry.");
     } finally {
@@ -327,6 +356,13 @@ export default function ManagerTasks() {
                   <Text style={styles.cardTitle} numberOfLines={1}>
                     {item.title}
                   </Text>
+                  {!!item.project && (
+                    <View style={styles.projectTag}>
+                      <Text style={styles.projectTagText} numberOfLines={1}>
+                        {item.project.code || item.project.name}
+                      </Text>
+                    </View>
+                  )}
                   <View style={[styles.statusPill, { backgroundColor: sc.bg }]}>
                     <Text style={[styles.statusText, { color: sc.fg }]}>{item.status}</Text>
                   </View>
@@ -469,6 +505,15 @@ export default function ManagerTasks() {
                 {detailTask.assignee?.name || detailTask.assigneeName || "Unassigned"}
               </Text>
             </View>
+            {!!detailTask.project && (
+              <View style={styles.dInfoRow}>
+                <Ionicons name="folder-outline" size={16} color={c.textMuted} />
+                <Text style={styles.dInfoText}>
+                  {detailTask.project.name}
+                  {detailTask.project.code ? ` (${detailTask.project.code})` : ""}
+                </Text>
+              </View>
+            )}
             {!!detailTask.dueDate && (
               <View style={styles.dInfoRow}>
                 <Ionicons name="calendar-outline" size={16} color={c.textMuted} />
@@ -518,6 +563,39 @@ export default function ManagerTasks() {
               return (
                 <TouchableOpacity key={m.id} style={[styles.chip, active && styles.chipActive]} onPress={() => setCAssignee(m.id)}>
                   <Text style={[styles.chipText, active && styles.chipTextActive]}>{m.name.split(" ")[0]}</Text>
+                </TouchableOpacity>
+              );
+            })}
+          </ScrollView>
+        )}
+
+        <Text style={styles.fLabel}>Project</Text>
+        {!cAssignee ? (
+          <Text style={styles.fHint}>Pick a person first.</Text>
+        ) : projectsForAssignee.length === 0 ? (
+          <Text style={styles.fHint}>
+            They aren't on any project. The task will have no project — ask HR
+            to add them if it should belong to one.
+          </Text>
+        ) : (
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8, paddingVertical: 2 }}>
+            <TouchableOpacity
+              style={[styles.chip, cProject === null && styles.chipActive]}
+              onPress={() => setCProject(null)}
+            >
+              <Text style={[styles.chipText, cProject === null && styles.chipTextActive]}>No project</Text>
+            </TouchableOpacity>
+            {projectsForAssignee.map((p) => {
+              const active = cProject === p.id;
+              return (
+                <TouchableOpacity
+                  key={p.id}
+                  style={[styles.chip, active && styles.chipActive]}
+                  onPress={() => setCProject(p.id)}
+                >
+                  <Text style={[styles.chipText, active && styles.chipTextActive]}>
+                    {p.code || p.name}
+                  </Text>
                 </TouchableOpacity>
               );
             })}
@@ -641,6 +719,16 @@ const makeStyles = (c: any) =>
     dot: { width: 8, height: 8, borderRadius: 4 },
     cardTitle: { flex: 1, color: c.text, fontSize: 14, fontWeight: "700" },
     statusPill: { paddingHorizontal: 8, paddingVertical: 3, borderRadius: 6 },
+    projectTag: {
+      paddingHorizontal: 7,
+      paddingVertical: 2,
+      borderRadius: 5,
+      borderWidth: 1,
+      borderColor: c.border,
+      backgroundColor: c.surfaceAlt ?? c.surface,
+      maxWidth: 110,
+    },
+    projectTagText: { color: c.textMuted, fontSize: 10, fontWeight: "700" },
     statusText: { fontSize: 9, fontWeight: "800", letterSpacing: 0.4 },
     cardBottom: {
       flexDirection: "row",

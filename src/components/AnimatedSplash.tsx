@@ -3,6 +3,8 @@ import { useEffect, useRef } from "react";
 import { Animated, Easing, Image, StyleSheet, View } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
 
+import { USE_NATIVE_DRIVER } from "../utils/animation";
+
 /**
  * Clean light splash that plays over the native splash:
  *  - a soft light backdrop (matches the login screen),
@@ -11,7 +13,9 @@ import { LinearGradient } from "expo-linear-gradient";
  *  - the company name fades in,
  *  - then the whole layer fades up to reveal the app.
  *
- * Built on RN's Animated (native driver) + expo-linear-gradient.
+ * Built on RN's Animated + expo-linear-gradient. The native driver is used
+ * on iOS/Android and skipped on web, which has no native animated module
+ * (see utils/animation.ts).
  */
 
 const COMPANY = "ForesightAI Technologies";
@@ -35,32 +39,32 @@ export function AnimatedSplash({ onFinish }: { onFinish: () => void }) {
           toValue: 1,
           duration: 600,
           easing: Easing.out(Easing.cubic),
-          useNativeDriver: true,
+          useNativeDriver: USE_NATIVE_DRIVER,
         }),
         Animated.spring(logoScale, {
           toValue: 1,
           friction: 7,
           tension: 45,
-          useNativeDriver: true,
+          useNativeDriver: USE_NATIVE_DRIVER,
         }),
         Animated.timing(logoY, {
           toValue: 0,
           duration: 600,
           easing: Easing.out(Easing.cubic),
-          useNativeDriver: true,
+          useNativeDriver: USE_NATIVE_DRIVER,
         }),
       ]),
       Animated.timing(lineScale, {
         toValue: 1,
         duration: 800,
         easing: Easing.inOut(Easing.cubic),
-        useNativeDriver: true,
+        useNativeDriver: USE_NATIVE_DRIVER,
       }),
       Animated.timing(footerOpacity, {
         toValue: 1,
         duration: 450,
         easing: Easing.out(Easing.quad),
-        useNativeDriver: true,
+        useNativeDriver: USE_NATIVE_DRIVER,
       }),
     ]).start();
 
@@ -71,13 +75,13 @@ export function AnimatedSplash({ onFinish }: { onFinish: () => void }) {
           toValue: 0,
           duration: 500,
           easing: Easing.in(Easing.quad),
-          useNativeDriver: true,
+          useNativeDriver: USE_NATIVE_DRIVER,
         }),
         Animated.timing(layerScale, {
           toValue: 1.04,
           duration: 500,
           easing: Easing.in(Easing.quad),
-          useNativeDriver: true,
+          useNativeDriver: USE_NATIVE_DRIVER,
         }),
       ]).start(({ finished }) => {
         if (finished) onFinish();

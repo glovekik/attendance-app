@@ -17,24 +17,24 @@ const buildQs = (opts?: ListOpts) => {
 };
 
 // ===== TEAM CHAT =====
-export const listTeamMessages = (
+export const listProjectMessages = (
   token: string,
-  teamId: string,
+  projectId: string,
   opts?: ListOpts
 ) =>
   apiCall<ChatMessage[]>(
-    `/teams/${teamId}/messages${buildQs(opts)}`,
+    `/projects/${projectId}/messages${buildQs(opts)}`,
     { token }
   );
 
-export const sendTeamMessage = (
+export const sendProjectMessage = (
   token: string,
-  teamId: string,
+  projectId: string,
   text: string,
   mentions?: string[],
   attachments?: ChatAttachment[]
 ) =>
-  apiCall<ChatMessage>(`/teams/${teamId}/messages`, {
+  apiCall<ChatMessage>(`/projects/${projectId}/messages`, {
     method: "POST",
     body: {
       text,
@@ -44,32 +44,32 @@ export const sendTeamMessage = (
     token,
   });
 
-export const editTeamMessage = (
+export const editProjectMessage = (
   token: string,
-  teamId: string,
+  projectId: string,
   messageId: string,
   text: string,
   mentions?: string[]
 ) =>
-  apiCall<ChatMessage>(`/teams/${teamId}/messages/${messageId}`, {
+  apiCall<ChatMessage>(`/projects/${projectId}/messages/${messageId}`, {
     method: "PUT",
     body: { text, ...(mentions && mentions.length ? { mentions } : {}) },
     token,
   });
 
-export const deleteTeamMessage = (
+export const deleteProjectMessage = (
   token: string,
-  teamId: string,
+  projectId: string,
   messageId: string,
   scope: DeleteScope = "everyone"
 ) =>
   apiCall<{ message: string }>(
-    `/teams/${teamId}/messages/${messageId}?scope=${scope}`,
+    `/projects/${projectId}/messages/${messageId}?scope=${scope}`,
     { method: "DELETE", token }
   );
 
-export const markTeamReadReceipt = (token: string, teamId: string) =>
-  apiCall<{ message: string }>(`/teams/${teamId}/messages/read`, {
+export const markProjectReadReceipt = (token: string, projectId: string) =>
+  apiCall<{ message: string }>(`/projects/${projectId}/messages/read`, {
     method: "POST",
     token,
   });
@@ -136,8 +136,135 @@ export const getChatUnreadCount = (
 ): Promise<{ count: number }> =>
   apiCall(`/me/chat-unread`, { token });
 
-// Clears the unread badge — called when a team chat is opened.
-export const markChatRead = (
+// `markChatRead()` used to POST /me/chat-read here. Unread is per-channel
+// now, so each surface marks only its own channel read via
+// markOfficeReadReceipt / markProjectReadReceipt / markGroupReadReceipt.
+// A blanket clear would hide unread messages in the other conversations.
+
+// ===== CONVERSATION LIST (chat home) =====
+
+export interface ChatConversation {
+  channelType: "office" | "project" | "group";
+  /** null for office chat. */
+  channelId: string | null;
+  name: string;
+  unread: number;
+  lastMessage: {
+    text: string;
+    authorName?: string | null;
+    authorId?: string | null;
+    createdAt: string | null;
+    hasAttachments: boolean;
+  } | null;
+}
+
+/**
+ * Every chat the user can open — office plus their current project chats —
+ * with a per-channel unread count.
+ */
+export const listConversations = (
   token: string
-): Promise<{ ok: boolean }> =>
-  apiCall(`/me/chat-read`, { method: "POST", token });
+): Promise<{ conversations: ChatConversation[]; totalUnread: number }> =>
+  apiCall("/chat/conversations", { token });
+
+// ===== AD-HOC CHAT GROUPS =====
+// Anyone in a group can read and post; only HR can create or manage them.
+
+export interface ChatGroup {
+  id: string;
+  name: string;
+  description?: string;
+  memberIds: string[];
+  createdBy?: string;
+  createdAt?: string | null;
+  /** True only for the HR user who created it. */
+  viewerCanDelete?: boolean;
+}
+
+export const listChatGroups = (
+  token: string,
+  all = false
+): Promise<ChatGroup[]> =>
+  apiCall(`/chat/groups${all ? "?all=true" : ""}`, { token });
+
+export const getChatGroup = (token: string, id: string): Promise<ChatGroup> =>
+  apiCall(`/chat/groups/${id}`, { token });
+
+/** HR only. */
+export const createChatGroup = (
+  token: string,
+  payload: { name: string; description?: string; memberIds?: string[] }
+): Promise<{ id: string; message: string }> =>
+  apiCall("/chat/groups", { method: "POST", body: payload, token });
+
+/** HR only. */
+export const updateChatGroup = (
+  token: string,
+  id: string,
+  payload: { name?: string; description?: string; memberIds?: string[] }
+): Promise<{ message: string }> =>
+  apiCall(`/chat/groups/${id}`, { method: "PUT", body: payload, token });
+
+/** HR only. Deletes the conversation along with the group. */
+export const deleteChatGroup = (
+  token: string,
+  id: string
+): Promise<{ message: string }> =>
+  apiCall(`/chat/groups/${id}`, { method: "DELETE", token });
+
+export const listGroupMessages = (
+  token: string,
+  groupId: string,
+  opts?: { before?: string; limit?: number }
+) =>
+  apiCall<ChatMessage[]>(
+    `/chat/groups/${groupId}/messages${buildQs(opts)}`,
+    { token }
+  );
+
+export const sendGroupMessage = (
+  token: string,
+  groupId: string,
+  text: string,
+  mentions?: string[],
+  attachments?: ChatAttachment[]
+) =>
+  apiCall<ChatMessage>(`/chat/groups/${groupId}/messages`, {
+    method: "POST",
+    body: {
+      text,
+      ...(mentions && mentions.length ? { mentions } : {}),
+      ...(attachments && attachments.length ? { attachments } : {}),
+    },
+    token,
+  });
+
+export const editGroupMessage = (
+  token: string,
+  groupId: string,
+  messageId: string,
+  text: string,
+  mentions?: string[]
+) =>
+  apiCall<ChatMessage>(`/chat/groups/${groupId}/messages/${messageId}`, {
+    method: "PUT",
+    body: { text, ...(mentions && mentions.length ? { mentions } : {}) },
+    token,
+  });
+
+export const deleteGroupMessage = (
+  token: string,
+  groupId: string,
+  messageId: string,
+  scope: DeleteScope = "everyone"
+) =>
+  apiCall<{ message: string }>(
+    `/chat/groups/${groupId}/messages/${messageId}?scope=${scope}`,
+    { method: "DELETE", token }
+  );
+
+export const markGroupReadReceipt = (token: string, groupId: string) =>
+  apiCall<{ message: string }>(`/chat/groups/${groupId}/messages/read`, {
+    method: "POST",
+    token,
+  });

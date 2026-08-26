@@ -59,6 +59,8 @@ export interface CreateManagerTaskPayload {
   title: string;
   description?: string;
   assigneeId: string;
+  /** Optional. Assignee must be a member of the project. "" clears it. */
+  projectId?: string | null;
   priority?: TaskPriority;
   reminderIntervalMinutes?: number;
   dueDate?: string;
@@ -70,11 +72,13 @@ export const listMyTeam = (token: string) =>
 
 export const listManagerTasks = (
   token: string,
-  opts?: { status?: TaskStatus; assigneeId?: string }
+  opts?: { status?: TaskStatus; assigneeId?: string; projectId?: string }
 ) => {
   const parts: string[] = [];
   if (opts?.status) parts.push(`status=${opts.status}`);
   if (opts?.assigneeId) parts.push(`assigneeId=${opts.assigneeId}`);
+  // "none" is meaningful here: tasks that belong to no project.
+  if (opts?.projectId) parts.push(`projectId=${opts.projectId}`);
   const qs = parts.length ? `?${parts.join("&")}` : "";
   return apiCall<ManagerTask[]>(`/manager/tasks${qs}`, { token });
 };

@@ -48,5 +48,4 @@ export const deleteTeam = (token: string, id: string) =>
   });
 
 // TL endpoints
-export const listMyLedTeams = (token: string) =>
-  apiCall<Team[]>("/tl/teams/mine", { token });
+

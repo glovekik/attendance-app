@@ -86,10 +86,12 @@ const employeeTabs: TabDef[] = [
   },
   {
     key: "chat",
-    label: "Office Chat",
+    label: "Chats",
     icon: "chatbubbles-outline",
     iconActive: "chatbubbles",
-    route: "/chat/office",
+    // Conversation list first (office + your project chats), not straight
+    // into office chat.
+    route: "/chat",
     matchPrefixes: ["/chat"],
     section: "main",
   },
@@ -100,6 +102,26 @@ const employeeTabs: TabDef[] = [
     iconActive: "checkbox",
     route: "/tasks",
     matchPrefixes: ["/tasks", "/todos"],
+    section: "main",
+  },
+  {
+    key: "org",
+    label: "Organization",
+    icon: "people-circle-outline",
+    iconActive: "people-circle",
+    route: "/org-chart",
+    matchPrefixes: ["/org-chart"],
+    section: "main",
+  },
+  {
+    key: "projects",
+    label: "Projects",
+    icon: "folder-outline",
+    iconActive: "folder",
+    route: "/projects",
+    // Everyone gets this: the screen shows only the projects you're on, and
+    // HR additionally gets an "All" toggle.
+    matchPrefixes: ["/projects"],
     section: "main",
   },
   {
@@ -122,8 +144,20 @@ const employeeTabs: TabDef[] = [
   },
 ];
 
+/**
+ * Look a shared tab up by key. Index references (employeeTabs[5]) silently
+ * pointed at the wrong entry the moment a tab was inserted above them — which
+ * is exactly what happened when Projects and Organization were added.
+ */
+const tab = (key: string): TabDef => {
+  const t = employeeTabs.find((x) => x.key === key);
+  if (!t) throw new Error(`Unknown shared tab: ${key}`);
+  return t;
+};
+
+
 const managerTabs: TabDef[] = [
-  employeeTabs[0],
+  tab("home"),
   {
     key: "team",
     label: "My Team",
@@ -163,12 +197,14 @@ const managerTabs: TabDef[] = [
     matchPrefixes: ["/manager-tasks"],
     section: "main",
   },
-  employeeTabs[2], // chat
-  employeeTabs[5], // profile
+  tab("chat"), // chat
+  tab("org"),
+  tab("projects"),
+  tab("profile"), // profile
 ];
 
 const hrTabs: TabDef[] = [
-  employeeTabs[0],
+  tab("home"),
   {
     key: "employees",
     label: "Employees",
@@ -215,12 +251,14 @@ const hrTabs: TabDef[] = [
     matchPrefixes: ["/hr-reports", "/hr-audit-logs", "/payroll"],
     section: "admin",
   },
-  employeeTabs[2], // chat
-  employeeTabs[5], // profile
+  tab("chat"), // chat
+  tab("org"),
+  tab("projects"),
+  tab("profile"), // profile
 ];
 
 const ceoTabs: TabDef[] = [
-  employeeTabs[0],
+  tab("home"),
   {
     key: "ceo",
     label: "CEO Console",
@@ -232,8 +270,10 @@ const ceoTabs: TabDef[] = [
   },
   hrTabs[1], // employees
   hrTabs[4], // reports
-  employeeTabs[2], // chat
-  employeeTabs[5], // profile
+  tab("chat"), // chat
+  tab("org"),
+  tab("projects"),
+  tab("profile"), // profile
 ];
 
 const pickTabs = (user: User | null): TabDef[] => {

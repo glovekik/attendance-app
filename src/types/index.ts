@@ -608,9 +608,20 @@ export interface ChatMessage {
   readByOthers?: boolean;
 }
 
+/** Project a task belongs to, as returned inline on task reads. */
+export interface TaskProjectBrief {
+  id: string;
+  name?: string | null;
+  code?: string | null;
+  status?: ProjectStatus;
+}
+
 export interface Task {
   id: string;
   teamId: string;
+  /** Null for personal to-dos and one-off manager requests. */
+  projectId?: string | null;
+  project?: TaskProjectBrief | null;
   title: string;
   description?: string;
   assigneeId: string;
@@ -698,12 +709,41 @@ export interface Project {
   code: string;
   description?: string;
   departmentId?: string | null;
+  managerIds?: string[];
+  /** @deprecated legacy alias for managerIds — still sent by the API. */
   projectManagerIds?: string[];
   memberIds?: string[];
   status: ProjectStatus;
   startDate?: string;
   endDate?: string | null;
-  billable?: boolean;
+  /** True when the signed-in user manages this project (HR always true). */
+  viewerIsManager?: boolean;
+}
+
+export type ProjectMemberRole = "manager" | "member";
+
+/** One stay on a project. Open stays have leftAt === null. */
+export interface ProjectMember {
+  userId: string;
+  role: ProjectMemberRole;
+  joinedAt: string;
+  leftAt: string | null;
+  addedBy?: string | null;
+  removedBy?: string | null;
+  user?: ProjectMemberUser | null;
+}
+
+export interface ProjectMemberUser {
+  id: string;
+  name?: string | null;
+  profilePictureUrl?: string | null;
+  employeeCode?: string | null;
+  jobTitle?: string | null;
+}
+
+export interface ProjectMemberHistoryEntry extends ProjectMember {
+  addedByUser?: ProjectMemberUser | null;
+  removedByUser?: ProjectMemberUser | null;
 }
 
 // ===== TODOS (Phase C) =====

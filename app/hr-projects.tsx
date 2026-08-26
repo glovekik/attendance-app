@@ -61,7 +61,6 @@ export default function HrProjects() {
   const [status, setStatus] = useState<ProjectStatus>("Active");
   const [startDate, setStartDate] = useState("");
   const [endDate, setEndDate] = useState("");
-  const [billable, setBillable] = useState(false);
   const [saving, setSaving] = useState(false);
 
   // Picker state
@@ -116,7 +115,6 @@ export default function HrProjects() {
     setStatus("Active");
     setStartDate("");
     setEndDate("");
-    setBillable(false);
   };
 
   const openCreate = () => {
@@ -130,12 +128,11 @@ export default function HrProjects() {
     setCode(p.code);
     setDescription(p.description || "");
     setDepartmentId(p.departmentId || null);
-    setPmIds(p.projectManagerIds || []);
+    setPmIds(p.managerIds || p.projectManagerIds || []);
     setMemberIds(p.memberIds || []);
     setStatus(p.status);
     setStartDate(p.startDate || "");
     setEndDate(p.endDate || "");
-    setBillable(!!p.billable);
     setShowForm(true);
   };
 
@@ -159,12 +156,11 @@ export default function HrProjects() {
         code: code.trim().toUpperCase(),
         description: description.trim() || undefined,
         departmentId: departmentId || undefined,
-        projectManagerIds: pmIds,
+        managerIds: pmIds,
         memberIds,
         status,
         startDate: startDate.trim() || undefined,
-        endDate: endDate.trim() || undefined,
-        billable };
+        endDate: endDate.trim() || undefined, };
       if (editingId) {
         await updateProject(token, editingId, payload);
       } else {
@@ -307,7 +303,7 @@ export default function HrProjects() {
               </View>
               <View style={styles.cardFooter}>
                 <Text style={styles.meta}>
-                  {(item.projectManagerIds?.length || 0)} PM ·{" "}
+                  {(item.managerIds?.length || 0)} PM ·{" "}
                   {(item.memberIds?.length || 0)} members
                 </Text>
                 <TouchableOpacity
@@ -512,15 +508,6 @@ export default function HrProjects() {
                     min={startDate || undefined}
                   />
                 </View>
-              </View>
-
-              <View style={[styles.row, { marginTop: 14 }]}>
-                <Text style={styles.label}>Billable</Text>
-                <Switch
-                  value={billable}
-                  onValueChange={setBillable}
-                  trackColor={{ false: "#1f2937", true: "#3b82f6" }}
-                />
               </View>
 
               <View style={{ height: 12 }} />
