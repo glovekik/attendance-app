@@ -14,7 +14,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { useTheme } from "../theme/ThemeProvider";
 import { chatUnreadStore, useChatUnreadBadge } from "../services/chatUnread";
-import { User, hasRole, isManager, isCEO } from "../types";
+import { User, hasRole, isPeopleManager, isCEO } from "../types";
 import { useResponsive } from "../utils/responsive";
 
 /**
@@ -209,7 +209,11 @@ const pickTabs = (user: User | null): TabDef[] => {
   if (!user) return employeeTabs;
   if (hasRole(user, "HR")) return hrTabs;
   if (isCEO(user)) return ceoTabs;
-  if (isManager(user) || (user.ledTeamIds && user.ledTeamIds.length > 0)) {
+  // The MANAGER role alone isn't enough — someone has to actually
+  // report to them, or they get My Team, Approvals and Team Tasks all
+  // permanently empty. isPeopleManager covers the legacy team-lead
+  // path too. They keep every employee tab, including Organization.
+  if (isPeopleManager(user)) {
     return managerTabs;
   }
   return employeeTabs;

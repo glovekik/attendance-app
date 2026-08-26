@@ -59,6 +59,9 @@ export default function HrProjects() {
   const [pmIds, setPmIds] = useState<string[]>([]);
   const [memberIds, setMemberIds] = useState<string[]>([]);
   const [status, setStatus] = useState<ProjectStatus>("Active");
+  // "ended" is status Completed. OnHold is a pause, not an ending, so it
+  // stays under Active where it still needs attention.
+  const [view, setView] = useState<"active" | "ended">("active");
   const [startDate, setStartDate] = useState("");
   const [endDate, setEndDate] = useState("");
   const [saving, setSaving] = useState(false);
@@ -178,7 +181,13 @@ export default function HrProjects() {
     if (
       await confirmAction({
         title: "Delete project?",
-        message: p.name,
+        // Deleting is only for something created by mistake. The server
+        // refuses once a project carries tasks or chat, so say that up front
+        // rather than letting the attempt fail.
+        message:
+          `${p.name} will be removed permanently, along with its ` +
+          `membership history. If work has already happened on it, end the ` +
+          `project instead — it stays readable and can be reactivated.`,
         confirmLabel: "Delete",
         cancelLabel: "Cancel",
         destructive: true,
@@ -195,6 +204,42 @@ export default function HrProjects() {
     }
   };
 
+  /**
+   * End / reactivate. A finished project is not deleted — you asked for
+   * temporary projects that close when complete, and their membership
+   * history is the record of who worked on what and when. Status is the
+   * only thing that changes, so everything stays editable either way.
+   */
+  const setProjectStatus = async (p: Project, next: ProjectStatus) => {
+    const ending = next === "Completed";
+    if (
+      !(await confirmAction({
+        title: ending ? "End project?" : "Reactivate project?",
+        message: ending
+          ? `${p.name} moves to Ended. Its tasks, chat and member history are kept, and you can reactivate it any time.`
+          : `${p.name} moves back to Active.`,
+        confirmLabel: ending ? "End project" : "Reactivate",
+        cancelLabel: "Cancel",
+      }))
+    )
+      return;
+    try {
+      const token = await AsyncStorage.getItem("token");
+      if (!token) return;
+      await updateProject(token, p.id, { status: next });
+      // Patch in place so the row moves between tabs without a full reload.
+      setItems((prev) =>
+        prev.map((x) => (x.id === p.id ? { ...x, status: next } : x))
+      );
+      notify(
+        ending ? "Project ended" : "Project reactivated",
+        ending ? `${p.name} is now in Ended projects.` : p.name
+      );
+    } catch (err: any) {
+      notify(ending ? "Couldn't end project" : "Couldn't reactivate", err?.message || "");
+    }
+  };
+
   const toggleUserInList = (
     list: string[],
     setter: (l: string[]) => void,
@@ -206,6 +251,10 @@ export default function HrProjects() {
       setter([...list, id]);
     }
   };
+
+  const endedItems = items.filter((p) => p.status === "Completed");
+  const activeItems = items.filter((p) => p.status !== "Completed");
+  const visibleItems = view === "ended" ? endedItems : activeItems;
 
   const pickerList = pickerMode === "pm" ? pmIds : memberIds;
   const pickerSetter =
@@ -240,8 +289,30 @@ export default function HrProjects() {
         </TouchableOpacity>
       </View>
 
+      {/* Ended projects stay in the system — this is how you get back to
+          them. Counts are shown so an empty tab is obviously empty rather
+          than looking broken. */}
+      <View style={styles.tabs}>
+        {(["active", "ended"] as const).map((t) => {
+          const on = view === t;
+          const n = t === "active" ? activeItems.length : endedItems.length;
+          return (
+            <TouchableOpacity
+              key={t}
+              onPress={() => setView(t)}
+              style={[styles.tab, on && styles.tabOn]}
+              activeOpacity={0.8}
+            >
+              <Text style={[styles.tabText, on && styles.tabTextOn]}>
+                {t === "active" ? "Active" : "Ended"} ({n})
+              </Text>
+            </TouchableOpacity>
+          );
+        })}
+      </View>
+
       <FlatList
-        data={items}
+        data={visibleItems}
         keyExtractor={(p) => p.id}
         contentContainerStyle={
           items.length === 0 ? styles.emptyWrap : { padding: 12 }
@@ -261,15 +332,25 @@ export default function HrProjects() {
               size={42}
               color={c.textFaint}
             />
-            <Text style={styles.emptyText}>No projects yet</Text>
-            <TouchableOpacity
-              style={styles.emptyBtn}
-              onPress={openCreate}
-            >
-              <Text style={styles.emptyBtnText}>
-                Create your first
+            <Text style={styles.emptyText}>
+              {view === "ended"
+                ? "No ended projects"
+                : "No projects yet"}
+            </Text>
+            {view === "ended" ? (
+              <Text style={styles.emptyHint}>
+                Projects you end appear here, and can be reactivated.
               </Text>
-            </TouchableOpacity>
+            ) : (
+              <TouchableOpacity
+                style={styles.emptyBtn}
+                onPress={openCreate}
+              >
+                <Text style={styles.emptyBtnText}>
+                  Create your first
+                </Text>
+              </TouchableOpacity>
+            )}
           </View>
         }
         renderItem={({ item }) => {
@@ -306,16 +387,48 @@ export default function HrProjects() {
                   {(item.managerIds?.length || 0)} PM ·{" "}
                   {(item.memberIds?.length || 0)} members
                 </Text>
-                <TouchableOpacity
-                  onPress={() => onDelete(item)}
-                  style={styles.deleteBtn}
-                >
-                  <Ionicons
-                    name="trash-outline"
-                    size={16}
-                    color={c.textMuted}
-                  />
-                </TouchableOpacity>
+                <View style={styles.cardActions}>
+                  {item.status === "Completed" ? (
+                    <TouchableOpacity
+                      onPress={() => setProjectStatus(item, "Active")}
+                      style={styles.actionBtn}
+                      hitSlop={8}
+                    >
+                      <Ionicons
+                        name="refresh-outline"
+                        size={15}
+                        color={c.accent}
+                      />
+                      <Text style={[styles.actionText, { color: c.accent }]}>
+                        Reactivate
+                      </Text>
+                    </TouchableOpacity>
+                  ) : (
+                    <TouchableOpacity
+                      onPress={() => setProjectStatus(item, "Completed")}
+                      style={styles.actionBtn}
+                      hitSlop={8}
+                    >
+                      <Ionicons
+                        name="flag-outline"
+                        size={15}
+                        color={c.textMuted}
+                      />
+                      <Text style={styles.actionText}>End</Text>
+                    </TouchableOpacity>
+                  )}
+                  <TouchableOpacity
+                    onPress={() => onDelete(item)}
+                    style={styles.deleteBtn}
+                    hitSlop={8}
+                  >
+                    <Ionicons
+                      name="trash-outline"
+                      size={16}
+                      color={c.textMuted}
+                    />
+                  </TouchableOpacity>
+                </View>
               </View>
             </TouchableOpacity>
           );
@@ -627,9 +740,43 @@ const makeStyles = (c: any) => StyleSheet.create({
     marginTop: 10 },
   meta: { color: c.textMuted, fontSize: 11 },
   deleteBtn: { padding: 4 },
+  cardActions: { flexDirection: "row", alignItems: "center", gap: 4 },
+  actionBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+    paddingVertical: 4,
+    paddingHorizontal: 8,
+    borderRadius: 8,
+    backgroundColor: c.surfaceMuted,
+  },
+  actionText: { color: c.textMuted, fontSize: 11, fontWeight: "700" },
+  tabs: {
+    flexDirection: "row",
+    gap: 8,
+    paddingHorizontal: 12,
+    paddingBottom: 10,
+  },
+  tab: {
+    paddingVertical: 6,
+    paddingHorizontal: 14,
+    borderRadius: 999,
+    backgroundColor: c.surfaceMuted,
+    borderWidth: 1,
+    borderColor: c.surfaceBorder,
+  },
+  tabOn: { backgroundColor: c.accentSoft, borderColor: c.accent },
+  tabText: { color: c.textMuted, fontSize: 12.5, fontWeight: "700" },
+  tabTextOn: { color: c.accentText },
   emptyWrap: { flex: 1, justifyContent: "center" },
   empty: { alignItems: "center", gap: 10, padding: 30 },
   emptyText: { color: c.textMuted, fontSize: 14 },
+  emptyHint: {
+    color: c.textFaint,
+    fontSize: 12.5,
+    textAlign: "center",
+    maxWidth: 260,
+  },
   emptyBtn: {
     backgroundColor: c.accent,
     paddingHorizontal: 18,
