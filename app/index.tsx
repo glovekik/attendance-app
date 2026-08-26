@@ -320,7 +320,7 @@ export default function Home() {
   // Teams card is shown to everyone. HR/CEO/leads get their full list;
   // a plain employee currently lands on an empty list until the backend
   // exposes a "teams I'm a member of" endpoint (see app/teams/index.tsx).
-  const showTeams = true;
+  const showProjects = true;
 
   const todayStatus = todayStatusInfo(today, tick, c);
   const checkedIn = today?.status === "CHECKED_IN";
@@ -639,13 +639,13 @@ export default function Home() {
             theme={theme}
             styles={styles}
           />
-          {showTeams && (
+          {showProjects && (
             <CategoryTile
-              icon="people-outline"
-              label="Teams"
+              icon="folder-outline"
+              label="Projects"
               tint={c.pastelMint}
               iconColor="#15803d"
-              onPress={() => router.push("/teams")}
+              onPress={() => router.push("/projects")}
               theme={theme}
             styles={styles}
             />

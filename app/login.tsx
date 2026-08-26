@@ -17,6 +17,8 @@ import {
 } from "react-native";
 import { KeyboardAvoidingView } from "react-native-keyboard-controller";
 import { SafeAreaView } from "react-native-safe-area-context";
+
+import { USE_NATIVE_DRIVER } from "../src/utils/animation";
 import { LinearGradient } from "expo-linear-gradient";
 
 import { useResponsive } from "../src/utils/responsive";
@@ -74,13 +76,13 @@ export default function Login() {
         toValue: 1,
         duration: 550,
         easing: Easing.out(Easing.cubic),
-        useNativeDriver: true,
+        useNativeDriver: USE_NATIVE_DRIVER,
       }),
       Animated.timing(cardY, {
         toValue: 0,
         duration: 550,
         easing: Easing.out(Easing.cubic),
-        useNativeDriver: true,
+        useNativeDriver: USE_NATIVE_DRIVER,
       }),
     ]).start();
   }, [cardOpacity, cardY]);

@@ -21,43 +21,6 @@ export interface UpdateTaskPayload {
   attachments?: string[];
 }
 
-// TL endpoints
-export const createTask = (
-  token: string,
-  teamId: string,
-  data: CreateTaskPayload
-) =>
-  apiCall<{ id: string; message: string }>(
-    `/tl/teams/${teamId}/tasks`,
-    { method: "POST", body: data, token }
-  );
-
-export const getTeamTasks = (
-  token: string,
-  teamId: string
-) =>
-  apiCall<Task[]>(`/tl/teams/${teamId}/tasks`, { token });
-
-export const updateTask = (
-  token: string,
-  id: string,
-  data: UpdateTaskPayload
-) =>
-  apiCall<{ message: string }>(`/tl/tasks/${id}`, {
-    method: "PUT",
-    body: data,
-    token,
-  });
-
-export const deleteTask = (
-  token: string,
-  id: string
-) =>
-  apiCall<{ message: string }>(`/tl/tasks/${id}`, {
-    method: "DELETE",
-    token,
-  });
-
 // User endpoints
 export const getMyTasks = (
   token: string,
@@ -65,6 +28,8 @@ export const getMyTasks = (
     status?: TaskStatus;
     before?: string;
     limit?: number;
+    /** Filter to one project; "none" for tasks with no project. */
+    projectId?: string;
   }
 ) => {
   const parts: string[] = [];
@@ -72,6 +37,7 @@ export const getMyTasks = (
   if (opts?.before)
     parts.push(`before=${encodeURIComponent(opts.before)}`);
   if (opts?.limit) parts.push(`limit=${opts.limit}`);
+  if (opts?.projectId) parts.push(`projectId=${opts.projectId}`);
   const qs = parts.length ? `?${parts.join("&")}` : "";
   return apiCall<Task[]>(`/tasks/my${qs}`, { token });
 };

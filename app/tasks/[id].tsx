@@ -345,6 +345,19 @@ export default function TaskDetail() {
             ) : null}
 
             <View style={styles.metaRow}>
+              {task.project ? (
+                <View style={styles.metaChip}>
+                  <Ionicons
+                    name="folder-outline"
+                    size={11}
+                    color={c.textMuted}
+                  />
+                  <Text style={styles.metaText}>
+                    {task.project.name}
+                  </Text>
+                </View>
+              ) : null}
+
               {task.createdByUser?.name ? (
                 <View style={styles.metaChip}>
                   <Ionicons

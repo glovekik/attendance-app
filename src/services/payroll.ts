@@ -9,6 +9,13 @@ import { API_URL } from "../config";
 
 // ===== HR salary structure =====
 export interface SalaryStructurePayload {
+  /**
+   * Backdate a correction (YYYY-MM-DD). Omit for "applies from today".
+   * Needed when fixing a structure that was wrong for an earlier month —
+   * without it the change starts today and re-running that month picks the
+   * old figures.
+   */
+  effectiveFrom?: string;
   /** Company-provided accommodation: drops HRA to 0 and moves its share
    *  into Other Allowance. See utils/salaryFormula. */
   accommodation?: boolean;

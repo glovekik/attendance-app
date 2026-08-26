@@ -59,7 +59,11 @@ interface StoredMessage {
   at: number;
 }
 
-/** Stable id for a conversation — the unit we group by. */
+/** Stable id for a conversation — the unit we group by.
+ *
+ * Kept on the legacy `team:` prefix on purpose: it is the key that already
+ * groups a device's stored history and its live notification, and changing it
+ * would strand every message currently in a shelf notification. */
 const conversationIdOf = (d: ChatPushData): string =>
   d.channelType === "office"
     ? "office"
@@ -67,7 +71,7 @@ const conversationIdOf = (d: ChatPushData): string =>
 
 const titleOf = (d: ChatPushData): string =>
   d.channelName ||
-  (d.channelType === "office" ? "Office chat" : "Team chat");
+  (d.channelType === "office" ? "Office chat" : "Project chat");
 
 const readHistory = async (
   conversationId: string

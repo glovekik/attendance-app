@@ -71,10 +71,10 @@ const employeeTabs: TabDef[] = [
   },
   {
     key: "chat",
-    label: "Office Chat",
+    label: "Chats",
     icon: "chatbubbles-outline",
     iconActive: "chatbubbles",
-    route: "/chat/office",
+    route: "/chat",
     matchPrefixes: ["/chat"],
   },
   {
@@ -95,8 +95,20 @@ const employeeTabs: TabDef[] = [
   },
 ];
 
+/**
+ * Look a shared tab up by key. Index references (employeeTabs[5]) silently
+ * pointed at the wrong entry the moment a tab was inserted above them — which
+ * is exactly what happened when Projects and Organization were added.
+ */
+const tab = (key: string): TabDef => {
+  const t = employeeTabs.find((x) => x.key === key);
+  if (!t) throw new Error(`Unknown shared tab: ${key}`);
+  return t;
+};
+
+
 const managerTabs: TabDef[] = [
-  employeeTabs[0],
+  tab("home"),
   {
     key: "team",
     label: "Team",
@@ -133,12 +145,12 @@ const managerTabs: TabDef[] = [
     route: "/manager-tasks",
     matchPrefixes: ["/manager-tasks"],
   },
-  employeeTabs[2], // Office Chat
-  employeeTabs[4], // Profile
+  tab("chat"), // Office Chat
+  tab("profile"), // Profile
 ];
 
 const hrTabs: TabDef[] = [
-  employeeTabs[0],
+  tab("home"),
   {
     key: "employees",
     label: "Employees",
@@ -174,12 +186,12 @@ const hrTabs: TabDef[] = [
     route: "/hr-reports",
     matchPrefixes: ["/hr-reports", "/hr-audit-logs", "/payroll"],
   },
-  employeeTabs[2], // Office Chat
-  employeeTabs[4], // Profile
+  tab("chat"), // Office Chat
+  tab("profile"), // Profile
 ];
 
 const ceoTabs: TabDef[] = [
-  employeeTabs[0],
+  tab("home"),
   {
     key: "ceo",
     label: "Console",
@@ -190,7 +202,7 @@ const ceoTabs: TabDef[] = [
   },
   hrTabs[1],
   hrTabs[3],
-  employeeTabs[4],
+  tab("profile"),
 ];
 
 const pickTabs = (user: User | null): TabDef[] => {

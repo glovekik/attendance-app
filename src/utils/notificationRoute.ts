@@ -79,9 +79,24 @@ export const resolveNotificationRoute = (
       return "/todos";
     case "chat_mention":
     case "chat_message":
-      if (payload.channelType === "team" && payload.channelId)
-        return `/chat/team/${payload.channelId}`;
+      // "team" is the pre-Phase-4 spelling — still accepted so pushes already
+      // delivered to a device keep routing correctly.
+      if (
+        (payload.channelType === "project" || payload.channelType === "team") &&
+        payload.channelId
+      )
+        return `/chat/project/${payload.channelId}`;
+      // Ad-hoc groups. Without this a group mention fell through to the
+      // office-chat fallback below and opened the wrong conversation.
+      if (payload.channelType === "group" && payload.channelId)
+        return `/chat/group/${payload.channelId}`;
       return "/chat/office";
+
+    // "You've been added to X" — land the person in the thing they joined.
+    case "chat_group_added":
+      return payload.channelId ? `/chat/group/${payload.channelId}` : "/chat";
+    case "project_added":
+      return payload.projectId ? `/projects/${payload.projectId}` : "/projects";
 
     // ===== Approver-facing (managerial only; plain users can't act here) =====
     case "leave_requests":

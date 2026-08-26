@@ -43,7 +43,7 @@ const GOTO_ROUTES: Record<GotoKey, string> = {
   a: "/attendance", // Attendance
   t: "/tasks",      // Tasks
   p: "/profile",    // Profile
-  c: "/chat/office",// Chat
+  c: "/chat",       // Chats
   l: "/leaves",     // Leaves
   r: "/hr-reports", // Reports
   m: "/manager",    // Manager console

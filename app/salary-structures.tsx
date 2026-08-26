@@ -47,13 +47,15 @@ const Field = ({
   onChange,
   keyboard = "decimal-pad",
   styles,
-  faintColor }: {
+  faintColor,
+  placeholder }: {
   label: string;
   value: string;
   onChange: (v: string) => void;
   keyboard?: "decimal-pad" | "default" | "number-pad";
   styles: any;
   faintColor: string;
+  placeholder?: string;
 }) => (
   <View style={{ flex: 1 }}>
     <Text style={styles.label}>{label}</Text>
@@ -62,6 +64,7 @@ const Field = ({
       value={value}
       onChangeText={onChange}
       keyboardType={keyboard}
+      placeholder={placeholder}
       placeholderTextColor={faintColor}
     />
   </View>
@@ -91,6 +94,9 @@ export default function SalaryStructures() {
   const [historyOpen, setHistoryOpen] = useState(false);
   const [loadingStructure, setLoadingStructure] = useState(false);
   const [saving, setSaving] = useState(false);
+  // Backdating a correction. Left blank, the structure starts today; set it to
+  // the first of the month you're fixing so re-running that payroll uses it.
+  const [effectiveFrom, setEffectiveFrom] = useState("");
 
   // Form fields
   const [monthlyCTC, setMonthlyCTC] = useState("");
@@ -148,6 +154,7 @@ export default function SalaryStructures() {
 
   const openFor = async (u: User) => {
     setTarget(u);
+    setEffectiveFrom("");
     setModalVisible(true);
     setLoadingStructure(true);
     setCurrent(null);
@@ -257,7 +264,9 @@ export default function SalaryStructures() {
         bankAccountNumber: bankAccount.trim() || undefined,
         bankIfsc: bankIfsc.trim() || undefined,
         bankName: bankName.trim() || undefined,
-        tdsRegime });
+        tdsRegime,
+        // Blank means "from today" — the server's default.
+        effectiveFrom: effectiveFrom.trim() || undefined });
       showPopup("Saved");
       setModalVisible(false);
     } catch (err: any) {
@@ -476,6 +485,24 @@ export default function SalaryStructures() {
                 <Text style={s.fillBtnText}>Apply formula</Text>
               </TouchableOpacity>
 
+              {/* EFFECTIVE FROM — the fix for backdated corrections */}
+              <Text style={s.section}>EFFECTIVE FROM</Text>
+              <Field
+                label="Start date (optional)"
+                value={effectiveFrom}
+                onChange={setEffectiveFrom}
+                styles={s}
+                faintColor={c.textFaint}
+                keyboard="default"
+                placeholder="YYYY-MM-DD — blank means today"
+              />
+              <Text style={s.hintText}>
+                Fixing an earlier month? Set this to the first of that month
+                (e.g. 2026-05-01), save, then re-process that month&apos;s
+                payroll. Left blank, the change applies from today and older
+                payslips keep the previous figures.
+              </Text>
+
               {/* EARNINGS */}
               <Text style={s.section}>EARNINGS</Text>
               <View style={s.twoCol}>
@@ -618,6 +645,7 @@ const makeStyles = (c: any) => StyleSheet.create({
     borderRadius: 999 },
   histPillText: { color: c.accentText, fontSize: 10, fontWeight: "800" },
   section: { color: c.textMuted, fontSize: 11, letterSpacing: 1.5, fontWeight: "700", marginTop: 16, marginBottom: 8 },
+  hintText: { color: c.textMuted, fontSize: 11.5, lineHeight: 16, marginTop: 6, marginBottom: 4 },
 
   label: { color: c.textMuted, fontSize: 12, fontWeight: "600", marginBottom: 4, marginTop: 8 },
   input: { backgroundColor: c.surfaceMuted, color: c.text, borderRadius: 10, padding: 11, borderWidth: 1, borderColor: c.surfaceBorder, fontSize: 13 },
