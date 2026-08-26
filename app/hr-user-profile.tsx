@@ -1200,10 +1200,17 @@ export default function HrUserProfile() {
       // Send "" (not undefined) when cleared so the backend actually removes
       // it — opt() would drop the field and leave the old photo in place.
       profilePictureUrl: profilePictureUrl.trim() || "",
-      departmentId: departmentId || undefined,
-      reportingManagerId: reportingManagerId || undefined,
-      projectManagerIds:
-        projectManagerIds.length > 0 ? projectManagerIds : undefined,
+      // Same reasoning as profilePictureUrl above, and it matters more here.
+      // These three are pickers with an explicit Clear; `|| undefined` dropped
+      // the key entirely, the backend skipped it (`if value is not None`), and
+      // Clear became a silent no-op that still showed "Saved". Worse, the
+      // nested `work` copy IS replaced wholesale, so the old value survived at
+      // the top level while disappearing from work — leaving the two
+      // disagreeing about who someone reports to.
+      // "" is the backend's documented "clear this" for scalars; [] likewise.
+      departmentId: departmentId || "",
+      reportingManagerId: reportingManagerId || "",
+      projectManagerIds,
       work,
       personal,
       statutory,
