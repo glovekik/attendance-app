@@ -105,15 +105,6 @@ const employeeTabs: TabDef[] = [
     section: "main",
   },
   {
-    key: "org",
-    label: "Organization",
-    icon: "people-circle-outline",
-    iconActive: "people-circle",
-    route: "/org-chart",
-    matchPrefixes: ["/org-chart"],
-    section: "main",
-  },
-  {
     key: "projects",
     label: "Projects",
     icon: "folder-outline",
@@ -143,6 +134,23 @@ const employeeTabs: TabDef[] = [
     section: "settings",
   },
 ];
+
+/**
+ * Organization (the org chart). HR, CEO and managers-with-reports only —
+ * it exposes the whole company's reporting and project structure, which is
+ * management context rather than something every employee needs. Kept out of
+ * `employeeTabs` so it can't be picked up by `tab("org")` for a role that
+ * shouldn't have it.
+ */
+const orgTab: TabDef = {
+  key: "org",
+  label: "Organization",
+  icon: "people-circle-outline",
+  iconActive: "people-circle",
+  route: "/org-chart",
+  matchPrefixes: ["/org-chart"],
+  section: "main",
+};
 
 /**
  * Look a shared tab up by key. Index references (employeeTabs[5]) silently
@@ -198,7 +206,7 @@ const managerTabs: TabDef[] = [
     section: "main",
   },
   tab("chat"), // chat
-  tab("org"),
+  orgTab,
   tab("projects"),
   tab("profile"), // profile
 ];
@@ -252,7 +260,7 @@ const hrTabs: TabDef[] = [
     section: "admin",
   },
   tab("chat"), // chat
-  tab("org"),
+  orgTab,
   tab("projects"),
   tab("profile"), // profile
 ];
@@ -271,7 +279,7 @@ const ceoTabs: TabDef[] = [
   hrTabs[1], // employees
   hrTabs[4], // reports
   tab("chat"), // chat
-  tab("org"),
+  orgTab,
   tab("projects"),
   tab("profile"), // profile
 ];
