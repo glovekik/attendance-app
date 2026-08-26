@@ -165,6 +165,8 @@ export interface User {
   profilePictureUrl?: string;
   ledTeamIds?: string[];
   memberOfTeamIds?: string[];
+  /** How many people report to this user. From /auth/me — see isPeopleManager. */
+  directReportCount?: number;
   // Expanded org & profile (Phase A)
   departmentId?: string | null;
   reportingManagerId?: string | null;
@@ -651,6 +653,23 @@ export const hasRole = (
 
 export const isManager = (user: User | null): boolean =>
   hasRole(user, "MANAGER");
+
+/**
+ * A manager who actually manages someone.
+ *
+ * The MANAGER role says what a person may do; this says whether there is
+ * anyone to do it to. The two drift: reassign a manager's last report and
+ * the role stays behind, leaving My Team, Approvals and Team Tasks visible
+ * and permanently empty. `directReportCount` comes from /auth/me.
+ *
+ * `ledTeamIds` is the legacy team-lead path and still counts — those people
+ * genuinely lead something even with no reporting line pointed at them.
+ */
+export const isPeopleManager = (user: User | null): boolean => {
+  if (!user) return false;
+  if (!isManager(user)) return false;
+  return (user.directReportCount ?? 0) > 0 || (user.ledTeamIds?.length ?? 0) > 0;
+};
 
 export const isCEO = (user: User | null): boolean =>
   hasRole(user, "CEO");
