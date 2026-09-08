@@ -369,16 +369,12 @@ const ChatThreadInner = ({
     if (!deleteMessage) return;
     try {
       await deleteMessage(m.id, scope);
-      if (scope === "me") {
-        setMessages((prev) => prev.filter((x) => x.id !== m.id));
-        seenIds.current.delete(m.id);
-      } else {
-        setMessages((prev) =>
-          prev.map((x) =>
-            x.id === m.id ? { ...x, deleted: true, text: "", attachments: [] } : x
-          )
-        );
-      }
+      // Both scopes remove the bubble outright. Leaving a "this message was
+      // deleted" tombstone announces that something was said and withdrawn,
+      // which is worse than the message simply not being there. The server
+      // keeps the row for audit but no longer serves it.
+      setMessages((prev) => prev.filter((x) => x.id !== m.id));
+      seenIds.current.delete(m.id);
     } catch (err: any) {
       flash(err?.message || "Failed to delete");
     }
@@ -496,11 +492,7 @@ const ChatThreadInner = ({
                   onLongPress={() => openActions(m)}
                   style={[styles.bubble, mine ? styles.mine : styles.theirs]}
                 >
-                {m.deleted ? (
-                  <Text style={[styles.deletedText, mine && { color: "rgba(255,255,255,0.7)" }]}>
-                    🚫 This message was deleted
-                  </Text>
-                ) : (
+                {(
                   <>
                     {(m.attachments || []).map((att, idx) => (
                       <Attachment
@@ -866,7 +858,6 @@ const makeStyles = (c: any) =>
     mine: { backgroundColor: c.accent, borderBottomRightRadius: 4 },
     theirs: { backgroundColor: c.surfaceMuted, borderBottomLeftRadius: 4 },
     bubbleText: { color: c.text, fontSize: 15, lineHeight: 20 },
-    deletedText: { color: c.textMuted, fontSize: 14, fontStyle: "italic" },
 
     metaRow: { flexDirection: "row", alignItems: "center", gap: 4, alignSelf: "flex-end", marginTop: 3 },
     time: { color: c.textMuted, fontSize: 10 },

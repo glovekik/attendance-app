@@ -1,4 +1,5 @@
 import { apiCall } from "./http";
+import { invalidateMe } from "./api";
 import {
   BankAccount,
   ContractInfo,
@@ -140,25 +141,36 @@ export interface MyProfileUpdate {
 export const getMyProfile = (token: string) =>
   apiCall<MyProfile>("/me/profile", { token });
 
-export const updateMyProfile = (token: string, data: MyProfileUpdate) =>
-  apiCall<MyProfile & { updatedFields: string[] }>("/me/profile", {
-    method: "PUT",
-    body: data,
-    token,
-  });
+// Both profile writes drop the cached /auth/me — otherwise the sidebar and
+// every screen keep showing the old name or photo for up to a minute after
+// saving, which reads as the save having failed.
+export const updateMyProfile = async (
+  token: string,
+  data: MyProfileUpdate
+) => {
+  const res = await apiCall<MyProfile & { updatedFields: string[] }>(
+    "/me/profile",
+    { method: "PUT", body: data, token }
+  );
+  invalidateMe();
+  return res;
+};
 
 // Every authenticated user can replace or clear their own profile
 // picture. Pass null to remove. Separate from updateMyProfile so the
 // "fill-blanks only" rule there doesn't lock the picture.
-export const updateMyProfilePicture = (
+export const updateMyProfilePicture = async (
   token: string,
   url: string | null
-) =>
-  apiCall<MyProfile>("/me/profile-picture", {
+) => {
+  const res = await apiCall<MyProfile>("/me/profile-picture", {
     method: "PUT",
     body: { url },
     token,
   });
+  invalidateMe();
+  return res;
+};
 
 // Lightweight directory available to all authenticated users — used for
 // @-mention pickers and other people-search UIs. Does not require HR.

@@ -233,7 +233,58 @@ export const changePassword =
 
 
 // ================= GET ME =================
-export const getMe =
+/**
+ * Cache for getMe.
+ *
+ * `/auth/me` had 23 call sites — most screens fetch the current user on
+ * mount, and on web every navigation remounts them. Nothing in that payload
+ * changes minute to minute (name, role, tag, team ids), so the app was
+ * re-asking the same question dozens of times per session, and the burst
+ * right after launch was mostly this one endpoint.
+ *
+ * Two mechanisms, both conservative:
+ *   - concurrent callers share one in-flight request instead of each
+ *     opening their own,
+ *   - a successful result is reused for ME_TTL_MS.
+ *
+ * Errors are never cached, so a 401 still reaches every caller and still
+ * ends the session. The cache is keyed by token, so signing in as someone
+ * else can't serve the previous user; `invalidateMe()` clears it outright
+ * on logout and after a profile edit.
+ */
+const ME_TTL_MS = 60_000;
+let _meToken: string | null = null;
+let _meValue: any = null;
+let _meAt = 0;
+let _meInFlight: Promise<any> | null = null;
+
+export const invalidateMe = () => {
+  _meToken = null;
+  _meValue = null;
+  _meAt = 0;
+  _meInFlight = null;
+};
+
+export const getMe = async (token: string) => {
+  const fresh =
+    _meValue !== null && _meToken === token && Date.now() - _meAt < ME_TTL_MS;
+  if (fresh) return _meValue;
+  if (_meInFlight && _meToken === token) return _meInFlight;
+
+  _meToken = token;
+  _meInFlight = _fetchMe(token)
+    .then((result) => {
+      _meValue = result;
+      _meAt = Date.now();
+      return result;
+    })
+    .finally(() => {
+      _meInFlight = null;
+    });
+  return _meInFlight;
+};
+
+const _fetchMe =
   async (token: string) => {
 
     try {

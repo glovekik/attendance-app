@@ -31,6 +31,14 @@ export const getToken = (): Promise<string | null> =>
 
 export const clearSession = async (): Promise<void> => {
   await AsyncStorage.multiRemove([TOKEN_KEY, REFRESH_KEY]);
+  // Drop the cached /auth/me and the chat-badge throttle, so the next user
+  // to sign in on this device can't be served the previous one's identity.
+  try {
+    require("./api").invalidateMe?.();
+    require("./chatUnread").chatUnreadStore?.reset?.();
+  } catch {
+    /* cache clearing is best-effort */
+  }
 };
 
 // Explicit user logout: revoke the refresh token server-side (best-effort)

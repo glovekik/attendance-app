@@ -110,7 +110,7 @@ export const ChatPane = ({
           ? markGroupReadReceipt(token, channelId)
           : markProjectReadReceipt(token, channelId)
         : Promise.resolve(null as any);
-      markThis.then(() => chatUnreadStore.refresh()).catch(() => {});
+      markThis.then(() => chatUnreadStore.refresh({ force: true })).catch(() => {});
 
       // Drop the grouped notification card and its stored history, so already
       // read messages don't reappear in the next notification.
@@ -238,7 +238,7 @@ export const ChatPane = ({
           ? markGroupReadReceipt(t, channelId)
           : markProjectReadReceipt(t, channelId)
         : null;
-      p?.then(() => chatUnreadStore.refresh()).catch(() => {});
+      p?.then(() => chatUnreadStore.refresh({ force: true })).catch(() => {});
     });
   }, [isOffice, isGroup, channelId]);
 
