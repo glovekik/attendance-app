@@ -317,9 +317,9 @@ export default function HRPayrollRun() {
     { key: "employeePF", label: "PF (Employee)", group: "ded" },
     { key: "professionalTax", label: "Professional Tax", group: "ded" },
     { key: "tds", label: "TDS", group: "ded" },
-    { key: "employeeInsurance", label: "ESI (Employee)", group: "ded" },
+    { key: "employeeInsurance", label: "Health Insurance (Employee)", group: "ded" },
     { key: "employerPF", label: "Employer PF", group: "emp" },
-    { key: "employerInsurance", label: "Health Insurance", group: "emp" },
+    { key: "employerInsurance", label: "Health Insurance (Employer-paid)", group: "emp" },
   ];
 
   const openAmounts = (p: Payslip) => {
