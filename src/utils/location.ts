@@ -2,8 +2,8 @@ import * as Location from "expo-location";
 
 // 🔥 Office coordinates (UPDATE if needed)
 export const OFFICE = {
-  latitude: 16.507020515758303,
-  longitude: 80.62279856266548,
+  latitude: 17.421639,
+  longitude: 78.460774,
 };
 
 // 🔥 Radius (keep realistic)
