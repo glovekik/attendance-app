@@ -908,6 +908,23 @@ export default function HrAttendance() {
                   <Text style={styles.dNotes}>
                     {row?.workNotes?.trim() || "No notes added for this day."}
                   </Text>
+                  {/* Auto-checkout audit. A corrected check-out looks like
+                      any other until you know the day was closed by the 00:01
+                      cron and why the employee said they missed it. */}
+                  {!!row?.autoClosedByCron && (
+                    <View style={styles.autoBox}>
+                      <View style={styles.autoHead}>
+                        <Ionicons name="alarm-outline" size={15} color="#b45309" />
+                        <Text style={styles.autoTitle}>Auto-checked out</Text>
+                      </View>
+                      <Text style={styles.autoBody}>
+                        {row?.correctionReason?.trim()
+                          ? `Reason given: ${row.correctionReason.trim()}`
+                          : "The employee has not yet given a reason."}
+                      </Text>
+                    </View>
+                  )}
+
                 </>
               ) : cat === "absent" ? (
                 <View style={styles.dInfoRow}>
@@ -935,6 +952,23 @@ export default function HrAttendance() {
                   <Text style={styles.dNotes}>
                     {row?.workNotes?.trim() ? row.workNotes : "No notes added for this day."}
                   </Text>
+                  {/* Auto-checkout audit. A corrected check-out looks like
+                      any other until you know the day was closed by the 00:01
+                      cron and why the employee said they missed it. */}
+                  {!!row?.autoClosedByCron && (
+                    <View style={styles.autoBox}>
+                      <View style={styles.autoHead}>
+                        <Ionicons name="alarm-outline" size={15} color="#b45309" />
+                        <Text style={styles.autoTitle}>Auto-checked out</Text>
+                      </View>
+                      <Text style={styles.autoBody}>
+                        {row?.correctionReason?.trim()
+                          ? `Reason given: ${row.correctionReason.trim()}`
+                          : "The employee has not yet given a reason."}
+                      </Text>
+                    </View>
+                  )}
+
                 </>
               )}
             </View>
@@ -1513,6 +1547,18 @@ const makeStyles = (c: any) =>
     dGrid: { flexDirection: "row", gap: 8, marginTop: 16 },
     dLabel: { color: c.textMuted, fontSize: 11, fontWeight: "700", letterSpacing: 1, textTransform: "uppercase", marginTop: 18, marginBottom: 6 },
     dNotes: { color: c.text, fontSize: 14, lineHeight: 20 },
+  autoBox: {
+    marginTop: 12,
+    backgroundColor: "#fef3c7",
+    borderWidth: 1,
+    borderColor: "#fcd34d",
+    borderRadius: 10,
+    padding: 12,
+    gap: 4,
+  },
+  autoHead: { flexDirection: "row", alignItems: "center", gap: 6 },
+  autoTitle: { color: "#92400e", fontSize: 12.5, fontWeight: "800" },
+  autoBody: { color: "#92400e", fontSize: 12.5, lineHeight: 18 },
     dInfoRow: { flexDirection: "row", alignItems: "center", gap: 8, marginTop: 18 },
     dInfoText: { color: c.textMuted, fontSize: 14, flexShrink: 1 },
     mapBtn: {
