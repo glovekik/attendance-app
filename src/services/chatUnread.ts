@@ -15,6 +15,11 @@ import { getChatUnreadCount } from "./chat";
 let _count = 0;
 const _listeners = new Set<(n: number) => void>();
 
+/** Shortest gap between two server reads of the badge count. */
+const MIN_REFRESH_MS = 15_000;
+let _lastFetchedAt = 0;
+let _inFlight: Promise<void> | null = null;
+
 const _emit = () => {
   _listeners.forEach((l) => l(_count));
 };
@@ -33,16 +38,48 @@ export const chatUnreadStore = {
       _listeners.delete(fn);
     };
   },
-  // Pull the authoritative count from the server.
-  refresh: async () => {
-    try {
-      const token = await AsyncStorage.getItem("token");
-      if (!token) return;
-      const { count } = await getChatUnreadCount(token);
-      chatUnreadStore.set(count || 0);
-    } catch {
-      /* badge just won't update — non-fatal */
-    }
+  /**
+   * Pull the authoritative count from the server.
+   *
+   * Called from a pathname effect in the nav, so it fires on every single
+   * navigation — and the nav re-mounts constantly on web. Two guards keep
+   * that from turning into a request per screen change:
+   *
+   *   - in-flight sharing: concurrent callers await the same request rather
+   *     than each opening their own,
+   *   - a minimum interval: navigating six screens in ten seconds asks the
+   *     server once, not six times.
+   *
+   * `force` skips the interval — used when the count is known to have just
+   * changed (opening a chat marks it read), where staleness is the whole
+   * problem being solved.
+   */
+  refresh: async (opts?: { force?: boolean }) => {
+    const now = Date.now();
+    if (!opts?.force && now - _lastFetchedAt < MIN_REFRESH_MS) return;
+    if (_inFlight) return _inFlight;
+
+    _inFlight = (async () => {
+      try {
+        const token = await AsyncStorage.getItem("token");
+        if (!token) return;
+        const { count } = await getChatUnreadCount(token);
+        _lastFetchedAt = Date.now();
+        chatUnreadStore.set(count || 0);
+      } catch {
+        /* badge just won't update — non-fatal */
+      } finally {
+        _inFlight = null;
+      }
+    })();
+    return _inFlight;
+  },
+
+  /** Drop throttle state — call on logout so the next session starts clean. */
+  reset: () => {
+    _count = 0;
+    _lastFetchedAt = 0;
+    _inFlight = null;
   },
 };
 

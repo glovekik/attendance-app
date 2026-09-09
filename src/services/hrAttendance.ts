@@ -24,6 +24,12 @@ export interface HrAttendanceRow {
   checkIn?: string | null;
   checkOut?: string | null;
   workNotes?: string;
+  /** Closed by the 00:01 cron because the person forgot to check out. */
+  autoClosedByCron?: boolean;
+  /** Why they missed it — carried over from the approved correction. */
+  correctionReason?: string | null;
+  correctionApprovedAt?: string | null;
+  halfDay?: boolean;
   /** HR-marked unpaid (LOP) leave day — excluded from paid days in payroll. */
   unpaid?: boolean;
   /** Why it was marked unpaid, if HR gave a reason. */

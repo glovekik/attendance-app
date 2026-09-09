@@ -100,6 +100,7 @@ export default function Attendance() {
   // Inline forgot-checkout correction (filed right here, no jump to History).
   const [coTime, setCoTime] = useState("");
   const [coReason, setCoReason] = useState("");
+  const [coWorkDone, setCoWorkDone] = useState("");
   const [coSubmitting, setCoSubmitting] = useState(false);
 
   const load = useCallback(async () => {
@@ -315,6 +316,17 @@ export default function Attendance() {
       notify("Enter your actual check-out time");
       return;
     }
+    // Both mandatory. An auto-closed day is a gap in the attendance record;
+    // HR needs to know when the person actually left AND what they did, or
+    // the correction is just a timestamp with no justification behind it.
+    if (!coReason.trim()) {
+      notify("Add a reason", "Tell us why you didn't check out manually.");
+      return;
+    }
+    if (!coWorkDone.trim()) {
+      notify("Add what you worked on", "Work done is required for this day.");
+      return;
+    }
     try {
       setCoSubmitting(true);
       const token = await AsyncStorage.getItem("token");
@@ -326,12 +338,16 @@ export default function Attendance() {
       const iso = new Date(y, m - 1, d, hh, mm, 0).toISOString();
       await requestCorrection(token, rec.id, {
         requestedCheckOut: iso,
-        reason: coReason.trim() || "Forgot to check out",
+        reason: coReason.trim(),
+        // Lands on the attendance row as workNotes once approved, so the day
+        // carries a record of what was actually done.
+        requestedWorkNotes: coWorkDone.trim(),
       });
       notify("Correction sent", "Your manager or HR will review it.");
       setBlockRecords(null);
       setCoTime("");
       setCoReason("");
+      setCoWorkDone("");
     } catch (err: any) {
       notify("Couldn't send", err?.message || "");
     } finally {
@@ -944,19 +960,32 @@ export default function Attendance() {
         )}
 
         <Text style={{ color: c.textMuted, fontSize: 12, fontWeight: "700", marginTop: 12, marginBottom: 6 }}>
-          Reason (optional)
+          Why didn't you check out? <Text style={{ color: "#dc2626" }}>*</Text>
         </Text>
         <TextInput
           style={{ borderWidth: 1, borderColor: c.surfaceBorder, borderRadius: 10, paddingHorizontal: 12, paddingVertical: 10, color: c.text, backgroundColor: c.surface, minHeight: 44 }}
           value={coReason}
           onChangeText={setCoReason}
-          placeholder="e.g. Forgot to check out"
+          placeholder="e.g. Left in a hurry for a client call"
+          placeholderTextColor={c.textFaint}
+          multiline
+        />
+
+        <Text style={{ color: c.textMuted, fontSize: 12, fontWeight: "700", marginTop: 12, marginBottom: 6 }}>
+          Work done <Text style={{ color: "#dc2626" }}>*</Text>
+        </Text>
+        <TextInput
+          style={{ borderWidth: 1, borderColor: c.surfaceBorder, borderRadius: 10, paddingHorizontal: 12, paddingVertical: 10, color: c.text, backgroundColor: c.surface, minHeight: 64 }}
+          value={coWorkDone}
+          onChangeText={setCoWorkDone}
+          placeholder="What you worked on that day"
           placeholderTextColor={c.textFaint}
           multiline
         />
 
         <Text style={[styles.locHelp, { color: c.textMuted, marginTop: 12 }]}>
           Your manager or HR will review and approve the corrected check-out.
+          Both fields are required.
         </Text>
       </WebModal>
 

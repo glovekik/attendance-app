@@ -27,23 +27,23 @@ import {
   updateProjectTask,
   ProjectTasksResponse,
   ProjectAttendanceResponse,
-} from "../../src/services/projects";
+} from "../../../src/services/projects";
 import {
   Project,
   ProjectMember,
   ProjectMemberHistoryEntry,
   TaskPriority,
   TASK_PRIORITIES,
-} from "../../src/types";
-import { confirmAction, notify } from "../../src/utils/confirm";
-import { useTheme } from "../../src/theme/ThemeProvider";
+} from "../../../src/types";
+import { confirmAction, notify } from "../../../src/utils/confirm";
+import { useTheme } from "../../../src/theme/ThemeProvider";
 import {
   projectStatusColor,
   taskStatusColor,
-} from "../../src/theme/statusColors";
-import { WebModal, ModalActions } from "../../src/components/WebModal";
-import { DatePickerField } from "../../src/components/DatePickerField";
-import { Avatar } from "../../src/components/Avatar";
+} from "../../../src/theme/statusColors";
+import { WebModal, ModalActions } from "../../../src/components/WebModal";
+import { DatePickerField } from "../../../src/components/DatePickerField";
+import { Avatar } from "../../../src/components/Avatar";
 
 const fmtDate = (s?: string | null) => {
   if (!s) return "—";
@@ -402,12 +402,26 @@ export default function ProjectDetail() {
         {/* TASKS */}
         <View style={styles.tasksHeader}>
           <Text style={styles.section}>TASKS</Text>
-          {isPM && (
-            <TouchableOpacity style={styles.addTaskBtn} onPress={openCreate}>
-              <Ionicons name="add" size={18} color="#fff" />
-              <Text style={styles.addTaskText}>Assign</Text>
+          <View style={styles.headerActions}>
+            {/* Sits beside Assign because both are "things this project keeps"
+                — work to do, and the snippets needed to do it. Shown to every
+                member: what they can actually open is decided per file on the
+                server, so a member with no readable files still gets a
+                meaningful empty state rather than a missing button. */}
+            <TouchableOpacity
+              style={styles.varsBtn}
+              onPress={() => router.push(`/projects/${id}/variables` as any)}
+            >
+              <Ionicons name="code-slash-outline" size={16} color={c.accent} />
+              <Text style={styles.varsBtnText}>Variables</Text>
             </TouchableOpacity>
-          )}
+            {isPM && (
+              <TouchableOpacity style={styles.addTaskBtn} onPress={openCreate}>
+                <Ionicons name="add" size={18} color="#fff" />
+                <Text style={styles.addTaskText}>Assign</Text>
+              </TouchableOpacity>
+            )}
+          </View>
         </View>
 
         {pending.length > 0 && (
@@ -773,7 +787,20 @@ const makeStyles = (c: any) =>
     },
     linkBtnText: { color: c.accent, fontSize: 13, fontWeight: "700" },
 
-    tasksHeader: {
+    headerActions: { flexDirection: "row", alignItems: "center", gap: 8 },
+  varsBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 5,
+    paddingHorizontal: 11,
+    paddingVertical: 7,
+    borderRadius: 9,
+    backgroundColor: c.accentSoft,
+    borderWidth: 1,
+    borderColor: c.accent,
+  },
+  varsBtnText: { color: c.accentText, fontSize: 12.5, fontWeight: "700" },
+  tasksHeader: {
       flexDirection: "row",
       alignItems: "center",
       justifyContent: "space-between",

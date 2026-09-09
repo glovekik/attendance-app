@@ -193,6 +193,29 @@ export default function MyPayroll() {
                 colorize="red"
                 s={s}
               />
+              {/* Each deduction that actually applies, itemised under the
+                  total. The screen previously showed only the total, so an
+                  employee could see money withheld without being told what
+                  for — Health Insurance in particular was invisible unless
+                  they downloaded the PDF. Zero-value lines stay hidden so a
+                  payslip with no insurance is unchanged. */}
+              {[
+                ["PF (Employee)", p.employeePF],
+                ["Health Insurance (Employee)", p.employeeInsurance],
+                ["Professional Tax", p.professionalTax],
+                ["TDS", p.tds],
+              ]
+                .filter(([, amt]) => Number(amt) > 0)
+                .map(([label, amt]) => (
+                  <Row
+                    key={label as string}
+                    label={label as string}
+                    value={-Number(amt)}
+                    colorize="red"
+                    indent
+                    s={s}
+                  />
+                ))}
               {p.lopDeduction > 0 && (
                 <Row
                   label="LOP"
@@ -236,14 +259,17 @@ const Row = ({
   label,
   value,
   colorize,
+  indent,
   s }: {
   label: string;
   value: number;
   colorize?: "red" | "green";
+  /** Nests the line under the total it contributes to. */
+  indent?: boolean;
   s: any;
 }) => (
   <View style={s.row}>
-    <Text style={s.rowLabel}>{label}</Text>
+    <Text style={[s.rowLabel, indent && s.rowLabelIndent]}>{label}</Text>
     <Text
       style={[
         s.rowVal,
@@ -284,6 +310,7 @@ const makeStyles = (c: any) => StyleSheet.create({
   breakdown: { backgroundColor: c.surfaceMuted, borderRadius: 10, padding: 10, borderWidth: 1, borderColor: c.surfaceBorder },
   row: { flexDirection: "row", justifyContent: "space-between", paddingVertical: 3 },
   rowLabel: { color: c.textMuted, fontSize: 12 },
+  rowLabelIndent: { paddingLeft: 12, color: c.textFaint, fontSize: 11.5 },
   rowVal: { color: c.text, fontSize: 13, fontWeight: "700" },
 
   downloadBtn: { marginTop: 12, backgroundColor: c.accent, paddingVertical: 10, borderRadius: 10, flexDirection: "row", justifyContent: "center", alignItems: "center", gap: 6 },
