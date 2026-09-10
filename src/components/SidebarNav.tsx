@@ -36,6 +36,7 @@ import {
 import { unregisterPushToken } from "../services/notifications";
 import { logoutSession } from "../services/session";
 import { User, hasRole, isPeopleManager, isCEO } from "../types";
+import { mediaUrl } from "../utils/media";
 import { SIDEBAR_WIDTH } from "../utils/responsive";
 
 // "Today" / "Tomorrow" / "Jul 12" label for an upcoming event.
@@ -298,6 +299,45 @@ const pickTabs = (user: User | null): TabDef[] => {
   return employeeTabs;
 };
 
+/**
+ * The inside of an avatar circle: the person's photo, or their initials.
+ *
+ * Two reasons this isn't a bare <Image>. The backend returns upload URLs as
+ * "/static/uploads/<key>" whenever PUBLIC_BASE_URL is unset, and a relative
+ * URL resolves against the *web* origin rather than the API — so the photo
+ * 404s on web and is an invalid URI on native. mediaUrl() makes it absolute,
+ * the same way the other sixteen screens already do.
+ *
+ * And a photo that fails to load used to leave an empty coloured circle,
+ * because the initials were only reachable when the URL was missing
+ * altogether — never when it was present but broken. Now any load failure
+ * falls back to them.
+ */
+const AvatarInner = ({
+  uri,
+  initials,
+  imageStyle,
+  textStyle,
+}: {
+  uri?: string | null;
+  initials: string;
+  imageStyle?: any;
+  textStyle?: any;
+}) => {
+  const [failed, setFailed] = useState(false);
+  const resolved = failed ? undefined : mediaUrl(uri || undefined);
+
+  if (!resolved) return <Text style={textStyle}>{initials}</Text>;
+
+  return (
+    <Image
+      source={{ uri: resolved }}
+      style={imageStyle}
+      onError={() => setFailed(true)}
+    />
+  );
+};
+
 interface Props {
   user: User | null;
   collapsed?: boolean;
@@ -540,16 +580,12 @@ export const SidebarNav = ({
                       { backgroundColor: theme.colors.accent },
                     ]}
                   >
-                    {it.profilePictureUrl ? (
-                      <Image
-                        source={{ uri: it.profilePictureUrl }}
-                        style={styles.birthdayAvatarImg}
-                      />
-                    ) : (
-                      <Text style={styles.birthdayInitials}>
-                        {getInitials(it.name)}
-                      </Text>
-                    )}
+                    <AvatarInner
+                      uri={it.profilePictureUrl}
+                      initials={getInitials(it.name)}
+                      imageStyle={styles.birthdayAvatarImg}
+                      textStyle={styles.birthdayInitials}
+                    />
                   </View>
                 )}
                 <View style={styles.eventInfo}>
@@ -614,11 +650,12 @@ export const SidebarNav = ({
         >
           {/* Avatar */}
           <View style={[styles.avatar, { backgroundColor: theme.colors.accent }]}>
-            {user?.profilePictureUrl ? (
-              <Image source={{ uri: user.profilePictureUrl }} style={styles.avatarImage} />
-            ) : (
-              <Text style={styles.avatarText}>{getInitials(user?.name)}</Text>
-            )}
+            <AvatarInner
+              uri={user?.profilePictureUrl}
+              initials={getInitials(user?.name)}
+              imageStyle={styles.avatarImage}
+              textStyle={styles.avatarText}
+            />
           </View>
 
           {!collapsed && (

@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 
 // Use React Native's Image (react-native-web renders it as a plain <img>) —
 // it's the same path the profile screens use and loads reliably on web,
@@ -59,8 +59,13 @@ export const Avatar = ({
   const { theme } = useTheme();
   const c = theme.colors;
   const [zoomed, setZoomed] = useState(false);
+  // A URL that 404s or times out used to leave an empty coloured circle: the
+  // initials were only reachable when there was no URL at all, never when
+  // there was a broken one. Reset on `uri` so a re-upload gets a fresh try.
+  const [failed, setFailed] = useState(false);
+  useEffect(() => setFailed(false), [uri]);
 
-  const resolved = mediaUrl(uri || undefined);
+  const resolved = failed ? undefined : mediaUrl(uri || undefined);
   const radius =
     borderRadius != null ? borderRadius : square ? Math.round(size * 0.28) : size / 2;
   const initial = (name || "").trim().charAt(0).toUpperCase() || "?";
@@ -86,6 +91,7 @@ export const Avatar = ({
           source={{ uri: resolved }}
           style={{ width: size, height: size }}
           resizeMode="cover"
+          onError={() => setFailed(true)}
         />
       ) : (
         <Text
