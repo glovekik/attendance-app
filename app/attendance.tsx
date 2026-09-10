@@ -33,10 +33,9 @@ import { listTodos } from "../src/services/todos";
 import { dateToYMD, WebDateField } from "../src/components/WebDateField";
 import { requestCorrection } from "../src/services/corrections";
 import {
-  OFFICE,
-  ALLOWED_RADIUS,
+  classifyOffice,
   getCurrentLocation,
-  getDistance,
+  officeRejectionMessage,
   reverseGeocode,
 } from "../src/utils/location";
 import { WebModal, ModalActions } from "../src/components/WebModal";
@@ -163,23 +162,20 @@ export default function Attendance() {
       if (attType === "OFFICE") {
         try {
           const coords = await getCurrentLocation();
-          const distance = getDistance(
-            coords.latitude,
-            coords.longitude,
-            OFFICE.latitude,
-            OFFICE.longitude
-          );
-          if (distance > ALLOWED_RADIUS) {
+          const fix = classifyOffice(coords);
+          if (!fix.inside) {
             notify(
-              "Too far from office",
-              `You're ${Math.round(
-                distance
-              )}m away. Switch to WFH if you're remote.`
+              fix.reliable ? "Too far from office" : "Location not precise enough",
+              officeRejectionMessage(fix)
             );
             return;
           }
           payload.latitude = coords.latitude;
           payload.longitude = coords.longitude;
+          // Send the fix's uncertainty too, so the server-side geofence can
+          // apply the same tolerance instead of re-deciding on the centre
+          // point alone.
+          if (coords.accuracy != null) payload.accuracy = coords.accuracy;
         } catch (locErr: any) {
           notify(
             "Location required",
@@ -240,13 +236,7 @@ export default function Attendance() {
       const coords = await getCurrentLocation();
       // If they're actually at the office, this isn't a client visit — send
       // them to the normal check-in flow instead.
-      const officeDist = getDistance(
-        coords.latitude,
-        coords.longitude,
-        OFFICE.latitude,
-        OFFICE.longitude
-      );
-      if (officeDist <= ALLOWED_RADIUS) {
+      if (classifyOffice(coords).inside) {
         notify(
           "You're at the office",
           "This is the office location — please use Check in instead of Client Location."

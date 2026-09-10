@@ -2,11 +2,7 @@ import * as TaskManager from "expo-task-manager";
 import * as Notifications from "expo-notifications";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 
-import {
-  getDistance,
-  OFFICE,
-  ALLOWED_RADIUS,
-} from "../utils/location";
+import { classifyOffice } from "../utils/location";
 
 import {
   isWithinOfficeHours,
@@ -32,17 +28,19 @@ TaskManager.defineTask(TASK_NAME, async ({ data, error }: any) => {
   const lat = loc.coords.latitude;
   const lon = loc.coords.longitude;
 
-  const distance = getDistance(
-    lat,
-    lon,
-    OFFICE.latitude,
-    OFFICE.longitude
-  );
+  // Same rule as the manual check-in button, so a background auto-check-in
+  // and a tap on Check in can never disagree about where the office is.
+  const fix = classifyOffice({
+    latitude: lat,
+    longitude: lon,
+    accuracy:
+      typeof loc.coords.accuracy === "number" ? loc.coords.accuracy : null,
+  });
 
   const now = Date.now();
 
   // ❌ Outside → reset
-  if (distance > ALLOWED_RADIUS) {
+  if (!fix.inside) {
     insideSince = null;
     return;
   }
