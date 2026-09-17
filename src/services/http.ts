@@ -90,23 +90,24 @@ export const apiCall = async <T = any>(
 
   // Reactive refresh: a 401 on an authenticated request means the access
   // token expired mid-session. Silently swap it for a fresh one (single-
-  // flight, so concurrent 401s share one refresh) and retry ONCE. If the
-  // refresh token is also gone/dead, refreshSession() returns null and we
-  // fall through to the normal !res.ok error — the next dashboard load will
-  // then route the user to login.
+  // flight, so concurrent 401s share one refresh) and retry ONCE.
   if (res.status === 401 && token) {
-    const fresh = await refreshSession();
-    if (fresh) {
-      res = await doFetch(fresh);
-    }
-    // Refresh failed AND the retry is still unauthorised: the session is
-    // genuinely dead (expired refresh token, deleted user, a token minted
-    // against a different database). End it here rather than throwing an
-    // error every screen renders as its own dead end — that's how you get
-    // "Could not load profile." with no way forward but a manual reload.
-    if (!fresh || res.status === 401) {
+    const outcome = await refreshSession();
+
+    if (outcome.status === "refreshed") {
+      res = await doFetch(outcome.token);
+      // A brand-new access token still refused: the session really is over
+      // (deleted user, a token minted against a different database). End it
+      // here rather than throwing an error every screen renders as its own
+      // dead end — that's how you get "Could not load profile." with no way
+      // forward but a manual reload.
+      if (res.status === 401) await onSessionExpired();
+    } else if (outcome.status === "dead") {
       await onSessionExpired();
     }
+    // "unavailable" — we never got an answer about this session, so we don't
+    // get to end it. The 401 falls through as an ordinary error and the user
+    // stays signed in; the next request, once the network is back, succeeds.
   }
 
   let data: any = null;

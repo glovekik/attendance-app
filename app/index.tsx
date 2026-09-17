@@ -95,15 +95,24 @@ export default function Home() {
         meRes = await getMe(token);
       } catch (err: any) {
         if (err?.status === 401) {
-          const fresh = await refreshSession();
-          if (!fresh) {
+          const outcome = await refreshSession();
+          if (outcome.status === "dead") {
             await clearSession();
             setLoading(false);
             router.replace("/login");
             return;
           }
+          if (outcome.status === "unavailable") {
+            // Couldn't reach the server, so we've learnt nothing about this
+            // session. Show the retry state rather than signing them out —
+            // this is the first second after a cold launch, when the network
+            // is least likely to be up.
+            setLoadError(true);
+            setLoading(false);
+            return;
+          }
           // Refreshed — use the new token for this and all later calls.
-          token = fresh;
+          token = outcome.token;
           try {
             meRes = await getMe(token);
           } catch (retryErr: any) {

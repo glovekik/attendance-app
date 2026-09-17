@@ -92,24 +92,64 @@ export const getTokenExpiryMs = (token: string): number | null => {
 };
 
 // ── Refresh ─────────────────────────────────────────────────────────────
-let refreshInFlight: Promise<string | null> | null = null;
 
-// Swap the stored refresh token for a fresh access token. Resolves to the
-// new access token, or null if refresh isn't possible (no refresh token,
-// or the server rejected it → the caller should log out).
-export const refreshSession = (): Promise<string | null> => {
+/**
+ * Why this isn't just `string | null`.
+ *
+ * "The server says this session is over" and "I couldn't reach the server"
+ * both used to come back as null, and the caller logged the user out for
+ * either. So a dropped connection, a WiFi handover, or an API restart at
+ * the moment the access token needed renewing ended a perfectly good
+ * 30-day session — which is what "it logs me out for no reason" is.
+ *
+ *  refreshed   — new access token, carry on
+ *  dead        — the server rejected the refresh token; log out
+ *  unavailable — couldn't get an answer; keep the session and let the
+ *                original request fail normally. The next attempt works.
+ */
+export type RefreshOutcome =
+  | { status: "refreshed"; token: string }
+  | { status: "dead" }
+  | { status: "unavailable" };
+
+let refreshInFlight: Promise<RefreshOutcome> | null = null;
+
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
+const attemptRefresh = async (rt: string): Promise<RefreshOutcome> => {
+  try {
+    const res = await refreshAccessToken(rt);
+    if (!res?.access_token) {
+      // A 200 with nothing in it isn't proof the session is over.
+      return { status: "unavailable" };
+    }
+    // Backend may rotate the refresh token; keep the old one if it doesn't.
+    await setSession(res.access_token, res.refresh_token ?? rt);
+    return { status: "refreshed", token: res.access_token };
+  } catch (err: any) {
+    // Only the server's own verdict ends a session. 401/403 mean the token
+    // is genuinely spent; anything else (offline, DNS, 502 behind a reverse
+    // proxy, a restart mid-deploy) says nothing about its validity.
+    if (err?.status === 401 || err?.status === 403) return { status: "dead" };
+    return { status: "unavailable" };
+  }
+};
+
+export const refreshSession = (): Promise<RefreshOutcome> => {
   if (refreshInFlight) return refreshInFlight;
   refreshInFlight = (async () => {
     try {
       const rt = await AsyncStorage.getItem(REFRESH_KEY);
-      if (!rt) return null;
-      const res = await refreshAccessToken(rt);
-      if (!res?.access_token) return null;
-      // Backend may rotate the refresh token; keep the old one if it doesn't.
-      await setSession(res.access_token, res.refresh_token ?? rt);
-      return res.access_token;
-    } catch {
-      return null;
+      if (!rt) return { status: "dead" } as RefreshOutcome;
+
+      const first = await attemptRefresh(rt);
+      if (first.status !== "unavailable") return first;
+
+      // One retry. Mobile networks drop a request often enough that a single
+      // second chance turns most of these into a non-event; the server's
+      // rotation grace window means replaying the same token is safe.
+      await sleep(1200);
+      return attemptRefresh(rt);
     } finally {
       refreshInFlight = null;
     }
