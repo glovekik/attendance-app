@@ -30,7 +30,8 @@ import {
 import { AttendanceHistorySection } from "../src/components/AttendanceHistorySection";
 import { getMyTasks } from "../src/services/tasks";
 import { listTodos } from "../src/services/todos";
-import { dateToYMD, WebDateField } from "../src/components/WebDateField";
+import { dateToYMD } from "../src/components/WebDateField";
+import { TimeField } from "../src/components/TimeField";
 import { requestCorrection } from "../src/services/corrections";
 import {
   classifyOffice,
@@ -937,17 +938,12 @@ export default function Attendance() {
         <Text style={{ color: c.textMuted, fontSize: 12, fontWeight: "700", marginTop: 14, marginBottom: 6 }}>
           Actual check-out time
         </Text>
-        {isWeb ? (
-          <WebDateField mode="time" value={coTime} onChange={(v) => setCoTime(v || "")} />
-        ) : (
-          <TextInput
-            style={{ borderWidth: 1, borderColor: c.surfaceBorder, borderRadius: 10, paddingHorizontal: 12, paddingVertical: 10, color: c.text, backgroundColor: c.surface }}
-            value={coTime}
-            onChangeText={setCoTime}
-            placeholder="HH:MM (e.g. 18:30)"
-            placeholderTextColor={c.textFaint}
-          />
-        )}
+        <TimeField
+          value={coTime}
+          onChange={setCoTime}
+          placeholder="Tap to pick the time you left"
+          icon="log-out-outline"
+        />
 
         <Text style={{ color: c.textMuted, fontSize: 12, fontWeight: "700", marginTop: 12, marginBottom: 6 }}>
           Why didn't you check out? <Text style={{ color: "#dc2626" }}>*</Text>
