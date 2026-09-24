@@ -35,6 +35,24 @@ const durationOf = (r?: CalRow): string => {
   return formatHours(mins / 60);
 };
 
+/** What the day panel needs to know about a correction raised on that day. */
+export interface DayCorrection {
+  status: "PENDING" | "APPROVED" | "REJECTED";
+  requestedCheckIn?: string | null;
+  requestedCheckOut?: string | null;
+  requestedAttendanceType?: string | null;
+  requestedWorkNotes?: string | null;
+  reason?: string | null;
+}
+
+/** "8:30 PM" from an ISO timestamp; blank when there's nothing to show. */
+const fmtClock = (iso?: string | null): string => {
+  if (!iso) return "";
+  const d = new Date(iso);
+  if (isNaN(d.getTime())) return "";
+  return d.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
+};
+
 const PRESENT = new Set(["PRESENT", "CHECKED_IN", "COMPLETED", "LATE", "HALF_DAY"]);
 type Cat = "office" | "wfh" | "client" | "halfday" | "leave" | "absent";
 
@@ -131,8 +149,10 @@ export function AttendanceCalendar({
    *  no record too — that's the common case, since an unpaid day is usually
    *  one nobody checked in on. `next` is the state being moved TO. */
   onToggleUnpaid?: (dayKey: string, next: boolean, rec?: CalRow) => void;
-  /** Latest correction status per date, so the panel can show pending state. */
-  correctionByDate?: Record<string, "PENDING" | "APPROVED" | "REJECTED">;
+  /** Latest correction per date, so the panel can show its state AND what
+   *  was actually asked for. Previously only the status came through, so a
+   *  day said "Pending" with no way to see what you'd requested. */
+  correctionByDate?: Record<string, DayCorrection>;
 }) {
   const { theme } = useTheme();
   const c = theme.colors;
@@ -339,13 +359,42 @@ export function AttendanceCalendar({
                 <Text style={styles.latePillText}>Late</Text>
               </View>
             )}
-            {selCorrection === "PENDING" && (
+            {selCorrection?.status === "PENDING" && (
               <View style={styles.pendingPill}>
                 <Ionicons name="time-outline" size={12} color="#b45309" />
                 <Text style={styles.pendingPillText}>Pending</Text>
               </View>
             )}
           </View>
+
+          {/* What was actually asked for. A bare "Pending" pill told people a
+              request existed but not what was in it, so the only way to check
+              was to try raising another one. */}
+          {!!selCorrection && (
+            <View style={styles.corrBox}>
+              <Text style={styles.corrTitle}>
+                {selCorrection.status === "PENDING"
+                  ? "You requested"
+                  : selCorrection.status === "APPROVED"
+                  ? "Correction approved"
+                  : "Correction rejected"}
+              </Text>
+              {[
+                ["Check in", fmtClock(selCorrection.requestedCheckIn)],
+                ["Check out", fmtClock(selCorrection.requestedCheckOut)],
+                ["Type", selCorrection.requestedAttendanceType],
+                ["Work done", selCorrection.requestedWorkNotes],
+                ["Reason", selCorrection.reason],
+              ]
+                .filter(([, v]) => !!v)
+                .map(([k, v]) => (
+                  <View key={k as string} style={styles.corrRow}>
+                    <Text style={styles.corrKey}>{k}</Text>
+                    <Text style={styles.corrVal}>{v}</Text>
+                  </View>
+                ))}
+            </View>
+          )}
 
           {/* Times as three clean stat tiles */}
           {!!selInfo.rec && (!!selInfo.rec.checkIn || !!selInfo.rec.checkOut) && (
@@ -429,7 +478,7 @@ export function AttendanceCalendar({
                   <Text style={styles.actionPrimaryText}>Add record</Text>
                 </TouchableOpacity>
               )}
-              {!!onRequestCorrection && selCorrection !== "PENDING" && (
+              {!!onRequestCorrection && selCorrection?.status !== "PENDING" && (
                 <TouchableOpacity
                   style={[styles.actionBtn, styles.actionPrimary]}
                   onPress={() => onRequestCorrection(selInfo.key, selInfo.rec)}
@@ -437,7 +486,7 @@ export function AttendanceCalendar({
                 >
                   <Ionicons name="time-outline" size={15} color="#fff" />
                   <Text style={styles.actionPrimaryText}>
-                    {selCorrection === "REJECTED"
+                    {selCorrection?.status === "REJECTED"
                       ? "Request again"
                       : selInfo.rec
                       ? "Request correction"
@@ -572,6 +621,26 @@ const makeStyles = (c: any) =>
     detailDate: { color: c.textMuted, fontSize: 11.5, fontWeight: "700" },
     detailLabel: { color: c.text, fontSize: 15, fontWeight: "800", marginTop: 2 },
 
+    corrBox: {
+      marginTop: 10,
+      padding: 10,
+      borderRadius: 10,
+      backgroundColor: "rgba(245,158,11,0.08)",
+      borderWidth: 1,
+      borderColor: "rgba(245,158,11,0.28)",
+      gap: 3,
+    },
+    corrTitle: {
+      fontSize: 11,
+      fontWeight: "800",
+      color: "#b45309",
+      textTransform: "uppercase",
+      letterSpacing: 0.4,
+      marginBottom: 2,
+    },
+    corrRow: { flexDirection: "row", gap: 8 },
+    corrKey: { width: 74, fontSize: 12, color: c.textMuted },
+    corrVal: { flex: 1, fontSize: 12, color: c.text, fontWeight: "600" },
     pendingPill: {
       flexDirection: "row",
       alignItems: "center",

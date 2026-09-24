@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
 
 import {
   View,
@@ -14,14 +14,18 @@ import { WebModal, ModalActions } from "./WebModal";
 
 import AsyncStorage from "@react-native-async-storage/async-storage";
 
-import { useRouter } from "expo-router";
+import { useRouter, useFocusEffect } from "expo-router";
 
 import { Ionicons } from "@expo/vector-icons";
 
 import DateTimePicker from "@react-native-community/datetimepicker";
 
 import { WebDateField, dateToHM, hmToDate } from "./WebDateField";
-import { AttendanceCalendar, CalRow } from "./AttendanceCalendar";
+import {
+  AttendanceCalendar,
+  CalRow,
+  DayCorrection,
+} from "./AttendanceCalendar";
 
 import {
   getHistory,
@@ -163,10 +167,15 @@ export function AttendanceHistorySection({
     setLoading(false);
   };
 
-  useEffect(() => {
-    loadHistory();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  // Reload whenever the screen regains focus, not just on mount. A correction
+  // raised from the Attendance screen's forgot-to-check-out prompt otherwise
+  // left this list stale, so the day still looked un-requested here.
+  useFocusEffect(
+    useCallback(() => {
+      loadHistory();
+      // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [])
+  );
 
   // HR-declared holidays for whichever year is on screen.
   useEffect(() => {
@@ -227,9 +236,12 @@ export function AttendanceHistorySection({
     });
   };
 
-  // Latest correction status per attendance date, for the calendar panel.
+  // Latest correction per attendance date, for the calendar panel. The whole
+  // request is kept, not just its status: a day that says "Pending" with no
+  // sign of what was asked for leaves trying again as the only way to find
+  // out, which then fails as a duplicate.
   const correctionByDate = useMemo(() => {
-    const map: Record<string, "PENDING" | "APPROVED" | "REJECTED"> = {};
+    const map: Record<string, DayCorrection> = {};
     const sorted = [...corrections].sort((a, b) =>
       (a.requestedAt || "").localeCompare(b.requestedAt || "")
     );
@@ -239,7 +251,16 @@ export function AttendanceHistorySection({
         cr.attendance?.date ||
         cr.requestedDate ||
         undefined;
-      if (key) map[key] = cr.status as any;
+      if (key) {
+        map[key] = {
+          status: cr.status as DayCorrection["status"],
+          requestedCheckIn: (cr as any).requestedCheckIn,
+          requestedCheckOut: (cr as any).requestedCheckOut,
+          requestedAttendanceType: (cr as any).requestedAttendanceType,
+          requestedWorkNotes: (cr as any).requestedWorkNotes,
+          reason: (cr as any).reason,
+        };
+      }
     }
     return map;
   }, [corrections]);
@@ -269,6 +290,18 @@ export function AttendanceHistorySection({
 
   // Calendar callback — an existing record edits it, a bare day creates one.
   const handleRequestCorrection = (dayKey: string, rec?: CalRow) => {
+    // Don't open a blank form for a day that already has a request pending.
+    // The calendar hides its own button for this, but only if this map is
+    // current; checking here too means a stale list can't let someone fill
+    // in the whole form and then be told it's a duplicate on submit.
+    if (correctionByDate[dayKey]?.status === "PENDING") {
+      showError({
+        message:
+          "You've already sent a correction for this day. Open the day to " +
+          "see what you requested — it's waiting for your manager or HR.",
+      });
+      return;
+    }
     const full = rec ? history.find((h) => h?.date === rec.date) || rec : null;
     if (full) openCorrection(full);
     else openCorrectionForDate(dayKey);
@@ -389,8 +422,15 @@ export function AttendanceHistorySection({
       setCorrVisible(false);
       await loadHistory();
       notifyChanged();
-    } catch (err) {
+    } catch (err: any) {
       showError(err);
+      // If the server refused it as a duplicate, our copy of the list was
+      // behind. Refresh so the day shows its pending request instead of
+      // still offering the button that just failed.
+      if (String(err?.message || "").toLowerCase().includes("already exists")) {
+        setCorrVisible(false);
+        await loadHistory();
+      }
     } finally {
       setCorrSaving(false);
     }
