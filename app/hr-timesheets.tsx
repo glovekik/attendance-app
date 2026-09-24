@@ -27,6 +27,7 @@ import {
   Timesheet,
   TimesheetEntry,
   TimesheetStatus } from "../src/types";
+import { formatHours, formatTotalHours } from "../src/utils/duration";
 
 type FilterTab = "ALL" | TimesheetStatus;
 
@@ -322,7 +323,7 @@ export default function HrTimesheets() {
               <Text style={styles.row}>
                 {item.sheets.length} week
                 {item.sheets.length === 1 ? "" : "s"} ·{" "}
-                {item.totalHours.toFixed(1)} h
+                {formatTotalHours(item.totalHours)}
               </Text>
             </TouchableOpacity>
           )}
@@ -352,7 +353,7 @@ export default function HrTimesheets() {
                   </View>
                 </View>
                 <Text style={styles.row}>
-                  {item.totalHours.toFixed(1)} h ·{" "}
+                  {formatTotalHours(item.totalHours)} ·{" "}
                   {(item.entries || []).length} day
                   {(item.entries || []).length === 1 ? "" : "s"} logged
                 </Text>
@@ -424,7 +425,7 @@ export default function HrTimesheets() {
                 </View>
                 <Text style={styles.row}>
                   Week of {item.weekStart} ·{" "}
-                  {item.totalHours.toFixed(1)} h
+                  {formatTotalHours(item.totalHours)}
                 </Text>
                 {!!item.decisionNote && (
                   <Text style={styles.note} numberOfLines={2}>
@@ -478,7 +479,7 @@ export default function HrTimesheets() {
                 <View style={styles.detailRow}>
                   <Text style={styles.detailLabel}>Total hours</Text>
                   <Text style={styles.detailValue}>
-                    {selected.totalHours.toFixed(2)} h
+                    {formatTotalHours(selected.totalHours)}
                   </Text>
                 </View>
                 {!!selected.note && (
@@ -511,7 +512,7 @@ export default function HrTimesheets() {
                             : `${fmtTime(e.checkIn)} – ${fmtTime(e.checkOut)}`}
                         </Text>
                         <Text style={styles.entryHours}>
-                          {e.exempt ? "—" : `${(e.hours || 0).toFixed(1)} h`}
+                          {e.exempt ? "—" : formatHours(e.hours)}
                         </Text>
                         {e.billable && (
                           <View style={styles.tinyPill}>

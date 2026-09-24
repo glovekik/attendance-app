@@ -5,6 +5,7 @@ import { Ionicons } from "@expo/vector-icons";
 
 import { useTheme } from "../theme/ThemeProvider";
 import { ATT, ATT_BG, ATT_LETTER } from "../theme/attendanceColors";
+import { formatHours } from "../utils/duration";
 
 // Distinct tone for the client-address icon in the detail panel.
 const CLIENT_FG = "#7c3aed";
@@ -25,15 +26,13 @@ const formatHM = (iso?: string | null) => {
 const durationOf = (r?: CalRow): string => {
   if (!r) return "—";
   if (typeof r.hoursWorked === "number" && r.hoursWorked > 0) {
-    const h = Math.floor(r.hoursWorked);
-    const m = Math.round((r.hoursWorked - h) * 60);
-    return `${h}h ${pad(m)}m`;
+    return formatHours(r.hoursWorked);
   }
   if (!r.checkIn || !r.checkOut) return "—";
   const mins =
     (new Date(r.checkOut).getTime() - new Date(r.checkIn).getTime()) / 60000;
   if (!(mins > 0)) return "—";
-  return `${Math.floor(mins / 60)}h ${pad(Math.round(mins % 60))}m`;
+  return formatHours(mins / 60);
 };
 
 const PRESENT = new Set(["PRESENT", "CHECKED_IN", "COMPLETED", "LATE", "HALF_DAY"]);

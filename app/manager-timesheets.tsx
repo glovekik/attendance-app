@@ -34,6 +34,7 @@ import { StatusTabs, approvalTabs } from "../src/components/StatusTabs";
 import { WebModal, ModalActions } from "../src/components/WebModal";
 import { useResponsive } from "../src/utils/responsive";
 import { notify } from "../src/utils/confirm";
+import { formatHours, formatTotalHours } from "../src/utils/duration";
 
 type Filter = "ALL" | "PENDING" | "APPROVED" | "REJECTED";
 
@@ -237,7 +238,7 @@ export default function ManagerTimesheets() {
         <SumStat
           styles={styles}
           icon="time-outline"
-          v={`${(summary?.approvedHours ?? 0).toFixed(1)} h`}
+          v={formatTotalHours(summary?.approvedHours ?? 0)}
           l="Approved"
           tint={c.accent}
         />
@@ -371,7 +372,7 @@ export default function ManagerTimesheets() {
               <View style={styles.factRow}>
                 <View style={styles.fact}>
                   <Text style={styles.factV}>
-                    {item.totalHours.toFixed(2)}
+                    {formatTotalHours(item.totalHours)}
                     <Text style={styles.factUnit}> h</Text>
                   </Text>
                   <Text style={styles.factL}>Total hours</Text>
@@ -560,7 +561,7 @@ export default function ManagerTimesheets() {
               </View>
               <View style={{ alignItems: "flex-end" }}>
                 <Text style={styles.detailHours}>
-                  {selected.totalHours.toFixed(2)}
+                  {formatTotalHours(selected.totalHours)}
                   <Text style={styles.hoursUnit}> h</Text>
                 </Text>
                 <Text style={styles.detailHoursL}>total</Text>
@@ -604,7 +605,7 @@ export default function ManagerTimesheets() {
                           </Text>
                           <View style={styles.hrChip}>
                             <Text style={styles.hrChipText}>
-                              {(e.hours || 0).toFixed(2)} h
+                              {formatHours(e.hours)}
                             </Text>
                           </View>
                         </View>

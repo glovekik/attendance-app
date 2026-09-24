@@ -21,6 +21,7 @@ import { TeamProductivityRow } from "../src/types";
 
 import { useTheme } from "../src/theme/ThemeProvider";
 import { Avatar } from "../src/components/Avatar";
+import { formatHours } from "../src/utils/duration";
 
 // Semantic tones: workload (amber), output (green), effort (blue).
 const TONE = { open: "#F59E0B", done: "#16A34A", hours: "#2563EB" };
@@ -147,7 +148,7 @@ export default function ManagerProductivity() {
             },
             {
               icon: "time-outline" as const,
-              value: `${item.avgHoursPerDayLast7d.toFixed(1)}h`,
+              value: formatHours(item.avgHoursPerDayLast7d),
               label: "Avg/day · 7d",
               tone: TONE.hours,
             },

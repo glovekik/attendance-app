@@ -30,6 +30,7 @@ import { attendanceStatusColor } from "../src/theme/statusColors";
 import { ATT, ATT_BG } from "../src/theme/attendanceColors";
 import { notify } from "../src/utils/confirm";
 import { openMaps } from "../src/utils/media";
+import { formatHours } from "../src/utils/duration";
 
 const isWeb = Platform.OS === "web";
 const PRESENT = new Set(["PRESENT", "CHECKED_IN", "COMPLETED", "LATE", "HALF_DAY"]);
@@ -293,7 +294,7 @@ export default function ManagerAttendance() {
       pill = "CLIENT";
       tone = { bg: CLIENT_BG, fg: CLIENT_FG };
       const h = hoursOf(row);
-      const hStr = h > 0 ? ` · ${h.toFixed(1)}h${!row?.checkOut ? " so far" : ""}` : "";
+      const hStr = h > 0 ? ` · ${formatHours(h)}${!row?.checkOut ? " so far" : ""}` : "";
       const where = row?.clientName
         ? `${row.clientName} · `
         : row?.clientAddress ? `${row.clientAddress} · ` : "";
@@ -316,7 +317,7 @@ export default function ManagerAttendance() {
         tone = late ? { bg: c.warningBg, fg: c.warningText } : attendanceStatusColor(row?.status, c);
       }
       const h = hoursOf(row);
-      const hStr = h > 0 ? ` · ${h.toFixed(1)}h${!row?.checkOut ? " so far" : ""}` : "";
+      const hStr = h > 0 ? ` · ${formatHours(h)}${!row?.checkOut ? " so far" : ""}` : "";
       meta = `In ${formatHM(row?.checkIn)} · Out ${formatHM(row?.checkOut)}${hStr}${
         cat === "wfh" && late ? " · late" : ""
       }`;
@@ -682,7 +683,7 @@ export default function ManagerAttendance() {
                       c={c}
                       icon="time-outline"
                       label={row?.checkOut ? "Hours" : "So far"}
-                      value={hoursOf(row) > 0 ? `${hoursOf(row).toFixed(1)}h` : "—"}
+                      value={formatHours(hoursOf(row))}
                     />
                   </View>
                   <Text style={styles.dLabel}>Work notes</Text>
@@ -709,7 +710,7 @@ export default function ManagerAttendance() {
                       c={c}
                       icon="time-outline"
                       label={row?.checkOut ? "Hours" : "So far"}
-                      value={hoursOf(row) > 0 ? `${hoursOf(row).toFixed(1)}h` : "—"}
+                      value={formatHours(hoursOf(row))}
                     />
                   </View>
                   <Text style={styles.dLabel}>Work notes</Text>
@@ -761,7 +762,7 @@ export default function ManagerAttendance() {
               <View style={styles.noteDateRow}>
                 <Ionicons name="calendar-outline" size={14} color={c.accent} />
                 <Text style={styles.noteDate}>{r.date}</Text>
-                {r.hoursWorked ? <Text style={styles.noteHrs}>{r.hoursWorked.toFixed(1)}h</Text> : null}
+                {r.hoursWorked ? <Text style={styles.noteHrs}>{formatHours(r.hoursWorked)}</Text> : null}
               </View>
               <Text style={styles.noteText}>{r.workNotes?.trim()}</Text>
             </View>

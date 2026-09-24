@@ -50,6 +50,7 @@ import {
 import { notify } from "../src/utils/confirm";
 import { useResponsive, getResponsiveSpacing } from "../src/utils/responsive";
 import { PageHeader } from "../src/components/PageHeader";
+import { formatHours } from "../src/utils/duration";
 
 // LEAVE and HOLIDAY are intentionally not selectable here: leave days are
 // set automatically when a leave request is approved, and holidays are
@@ -714,7 +715,7 @@ export default function Attendance() {
             </Text>
             <Text style={[styles.completedSub, { color: c.textMuted }]}>
               {todayAtt?.hoursWorked
-                ? `${todayAtt.hoursWorked.toFixed(2)}h worked`
+                ? `${formatHours(todayAtt.hoursWorked)} worked`
                 : "Day complete"}
             </Text>
             {!!todayAtt?.workNotes && (

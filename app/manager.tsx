@@ -22,6 +22,7 @@ import {
   BottomTabBar,
   BOTTOM_BAR_RESERVED_HEIGHT } from "../src/components/BottomTabBar";
 import { notify } from "../src/utils/confirm";
+import { formatHours } from "../src/utils/duration";
 
 const COLLAPSE_KEY = "managerConsoleCollapsed";
 
@@ -332,7 +333,7 @@ export default function ManagerHub() {
                 label="Avg Hours"
                 value={
                   dash.teamAvgHoursPerDay7d != null
-                    ? `${dash.teamAvgHoursPerDay7d.toFixed(1)}h`
+                    ? formatHours(dash.teamAvgHoursPerDay7d)
                     : "—"
                 }
                 sub="per day, 7d"

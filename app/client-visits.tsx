@@ -29,6 +29,7 @@ import {
 } from "../src/components/BottomTabBar";
 import { User, hasRole } from "../src/types";
 import { notify } from "../src/utils/confirm";
+import { formatHours, formatTotalHours } from "../src/utils/duration";
 
 const isWeb = Platform.OS === "web";
 type Period = "daily" | "weekly" | "monthly";
@@ -315,7 +316,7 @@ export default function WorkReports() {
           <View style={{ flex: 1 }}>
             <Text style={styles.sumBig}>{visibleRows.length}</Text>
             <Text style={styles.sumLabel}>
-              records · {totalHours.toFixed(1)} h total
+              records · {formatTotalHours(totalHours)} total
             </Text>
           </View>
           <TouchableOpacity
@@ -375,7 +376,7 @@ export default function WorkReports() {
                   <Text style={styles.rTimes}>
                     {(r.checkIn || "—")} → {(r.checkOut || "—")}
                   </Text>
-                  <Text style={styles.rHours}>{Number(r.hours).toFixed(1)} h</Text>
+                  <Text style={styles.rHours}>{formatHours(Number(r.hours))}</Text>
                   <View
                     style={[
                       styles.typePill,

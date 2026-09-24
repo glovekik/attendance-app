@@ -21,6 +21,7 @@ import {
 } from "../services/timesheets";
 import { useTheme } from "../theme/ThemeProvider";
 import { notify } from "../utils/confirm";
+import { formatTotalHours } from "../utils/duration";
 
 /**
  * The "Time Sheets" box HR and managers see above their queue.
@@ -134,7 +135,7 @@ export function TimesheetSummaryBox({
       ) : (
         <>
           <Text style={styles.bigNumber}>
-            {hours.toFixed(1)}
+            {formatTotalHours(hours)}
             <Text style={styles.bigUnit}> h</Text>
           </Text>
           <Text style={styles.bigLabel}>
@@ -160,7 +161,7 @@ export function TimesheetSummaryBox({
             />
             <Stat
               styles={styles}
-              value={unapproved ? unapproved.toFixed(1) : "0"}
+              value={formatTotalHours(unapproved)}
               label="Unapproved h"
             />
           </View>
