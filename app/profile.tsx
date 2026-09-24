@@ -31,6 +31,20 @@ import {
 import { logoutSession } from "../src/services/session";
 import { User, hasRole } from "../src/types";
 import { useTheme, ThemePreference } from "../src/theme/ThemeProvider";
+import { SelectField } from "../src/components/SelectField";
+import {
+  Validator,
+  validateDate,
+  validateDigits,
+  validateEmail,
+  validatePhone,
+} from "../src/validators";
+import {
+  FALLBACK_VALUE_SETS,
+  ValueSetName,
+  ValueSets,
+  getValueSets,
+} from "../src/services/valueSets";
 import {
   BottomTabBar,
   BOTTOM_BAR_RESERVED_HEIGHT,
@@ -50,6 +64,10 @@ type PField = {
   label: string;
   keyboard?: "default" | "email-address" | "phone-pad";
   placeholder?: string;
+  /** Renders a dropdown of the server's options instead of a text input. */
+  valueSet?: ValueSetName;
+  /** Checked as you type and again before saving. */
+  validate?: Validator;
 };
 const PERSONAL_GROUPS: {
   title: string;
@@ -63,8 +81,13 @@ const PERSONAL_GROUPS: {
       {
         path: "personal.personalEmail",
         label: "Personal email",
-        keyboard: "email-address" },
-      { path: "personal.phone", label: "Phone", keyboard: "phone-pad" },
+        keyboard: "email-address",
+        validate: validateEmail },
+      {
+        path: "personal.phone",
+        label: "Phone",
+        keyboard: "phone-pad",
+        validate: validatePhone },
     ] },
   {
     title: "Personal details",
@@ -74,11 +97,18 @@ const PERSONAL_GROUPS: {
       {
         path: "personal.birthday",
         label: "Date of birth",
-        placeholder: "YYYY-MM-DD" },
+        placeholder: "YYYY-MM-DD",
+        validate: validateDate("Date of birth", { pastOnly: true }) },
       { path: "personal.placeOfBirth", label: "Place of birth" },
-      { path: "personal.gender", label: "Gender" },
-      { path: "personal.bloodGroup", label: "Blood group" },
-      { path: "personal.maritalStatus", label: "Marital status" },
+      { path: "personal.gender", label: "Gender", valueSet: "gender" },
+      {
+        path: "personal.bloodGroup",
+        label: "Blood group",
+        valueSet: "bloodGroup" },
+      {
+        path: "personal.maritalStatus",
+        label: "Marital status",
+        valueSet: "maritalStatus" },
     ] },
   {
     title: "Education",
@@ -96,6 +126,8 @@ type CompositeField = {
   label: string;
   keyboard?: "default" | "email-address" | "phone-pad";
   placeholder?: string;
+  valueSet?: ValueSetName;
+  validate?: Validator;
 };
 const ADDRESS_FIELDS: CompositeField[] = [
   { path: "personal.address.street1", label: "Street 1" },
@@ -105,16 +137,21 @@ const ADDRESS_FIELDS: CompositeField[] = [
   {
     path: "personal.address.pinCode",
     label: "PIN code",
-    keyboard: "phone-pad" },
+    keyboard: "phone-pad",
+    validate: validateDigits("PIN code", 6) },
   { path: "personal.address.country", label: "Country" },
 ];
 const EMERGENCY_FIELDS: CompositeField[] = [
   { path: "emergencyContact.contactName", label: "Name" },
-  { path: "emergencyContact.relationship", label: "Relationship" },
+  {
+    path: "emergencyContact.relationship",
+    label: "Relationship",
+    valueSet: "relationship" },
   {
     path: "emergencyContact.phone",
     label: "Phone",
-    keyboard: "phone-pad" },
+    keyboard: "phone-pad",
+    validate: validatePhone },
 ];
 
 // HR-managed — shown read-only on the employee's profile.
@@ -242,12 +279,30 @@ export default function Profile() {
   // Composite editor for multi-part sections (Address, Emergency contact).
   // editingComposite is the title of whichever section's modal is open;
   // compositeDraft holds the per-field strings keyed by their dotted path.
+  // Options come from the API so they match what it validates against on
+  // save; the fallback only covers the request failing, and the server still
+  // has the final say.
+  const [valueSets, setValueSets] = useState<ValueSets>(FALLBACK_VALUE_SETS);
+
   const [editingComposite, setEditingComposite] = useState<
     null | "address" | "emergency"
   >(null);
   const [compositeDraft, setCompositeDraft] = useState<Record<string, string>>(
     {}
   );
+  // Validation for whichever composite modal is open, recomputed as they
+  // type. Save is blocked while any field is complaining.
+  const compositeErrors = useMemo(() => {
+    const fields =
+      editingComposite === "address" ? ADDRESS_FIELDS : EMERGENCY_FIELDS;
+    const out: Record<string, string> = {};
+    for (const f of fields) {
+      const err = f.validate?.(compositeDraft[f.path] ?? "");
+      if (err) out[f.path] = err;
+    }
+    return out;
+  }, [editingComposite, compositeDraft]);
+  const compositeValid = Object.keys(compositeErrors).length === 0;
   const [compositeSaving, setCompositeSaving] = useState(false);
 
   const openCompositeEditor = (
@@ -307,6 +362,23 @@ export default function Profile() {
       setLoading(false);
     }
   }, [router]);
+
+  useEffect(() => {
+    let alive = true;
+    (async () => {
+      try {
+        const token = (await AsyncStorage.getItem("token")) || undefined;
+        const sets = await getValueSets(token);
+        if (alive && sets) setValueSets((prev) => ({ ...prev, ...sets }));
+      } catch {
+        // Keep the fallback — an unreachable options list must not stop
+        // someone editing the rest of their profile.
+      }
+    })();
+    return () => {
+      alive = false;
+    };
+  }, []);
 
   useEffect(() => {
     reload();
@@ -770,6 +842,8 @@ export default function Profile() {
                     onSave={saveField}
                     keyboard={f.keyboard}
                     placeholder={f.placeholder}
+                    options={f.valueSet ? valueSets[f.valueSet] : undefined}
+                    validate={f.validate}
                     theme={theme}
                     showDivider={i < g.fields.length - 1}
                   />
@@ -1087,10 +1161,11 @@ export default function Profile() {
             <TouchableOpacity
               style={[
                 styles.compModalBtn,
-                { backgroundColor: c.accent },
+                { backgroundColor: c.accent,
+                  opacity: compositeSaving || !compositeValid ? 0.45 : 1 },
               ]}
               onPress={saveComposite}
-              disabled={compositeSaving}
+              disabled={compositeSaving || !compositeValid}
             >
               {compositeSaving ? (
                 <ActivityIndicator color="#fff" size="small" />
@@ -1122,27 +1197,52 @@ export default function Profile() {
             >
               {f.label}
             </Text>
-            <TextInput
-              value={compositeDraft[f.path] ?? ""}
-              onChangeText={(v) =>
-                setCompositeDraft((prev) => ({
-                  ...prev,
-                  [f.path]: v }))
-              }
-              placeholder={f.placeholder || f.label}
-              placeholderTextColor={c.textFaint}
-              keyboardType={f.keyboard || "default"}
-              editable={!compositeSaving}
-              style={{
-                backgroundColor: c.surfaceMuted,
-                color: c.text,
-                borderRadius: 10,
-                borderWidth: 1,
-                borderColor: c.surfaceBorder,
-                paddingHorizontal: 12,
-                paddingVertical: 9,
-                fontSize: 14 }}
-            />
+            {f.valueSet ? (
+              <SelectField
+                value={compositeDraft[f.path] ?? ""}
+                onChange={(v) =>
+                  setCompositeDraft((prev) => ({ ...prev, [f.path]: v }))
+                }
+                options={valueSets[f.valueSet]}
+                label={f.label}
+                placeholder={`Select ${f.label.toLowerCase()}`}
+                disabled={compositeSaving}
+              />
+            ) : (
+              <>
+                <TextInput
+                  value={compositeDraft[f.path] ?? ""}
+                  onChangeText={(v) =>
+                    setCompositeDraft((prev) => ({
+                      ...prev,
+                      [f.path]: v }))
+                  }
+                  placeholder={f.placeholder || f.label}
+                  placeholderTextColor={c.textFaint}
+                  keyboardType={f.keyboard || "default"}
+                  editable={!compositeSaving}
+                  accessibilityLabel={f.label}
+                  style={{
+                    backgroundColor: c.surfaceMuted,
+                    color: c.text,
+                    borderRadius: 10,
+                    borderWidth: 1,
+                    borderColor: compositeErrors[f.path]
+                      ? "#dc2626"
+                      : c.surfaceBorder,
+                    paddingHorizontal: 12,
+                    paddingVertical: 9,
+                    fontSize: 14 }}
+                />
+                {!!compositeErrors[f.path] && (
+                  <Text
+                    style={{ color: "#dc2626", fontSize: 12, marginTop: 5 }}
+                  >
+                    {compositeErrors[f.path]}
+                  </Text>
+                )}
+              </>
+            )}
           </View>
         ))}
       </WebModal>
@@ -1443,6 +1543,8 @@ const PersonalRow = ({
   onSave,
   keyboard,
   placeholder,
+  options,
+  validate,
   theme,
   showDivider }: {
   path: string;
@@ -1457,12 +1559,19 @@ const PersonalRow = ({
   onSave: (path: string) => void;
   keyboard?: "default" | "email-address" | "phone-pad";
   placeholder?: string;
+  /** Present for a controlled field — renders a dropdown, not a text box. */
+  options?: string[];
+  validate?: Validator;
   theme: any;
   showDivider: boolean;
 }) => {
   const c = theme.colors;
   const blank = stored === "";
   const isEditing = editingPath === path;
+  // Validated as they type so the message appears next to the mistake, and
+  // again on Save so nothing invalid can reach the API.
+  const error = isEditing && validate ? validate(draft) : null;
+  const canSave = !error && !saving;
   return (
     <View
       style={{
@@ -1484,25 +1593,42 @@ const PersonalRow = ({
 
       {isEditing ? (
         <View>
-          <TextInput
-            value={draft}
-            onChangeText={onChange}
-            placeholder={placeholder || `Enter ${label.toLowerCase()}`}
-            placeholderTextColor={c.textFaint}
-            keyboardType={keyboard || "default"}
-            autoCapitalize={keyboard === "email-address" ? "none" : "sentences"}
-            autoFocus
-            editable={!saving}
-            style={{
-              backgroundColor: c.surfaceMuted,
-              color: c.text,
-              borderRadius: 10,
-              borderWidth: 1,
-              borderColor: c.surfaceBorder,
-              paddingHorizontal: 12,
-              paddingVertical: 9,
-              fontSize: 14 }}
-          />
+          {options ? (
+            <SelectField
+              value={draft}
+              onChange={onChange}
+              options={options}
+              label={label}
+              placeholder={`Select ${label.toLowerCase()}`}
+              disabled={saving}
+            />
+          ) : (
+            <TextInput
+              value={draft}
+              onChangeText={onChange}
+              placeholder={placeholder || `Enter ${label.toLowerCase()}`}
+              placeholderTextColor={c.textFaint}
+              keyboardType={keyboard || "default"}
+              autoCapitalize={keyboard === "email-address" ? "none" : "sentences"}
+              autoFocus
+              editable={!saving}
+              accessibilityLabel={label}
+              style={{
+                backgroundColor: c.surfaceMuted,
+                color: c.text,
+                borderRadius: 10,
+                borderWidth: 1,
+                borderColor: error ? "#dc2626" : c.surfaceBorder,
+                paddingHorizontal: 12,
+                paddingVertical: 9,
+                fontSize: 14 }}
+            />
+          )}
+          {!!error && (
+            <Text style={{ color: "#dc2626", fontSize: 12, marginTop: 5 }}>
+              {error}
+            </Text>
+          )}
           <View style={{ flexDirection: "row", gap: 8, marginTop: 8 }}>
             <TouchableOpacity
               onPress={onCancelEdit}
@@ -1520,13 +1646,15 @@ const PersonalRow = ({
             </TouchableOpacity>
             <TouchableOpacity
               onPress={() => onSave(path)}
-              disabled={saving}
+              disabled={!canSave}
+              accessibilityState={{ disabled: !canSave }}
               style={{
                 flex: 1,
                 paddingVertical: 9,
                 borderRadius: 10,
                 alignItems: "center",
-                backgroundColor: c.accent }}
+                backgroundColor: c.accent,
+                opacity: canSave ? 1 : 0.45 }}
             >
               {saving ? (
                 <ActivityIndicator color="#fff" size="small" />
