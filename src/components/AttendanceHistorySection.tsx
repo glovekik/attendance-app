@@ -101,9 +101,12 @@ export function AttendanceHistorySection({
   const [corrDate, setCorrDate] = useState<string>("");
   const [corrCheckIn, setCorrCheckIn] = useState<Date | null>(null);
   const [corrCheckOut, setCorrCheckOut] = useState<Date | null>(null);
-  const [corrType, setCorrType] = useState<
-    "OFFICE" | "WFH" | "LEAVE" | "HOLIDAY"
-  >("OFFICE");
+  // Only the two types an employee can actually correct. A leave day comes
+  // from an approved leave request and a holiday is declared by HR — letting
+  // someone turn a working day into either from here would bypass the leave
+  // balance and the holiday calendar, leaving attendance disagreeing with
+  // both. The check-in screen restricts itself the same way.
+  const [corrType, setCorrType] = useState<"OFFICE" | "WFH">("OFFICE");
   const [corrNotes, setCorrNotes] = useState("");
   const [corrReason, setCorrReason] = useState("");
   const [corrSaving, setCorrSaving] = useState(false);
@@ -279,8 +282,8 @@ export function AttendanceHistorySection({
       return;
     }
 
-    const notesRequired = corrType === "OFFICE" || corrType === "WFH";
-    if (notesRequired && corrNotes.trim().length < 5) {
+    // Always required now that the only types here are OFFICE and WFH.
+    if (corrNotes.trim().length < 5) {
       showError({
         message:
           "Please add work notes — briefly describe what you did that day.",
@@ -814,7 +817,7 @@ export function AttendanceHistorySection({
 
         <Text style={styles.modalLabel}>Attendance Type</Text>
         <View style={styles.typeRow}>
-          {(["OFFICE", "WFH", "LEAVE", "HOLIDAY"] as const).map((t) => (
+          {(["OFFICE", "WFH"] as const).map((t) => (
             <TouchableOpacity
               key={t}
               style={[styles.typeChip, corrType === t && styles.typeChipActive]}
@@ -858,9 +861,7 @@ export function AttendanceHistorySection({
           formatTime={formatTime}
         />
 
-        <Text style={styles.modalLabel}>
-          Work Notes{corrType === "OFFICE" || corrType === "WFH" ? " *" : ""}
-        </Text>
+        <Text style={styles.modalLabel}>Work Notes *</Text>
         <TextInput
           style={styles.input}
           value={corrNotes}
