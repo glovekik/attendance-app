@@ -37,6 +37,7 @@ import {
 } from "../../../src/types";
 import { confirmAction, notify } from "../../../src/utils/confirm";
 import { useTheme } from "../../../src/theme/ThemeProvider";
+import { ProjectProgress } from "../../../src/components/ProjectProgress";
 import {
   projectStatusColor,
   taskStatusColor,
@@ -44,6 +45,16 @@ import {
 import { WebModal, ModalActions } from "../../../src/components/WebModal";
 import { DatePickerField } from "../../../src/components/DatePickerField";
 import { Avatar } from "../../../src/components/Avatar";
+
+type ProjectTab = "overview" | "tasks" | "team";
+
+/** Only the sections that exist today. Others join as they're built, so the
+ *  bar never offers a tab that opens onto nothing. */
+const TABS: { key: ProjectTab; label: string; icon: keyof typeof Ionicons.glyphMap }[] = [
+  { key: "overview", label: "Overview", icon: "grid-outline" },
+  { key: "tasks", label: "Tasks", icon: "checkbox-outline" },
+  { key: "team", label: "Team", icon: "people-outline" },
+];
 
 const fmtDate = (s?: string | null) => {
   if (!s) return "—";
@@ -78,6 +89,10 @@ export default function ProjectDetail() {
   const [board, setBoard] = useState<ProjectTasksResponse | null>(null);
   const [attendance, setAttendance] =
     useState<ProjectAttendanceResponse | null>(null);
+  // Sections are tabs rather than one long scroll: the page already carried
+  // members, tasks and attendance, and the concepts still to come (files,
+  // timeline, meetings) would make a single column unusable on a phone.
+  const [tab, setTab] = useState<ProjectTab>("overview");
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
 
@@ -319,7 +334,69 @@ export default function ProjectDetail() {
           )}
         </View>
 
+        {/* Progress — derived, so it can't disagree with the task board. */}
+        <View style={styles.progressCard}>
+          <ProjectProgress
+            completed={board?.counts.COMPLETED ?? 0}
+            total={board?.total ?? 0}
+            startDate={project.startDate}
+            endDate={project.endDate}
+          />
+        </View>
+
+        <View style={styles.tabBar}>
+          {TABS.map((t) => {
+            const on = tab === t.key;
+            return (
+              <TouchableOpacity
+                key={t.key}
+                style={[styles.tab, on && styles.tabOn]}
+                onPress={() => setTab(t.key)}
+                accessibilityRole="tab"
+                accessibilityState={{ selected: on }}
+              >
+                <Ionicons
+                  name={t.icon}
+                  size={15}
+                  color={on ? c.accentText : c.textMuted}
+                />
+                <Text style={[styles.tabText, on && styles.tabTextOn]}>
+                  {t.label}
+                </Text>
+              </TouchableOpacity>
+            );
+          })}
+        </View>
+
+        {tab === "overview" && (
+          <>
+            <Text style={styles.section}>ABOUT</Text>
+            <View style={styles.membersBox}>
+              <Text style={styles.overviewDesc}>
+                {project.description?.trim() || "No description yet."}
+              </Text>
+              <View style={styles.factGrid}>
+                {[
+                  ["Starts", fmtDate(project.startDate)],
+                  ["Ends", fmtDate(project.endDate)],
+                  ["Code", project.code || "—"],
+                  ["Manager", managerNames || "—"],
+                  ["Team", `${members.length} member${members.length === 1 ? "" : "s"}`],
+                  ["Status", project.status],
+                ].map(([k, v]) => (
+                  <View key={k} style={styles.fact}>
+                    <Text style={styles.factKey}>{k}</Text>
+                    <Text style={styles.factVal}>{v}</Text>
+                  </View>
+                ))}
+              </View>
+            </View>
+          </>
+        )}
+
         {/* MEMBERS */}
+        {tab === "team" && (
+        <>
         <Text style={styles.section}>MEMBERS</Text>
 
         <View style={styles.membersBox}>
@@ -399,7 +476,12 @@ export default function ProjectDetail() {
           </View>
         )}
 
+        </>
+        )}
+
         {/* TASKS */}
+        {tab === "tasks" && (
+        <>
         <View style={styles.tasksHeader}>
           <Text style={styles.section}>TASKS</Text>
           <View style={styles.headerActions}>
@@ -516,6 +598,8 @@ export default function ProjectDetail() {
               })}
             </View>
           </>
+        )}
+        </>
         )}
       </ScrollView>
 
@@ -695,6 +779,53 @@ const TaskRow = ({
 
 const makeStyles = (c: any) =>
   StyleSheet.create({
+    progressCard: {
+      backgroundColor: c.surface,
+      borderWidth: 1,
+      borderColor: c.surfaceBorder,
+      borderRadius: 14,
+      padding: 14,
+      marginTop: 14,
+    },
+    tabBar: {
+      flexDirection: "row",
+      gap: 6,
+      marginTop: 14,
+      backgroundColor: c.surfaceMuted,
+      borderRadius: 12,
+      padding: 4,
+    },
+    tab: {
+      flex: 1,
+      flexDirection: "row",
+      alignItems: "center",
+      justifyContent: "center",
+      gap: 5,
+      // 44px tall including padding — a real touch target, not a text link.
+      paddingVertical: 10,
+      borderRadius: 9,
+    },
+    tabOn: { backgroundColor: c.accentSoft },
+    tabText: { fontSize: 13, fontWeight: "700", color: c.textMuted },
+    tabTextOn: { color: c.accentText },
+    overviewDesc: {
+      fontSize: 14,
+      lineHeight: 21,
+      color: c.text,
+      marginBottom: 14,
+    },
+    factGrid: { flexDirection: "row", flexWrap: "wrap", gap: 12 },
+    // Two per row on a phone, more as the card widens.
+    fact: { minWidth: 120, flexGrow: 1, flexBasis: "40%" },
+    factKey: {
+      fontSize: 10,
+      fontWeight: "800",
+      color: c.textMuted,
+      textTransform: "uppercase",
+      letterSpacing: 0.4,
+      marginBottom: 2,
+    },
+    factVal: { fontSize: 14, color: c.text, fontWeight: "600" },
     safe: { flex: 1, backgroundColor: c.bg },
     container: { flex: 1 },
     content: { padding: 20, paddingBottom: 60 },
