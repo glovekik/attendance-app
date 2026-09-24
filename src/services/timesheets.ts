@@ -58,6 +58,24 @@ export const submitTimesheet = (
     token,
   });
 
+/**
+ * Save a week in progress without sending it to a manager.
+ *
+ * Same payload as submit, but the server keeps it as DRAFT and skips the
+ * completeness rules — a half-filled day is what a draft normally looks
+ * like. Without this, edits only existed in the screen's state and any
+ * reload discarded them.
+ */
+export const saveTimesheetDraft = (
+  token: string,
+  payload: TimesheetSubmitPayload
+): Promise<Timesheet> =>
+  apiCall("/timesheets/my/draft", {
+    method: "POST",
+    body: payload,
+    token,
+  });
+
 export const getTimesheetSummary = (
   token: string,
   scope: TimesheetScope,

@@ -22,6 +22,7 @@ import { Ionicons } from "@expo/vector-icons";
 import {
   getMyTimesheet,
   submitTimesheet,
+  saveTimesheetDraft,
   downloadMyTimesheetXlsx,
   importMyTimesheet,
   recallMyTimesheet,
@@ -34,6 +35,7 @@ import {
 } from "../src/theme/statusColors";
 import { useResponsive } from "../src/utils/responsive";
 import { ATT } from "../src/theme/attendanceColors";
+import { formatTotalHours } from "../src/utils/duration";
 
 // ===== date helpers =====
 const ymd = (d: Date) => {
@@ -181,6 +183,10 @@ export default function MyTimesheet() {
   // Read-only until the employee chooses to edit. A week of live inputs
   // invites accidental changes to days that were already correct.
   const [editing, setEditing] = useState(false);
+  // Edits not yet written to the server. Drives the Done button and
+  // the guard before anything reloads over them.
+  const [dirty, setDirty] = useState(false);
+  const [savingDraft, setSavingDraft] = useState(false);
   const [workedExempt, setWorkedExempt] = useState<Record<string, boolean>>({});
 
   const rowsFrom = useCallback((data: any, base: Date): Row[] => {
@@ -230,17 +236,24 @@ export default function MyTimesheet() {
     load();
   }, [load]);
 
-  const onRefresh = () => {
+  const onRefresh = async () => {
+    // Reloading pulls the server's copy over local state, so anything
+    // unsaved has to be written first or the refresh eats it.
+    if (dirty && canEdit) {
+      if (!(await saveDraft())) return;
+    }
     setRefreshing(true);
     load();
   };
 
-  const updateEntry = (i: number, patch: Partial<Row>) =>
+  const updateEntry = (i: number, patch: Partial<Row>) => {
+    setDirty(true);
     setEntries((prev) => {
       const next = [...prev];
       next[i] = { ...next[i], ...patch };
       return next;
     });
+  };
 
   const hoursOf = (e: Row) => hoursBetween(e.inHm, e.outHm);
 
@@ -346,6 +359,57 @@ export default function MyTimesheet() {
     }
   };
 
+  // Persist the week as a draft. "Done" used to be a pure UI toggle — it
+  // looked like a save, wrote nothing, and the next reload silently restored
+  // the server's copy over the user's edits.
+  const saveDraft = async (): Promise<boolean> => {
+    if (!canEdit) return true;
+    setSavingDraft(true);
+    try {
+      const token = await AsyncStorage.getItem("token");
+      if (!token) return false;
+      const res = await saveTimesheetDraft(token, {
+        weekStart: ymd(weekStart),
+        note: note.trim() || undefined,
+        entries: entries.map((e) => ({
+          date: e.date,
+          checkIn: hmToIso(e.date, e.inHm),
+          checkOut: hmToIso(e.date, e.outHm),
+          hours: hoursOf(e),
+          attendanceType: e.attendanceType || undefined,
+          notes: e.notes || undefined,
+        })),
+      });
+      setTimesheet(res);
+      setEntries(rowsFrom(res, weekStart));
+      setDirty(false);
+      return true;
+    } catch (err: any) {
+      Alert.alert("Couldn't save", err?.message || "Your changes are still here — try again.");
+      return false;
+    } finally {
+      setSavingDraft(false);
+    }
+  };
+
+  // Leaving edit mode saves; entering it just switches the inputs on.
+  const toggleEditing = async () => {
+    if (!editing) {
+      setEditing(true);
+      return;
+    }
+    if (dirty && !(await saveDraft())) return; // keep them in edit mode
+    setEditing(false);
+  };
+
+  // Any week change reloads from the server, so save first — otherwise
+  // stepping to last week and back loses everything typed.
+  const goToWeek = async (d: Date) => {
+    if (dirty && canEdit && !(await saveDraft())) return;
+    setEditing(false);
+    setWeekStart(d);
+  };
+
   const onSubmit = async () => {
     if (!canEdit) return;
     if (incomplete.length) {
@@ -372,6 +436,7 @@ export default function MyTimesheet() {
           notes: e.notes || undefined,
         })),
       });
+      setDirty(false);
       Alert.alert(
         "Sent to your manager",
         "Once they approve it, your attendance for the week is updated."
@@ -439,7 +504,7 @@ export default function MyTimesheet() {
               <View style={styles.weekNav}>
                 <TouchableOpacity
                   style={styles.navBtn}
-                  onPress={() => setWeekStart(addDays(weekStart, -7))}
+                  onPress={() => goToWeek(addDays(weekStart, -7))}
                 >
                   <Ionicons name="chevron-back" size={19} color={c.text} />
                 </TouchableOpacity>
@@ -448,14 +513,14 @@ export default function MyTimesheet() {
                     {weekRangeLabel(weekStart)}
                   </Text>
                   <TouchableOpacity
-                    onPress={() => setWeekStart(mondayOf(new Date()))}
+                    onPress={() => goToWeek(mondayOf(new Date()))}
                   >
                     <Text style={styles.currentLink}>This week</Text>
                   </TouchableOpacity>
                 </View>
                 <TouchableOpacity
                   style={styles.navBtn}
-                  onPress={() => setWeekStart(addDays(weekStart, 7))}
+                  onPress={() => goToWeek(addDays(weekStart, 7))}
                 >
                   <Ionicons name="chevron-forward" size={19} color={c.text} />
                 </TouchableOpacity>
@@ -464,7 +529,7 @@ export default function MyTimesheet() {
               <View style={styles.summaryBody}>
                 <View style={{ flex: 1 }}>
                   <Text style={styles.bigHours}>
-                    {totalHours.toFixed(2)}
+                    {formatTotalHours(totalHours)}
                     <Text style={styles.bigUnit}> h</Text>
                   </Text>
                   <Text style={styles.bigLabel}>
@@ -506,7 +571,8 @@ export default function MyTimesheet() {
                 {canEdit && (
                   <TouchableOpacity
                     style={[styles.tool, editing && styles.toolOn]}
-                    onPress={() => setEditing((v) => !v)}
+                    onPress={toggleEditing}
+                    disabled={savingDraft}
                   >
                     <Ionicons
                       name={editing ? "checkmark" : "create-outline"}
@@ -516,7 +582,11 @@ export default function MyTimesheet() {
                     <Text
                       style={[styles.toolText, editing && styles.toolTextOn]}
                     >
-                      {editing ? "Done" : "Edit"}
+                      {editing
+                        ? savingDraft
+                          ? "Saving…"
+                          : "Done"
+                        : "Edit"}
                     </Text>
                   </TouchableOpacity>
                 )}
