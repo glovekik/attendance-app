@@ -47,7 +47,7 @@ import {
   BottomTabBar,
   BOTTOM_BAR_RESERVED_HEIGHT,
 } from "../src/components/BottomTabBar";
-import { notify } from "../src/utils/confirm";
+import { confirmAction, notify } from "../src/utils/confirm";
 import { useResponsive, getResponsiveSpacing } from "../src/utils/responsive";
 import { PageHeader } from "../src/components/PageHeader";
 import { formatHours } from "../src/utils/duration";
@@ -212,6 +212,32 @@ export default function Attendance() {
       );
       return;
     }
+    // A full day is requiredHours from this person's own check-in. Leaving
+    // early is allowed — people have real reasons — so this confirms rather
+    // than blocks, and says how much is left so the choice is informed.
+    const required = todayAtt?.requiredHours;
+    const startedAt = todayAtt?.checkIn ? new Date(todayAtt.checkIn) : null;
+    if (typeof required === "number" && startedAt && !isNaN(startedAt.getTime())) {
+      const doneMs = Date.now() - startedAt.getTime();
+      const neededMs = required * 3600_000;
+      if (doneMs < neededMs) {
+        const finishBy = new Date(startedAt.getTime() + neededMs);
+        const ok = await confirmAction({
+          title: "You haven't completed your hours",
+          message:
+            `You've worked ${formatHours(doneMs / 3600_000)} of ` +
+            `${formatHours(required)}. A full day ends at ` +
+            `${finishBy.toLocaleTimeString([], {
+              hour: "numeric",
+              minute: "2-digit",
+            })}.\n\nCheck out anyway?`,
+          confirmLabel: "Check out",
+          cancelLabel: "Keep working",
+        });
+        if (!ok) return;
+      }
+    }
+
     try {
       setActing(true);
       const token = await AsyncStorage.getItem("token");
