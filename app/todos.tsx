@@ -1,86 +1,98 @@
-﻿import React, { useEffect, useMemo, useState, useCallback } from "react";
+import React, { useCallback, useMemo, useState } from "react";
 
 import {
   View,
   Text,
   StyleSheet,
-  FlatList,
+  TextInput,
   TouchableOpacity,
   ActivityIndicator,
   RefreshControl,
-  TextInput,
-  Alert,
-  Platform } from "react-native";
+  ScrollView,
+  Platform,
+} from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 
-import { WebModal, ModalActions } from "../src/components/WebModal";
-
 import AsyncStorage from "@react-native-async-storage/async-storage";
-import { useRouter } from "expo-router";
+import { useRouter, useFocusEffect } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 
 import {
   listTodos,
   createTodo,
   updateTodo,
-  completeTodo,
-  reopenTodo,
-  deleteTodo } from "../src/services/todos";
-import { TODO_PRIORITIES, Todo, TodoPriority } from "../src/types";
-import { confirmAction, notify } from "../src/utils/confirm";
-import { DatePickerField } from "../src/components/DatePickerField";
-import { DateTimePickerField } from "../src/components/DateTimePickerField";
-import { useTheme } from "../src/theme/ThemeProvider";
-import { requestNotificationPermission } from "../src/services/notifications";
+  deleteTodo,
+  getTodosOf,
+} from "../src/services/todos";
+import { getMe } from "../src/services/api";
+import { listMyTeam } from "../src/services/managerTeam";
+import { ProjectBoard } from "../src/components/ProjectBoard";
+import { WebModal, ModalActions } from "../src/components/WebModal";
 import {
-  scheduleTodoReminder,
-  cancelTodoReminder,
-  ensureTodoReminders,
-} from "../src/services/todoReminders";
+  BottomTabBar,
+  BOTTOM_BAR_RESERVED_HEIGHT,
+} from "../src/components/BottomTabBar";
+import { PageHeader } from "../src/components/PageHeader";
+import { useTheme } from "../src/theme/ThemeProvider";
+import { notify, confirmAction } from "../src/utils/confirm";
+import { isPeopleManager, Todo, TodoStatus, User } from "../src/types";
 
-const priorityColor = (p?: TodoPriority): string => {
-  if (p === "HIGH") return "#ef4444";
-  if (p === "MEDIUM") return "#f59e0b";
-  return "#94a3b8";
+/**
+ * A personal work board, replacing the flat to-do list.
+ *
+ * The list only had open and done, which meant "started but not finished"
+ * had nowhere to live — the state people are in most of the day. Three
+ * columns fix that, and reuse the project board so a card looks and behaves
+ * the same wherever you meet one.
+ *
+ * A manager can open a report's board, because a list of what someone is
+ * working on is the useful half of a status meeting. Anything the owner
+ * marks private is filtered out by the server, and the manager is told how
+ * many items they aren't seeing rather than being quietly shown a partial
+ * board.
+ */
+
+// The board component speaks the task vocabulary; todos keep their own
+// status names because other screens query them. Mapped at the edge.
+const TO_BOARD: Record<TodoStatus, "PENDING" | "ONGOING" | "COMPLETED"> = {
+  OPEN: "PENDING",
+  ONGOING: "ONGOING",
+  DONE: "COMPLETED",
+};
+const FROM_BOARD: Record<string, TodoStatus> = {
+  PENDING: "OPEN",
+  ONGOING: "ONGOING",
+  COMPLETED: "DONE",
 };
 
-// ISO timestamp → "Jun 9, 2026, 3:04 PM". Returns "" for empty values.
-const fmtDateTime = (iso?: string | null): string => {
-  if (!iso) return "";
-  try {
-    return new Date(iso).toLocaleString([], {
-      month: "short",
-      day: "numeric",
-      year: "numeric",
-      hour: "numeric",
-      minute: "2-digit" });
-  } catch {
-    return iso;
-  }
-};
-
-export default function TodosScreen() {
+export default function Todos() {
   const router = useRouter();
   const { theme } = useTheme();
   const c = theme.colors;
   const styles = useMemo(() => makeStyles(c), [c]);
-  const [items, setItems] = useState<Todo[]>([]);
+
+  const [me, setMe] = useState<User | null>(null);
+  const [todos, setTodos] = useState<Todo[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
-  const [showDone, setShowDone] = useState(false);
+  const [busy, setBusy] = useState(false);
 
-  // Create / edit modal state. editingId === null → create; otherwise edit.
-  const [showCreate, setShowCreate] = useState(false);
-  const [editingId, setEditingId] = useState<string | null>(null);
-  const [newTitle, setNewTitle] = useState("");
-  const [newDesc, setNewDesc] = useState("");
-  const [newDueDate, setNewDueDate] = useState("");
-  const [newReminderAt, setNewReminderAt] = useState("");
-  const [newPriority, setNewPriority] = useState<TodoPriority>("MEDIUM");
-  const [saving, setSaving] = useState(false);
+  // Whose board is on screen. null = my own.
+  const [viewing, setViewing] = useState<{ id: string; name: string } | null>(
+    null
+  );
+  const [team, setTeam] = useState<{ id: string; name: string }[]>([]);
+  const [hiddenCount, setHiddenCount] = useState(0);
 
-  // Full-task detail modal (tap a row to open).
-  const [detailTodo, setDetailTodo] = useState<Todo | null>(null);
+  const [createOpen, setCreateOpen] = useState(false);
+  const [title, setTitle] = useState("");
+  const [desc, setDesc] = useState("");
+  const [due, setDue] = useState("");
+  const [priority, setPriority] = useState<"LOW" | "MEDIUM" | "HIGH">("MEDIUM");
+  const [isPrivate, setIsPrivate] = useState(false);
+  const [startIn, setStartIn] = useState<TodoStatus>("OPEN");
+
+  const own = !viewing;
 
   const load = useCallback(async () => {
     try {
@@ -89,627 +101,493 @@ export default function TodosScreen() {
         router.replace("/login");
         return;
       }
-      const data = await listTodos(token, {
-        status: showDone ? "DONE" : "OPEN",
-        limit: 100 });
-      setItems(data || []);
-      // Re-arm local reminders for open to-dos so they survive restarts and
-      // get scheduled on whichever device is viewing the list.
-      if (!showDone && data?.length) {
-        ensureTodoReminders(data);
+      const meRes = await getMe(token).catch(() => null);
+      setMe(meRes);
+
+      if (viewing) {
+        const res = await getTodosOf(token, viewing.id);
+        setTodos(res.todos || []);
+        setHiddenCount(res.hiddenCount || 0);
+      } else {
+        setTodos((await listTodos(token, { limit: 200 })) || []);
+        setHiddenCount(0);
+      }
+
+      // Only a manager gets the people switcher, and only for their reports.
+      if (isPeopleManager(meRes)) {
+        const rows = await listMyTeam(token).catch(() => []);
+        setTeam(
+          (rows || [])
+            .filter((m) => !!m.id)
+            .map((m) => ({ id: m.id, name: m.name || "Unknown" }))
+        );
       }
     } catch (err: any) {
-      Alert.alert(
-        "Couldn't load to-dos",
-        err?.message || "Pull down to retry."
-      );
+      notify("Couldn't load the board", err?.message || "");
     } finally {
       setLoading(false);
       setRefreshing(false);
     }
-  }, [router, showDone]);
+  }, [router, viewing]);
 
-  useEffect(() => {
-    load();
-  }, [load]);
-
-  const onRefresh = () => {
-    setRefreshing(true);
-    load();
-  };
-
-  const onToggle = async (t: Todo) => {
-    try {
-      const token = await AsyncStorage.getItem("token");
-      if (!token) return;
-      if (t.status === "OPEN") {
-        await completeTodo(token, t.id);
-        // Completed → drop any pending reminder.
-        cancelTodoReminder(t.id);
-      } else {
-        await reopenTodo(token, t.id);
-        // Reopened → re-arm the reminder if it's still in the future.
-        scheduleTodoReminder({ ...t, status: "OPEN" });
-      }
+  useFocusEffect(
+    useCallback(() => {
       load();
-    } catch (err: any) {
-      Alert.alert("Update failed", err?.message || "");
-    }
-  };
+    }, [load])
+  );
 
-  const onDelete = async (t: Todo) => {
-    const ok = await confirmAction({
-      title: "Delete to-do?",
-      message: t.title,
-      confirmLabel: "Delete",
-      destructive: true });
-    if (!ok) return;
+  const act = async (fn: (token: string) => Promise<unknown>) => {
+    if (busy) return;
+    setBusy(true);
     try {
       const token = await AsyncStorage.getItem("token");
       if (!token) return;
-      await deleteTodo(token, t.id);
-      cancelTodoReminder(t.id);
-      setItems((prev) => prev.filter((x) => x.id !== t.id));
+      await fn(token);
+      await load();
     } catch (err: any) {
-      notify("Delete failed", err?.message || "");
-    }
-  };
-
-  const openCreate = () => {
-    setEditingId(null);
-    setNewTitle("");
-    setNewDesc("");
-    setNewDueDate("");
-    setNewReminderAt("");
-    setNewPriority("MEDIUM");
-    setShowCreate(true);
-  };
-
-  const openEdit = (t: Todo) => {
-    setEditingId(t.id);
-    setNewTitle(t.title);
-    setNewDesc(t.description || "");
-    setNewDueDate(t.dueDate || "");
-    setNewReminderAt(t.reminderAt || "");
-    setNewPriority(t.priority || "MEDIUM");
-    setDetailTodo(null);
-    setShowCreate(true);
-  };
-
-  const onSave = async () => {
-    if (!newTitle.trim()) {
-      Alert.alert("Title required");
-      return;
-    }
-    setSaving(true);
-    try {
-      const token = await AsyncStorage.getItem("token");
-      if (!token) return;
-      const reminderAt = newReminderAt.trim();
-      const payload = {
-        title: newTitle.trim(),
-        description: newDesc.trim() || undefined,
-        dueDate: newDueDate.trim() || undefined,
-        // Send null (not undefined) so clearing a reminder persists on edit.
-        reminderAt: reminderAt || null,
-        priority: newPriority };
-
-      // Make sure we can actually deliver the reminder before relying on it.
-      if (reminderAt) {
-        await requestNotificationPermission();
-      }
-
-      const saved = editingId
-        ? await updateTodo(token, editingId, payload)
-        : await createTodo(token, payload);
-
-      // Arm/refresh the local reminder from the server's saved record.
-      if (saved?.id) {
-        await scheduleTodoReminder(saved);
-      }
-      setShowCreate(false);
-      setEditingId(null);
-      setNewTitle("");
-      setNewDesc("");
-      setNewDueDate("");
-      setNewReminderAt("");
-      setNewPriority("MEDIUM");
-      load();
-    } catch (err: any) {
-      Alert.alert("Save failed", err?.message || "");
+      notify("Couldn't save", err?.message || "");
     } finally {
-      setSaving(false);
+      setBusy(false);
     }
   };
+
+  const onCreate = () => {
+    if (!title.trim()) return;
+    act(async (token) => {
+      const created = await createTodo(token, {
+        title: title.trim(),
+        description: desc.trim() || undefined,
+        dueDate: due.trim() || undefined,
+        priority,
+        isPrivate,
+      });
+      // Created OPEN; move it if they asked for another column, so "add to
+      // In progress" puts it where they pointed.
+      if (startIn !== "OPEN" && (created as any)?.id) {
+        await updateTodo(token, (created as any).id, { status: startIn });
+      }
+    });
+    setCreateOpen(false);
+    setTitle("");
+    setDesc("");
+    setDue("");
+    setPriority("MEDIUM");
+    setIsPrivate(false);
+    setStartIn("OPEN");
+  };
+
+  const cards = useMemo(
+    () =>
+      todos.map((t) => ({
+        id: t.id,
+        title: t.title,
+        status: TO_BOARD[t.status] || "PENDING",
+        priority: t.priority,
+        dueDate: t.dueDate,
+        // Reuses the board's weight chip to flag a private card.
+        weight: undefined as unknown as number,
+        assignee: t.ownerName ? { id: t.userId || "", name: t.ownerName } : null,
+        isPrivate: t.isPrivate,
+      })),
+    [todos]
+  );
+
+  const counts = useMemo(
+    () => ({
+      PENDING: todos.filter((t) => t.status === "OPEN").length,
+      ONGOING: todos.filter((t) => t.status === "ONGOING").length,
+      COMPLETED: todos.filter((t) => t.status === "DONE").length,
+    }),
+    [todos]
+  );
 
   if (loading) {
     return (
-      <View style={styles.loader}>
+      <SafeAreaView style={styles.loader}>
         <ActivityIndicator size="large" color={c.accent} />
-      </View>
+      </SafeAreaView>
     );
   }
 
   return (
-    <SafeAreaView style={styles.safe}>
-      <View style={styles.header}>
-        <TouchableOpacity onPress={() => (router.canGoBack() ? router.back() : router.replace("/"))}>
-          <Ionicons name="arrow-back" size={24} color={c.text} />
-        </TouchableOpacity>
-        <Text style={styles.title}>My To-Do</Text>
-        <TouchableOpacity onPress={openCreate}>
-          <Ionicons name="add-circle" size={28} color={c.accent} />
-        </TouchableOpacity>
-      </View>
+    <SafeAreaView style={styles.safe} edges={["top"]}>
+      <PageHeader title={own ? "My board" : `${viewing?.name}'s board`} />
 
-      <View style={styles.tabs}>
-        <TouchableOpacity
-          style={[styles.tab, !showDone && styles.tabActive]}
-          onPress={() => setShowDone(false)}
-        >
-          <Text
-            style={[
-              styles.tabText,
-              !showDone && styles.tabTextActive,
-            ]}
-          >
-            Open
-          </Text>
-        </TouchableOpacity>
-        <TouchableOpacity
-          style={[styles.tab, showDone && styles.tabActive]}
-          onPress={() => setShowDone(true)}
-        >
-          <Text
-            style={[
-              styles.tabText,
-              showDone && styles.tabTextActive,
-            ]}
-          >
-            Done
-          </Text>
-        </TouchableOpacity>
-      </View>
-
-      <FlatList
-        data={items}
-        keyExtractor={(t) => t.id}
-        contentContainerStyle={
-          items.length === 0 ? styles.emptyWrap : { padding: 12 }
-        }
+      <ScrollView
+        contentContainerStyle={styles.content}
         refreshControl={
           <RefreshControl
             refreshing={refreshing}
-            onRefresh={onRefresh}
+            onRefresh={() => {
+              setRefreshing(true);
+              load();
+            }}
             tintColor={c.accent}
             colors={[c.accent]}
           />
         }
-        ListEmptyComponent={
-          <View style={styles.empty}>
-            <Ionicons name="list-outline" size={42} color={c.textFaint} />
-            <Text style={styles.emptyText}>
-              {showDone ? "Nothing finished yet" : "All clear!"}
+      >
+        {/* Whose board — only for a manager with reports. */}
+        {!!team.length && (
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            contentContainerStyle={styles.people}
+          >
+            <TouchableOpacity
+              style={[styles.person, own && styles.personOn]}
+              onPress={() => setViewing(null)}
+            >
+              <Text style={[styles.personText, own && styles.personTextOn]}>
+                Me
+              </Text>
+            </TouchableOpacity>
+            {team.map((m) => {
+              const on = viewing?.id === m.id;
+              return (
+                <TouchableOpacity
+                  key={m.id}
+                  style={[styles.person, on && styles.personOn]}
+                  onPress={() => setViewing({ id: m.id, name: m.name })}
+                >
+                  <Text style={[styles.personText, on && styles.personTextOn]}>
+                    {m.name.split(" ")[0]}
+                  </Text>
+                </TouchableOpacity>
+              );
+            })}
+          </ScrollView>
+        )}
+
+        {!own && hiddenCount > 0 && (
+          <View style={styles.hiddenNote}>
+            <Ionicons name="eye-off-outline" size={14} color={c.textMuted} />
+            <Text style={styles.hiddenText}>
+              {hiddenCount} private {hiddenCount === 1 ? "item" : "items"} not
+              shown
             </Text>
           </View>
-        }
-        renderItem={({ item }) => (
-          <View style={styles.row}>
-            <TouchableOpacity
-              onPress={() => onToggle(item)}
-              style={styles.checkbox}
-            >
-              <Ionicons
-                name={
-                  item.status === "DONE"
-                    ? "checkbox"
-                    : "square-outline"
-                }
-                size={24}
-                color={item.status === "DONE" ? c.successText : c.textMuted}
-              />
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={{ flex: 1 }}
-              onPress={() => setDetailTodo(item)}
-              activeOpacity={0.7}
-            >
-              <Text
-                style={[
-                  styles.rowTitle,
-                  item.status === "DONE" && styles.strike,
-                ]}
-                numberOfLines={2}
-              >
-                {item.title}
+        )}
+
+        <ProjectBoard
+          tasks={cards as any}
+          counts={counts}
+          // You can move and add on your own board; a report's is read-only.
+          canManage={own}
+          onMove={(id, status) =>
+            act((token) =>
+              updateTodo(token, id, { status: FROM_BOARD[status] })
+            )
+          }
+          onQuickAdd={(status) => {
+            setStartIn(FROM_BOARD[status]);
+            setCreateOpen(true);
+          }}
+        />
+
+        {own && (
+          <View style={styles.privacyList}>
+            <Text style={styles.privacyHead}>PRIVATE ITEMS</Text>
+            {todos.filter((t) => t.isPrivate).length === 0 ? (
+              <Text style={styles.privacyEmpty}>
+                Nothing hidden — your manager can see this board.
               </Text>
-              {!!item.description && (
-                <Text style={styles.rowDesc} numberOfLines={2}>
-                  {item.description}
-                </Text>
-              )}
-              <View style={styles.rowMeta}>
-                {item.priority && (
-                  <View
-                    style={[
-                      styles.pill,
-                      {
-                        backgroundColor: priorityColor(item.priority) },
-                    ]}
-                  >
-                    <Text style={styles.pillText}>{item.priority}</Text>
-                  </View>
-                )}
-                {!!item.dueDate && (
-                  <Text style={styles.due}>Due {item.dueDate}</Text>
-                )}
-                {!!item.reminderAt && (
-                  <View style={styles.reminderTag}>
-                    <Ionicons
-                      name="alarm-outline"
-                      size={12}
-                      color={c.accent}
-                    />
-                    <Text style={styles.reminderTagText}>
-                      {fmtDateTime(item.reminderAt)}
+            ) : (
+              todos
+                .filter((t) => t.isPrivate)
+                .map((t) => (
+                  <View key={t.id} style={styles.privacyRow}>
+                    <Ionicons name="eye-off" size={14} color={c.textMuted} />
+                    <Text style={styles.privacyTitle} numberOfLines={1}>
+                      {t.title}
                     </Text>
+                    <TouchableOpacity
+                      onPress={() =>
+                        act((token) =>
+                          updateTodo(token, t.id, { isPrivate: false })
+                        )
+                      }
+                    >
+                      <Text style={styles.privacyAction}>Unhide</Text>
+                    </TouchableOpacity>
                   </View>
-                )}
-              </View>
-            </TouchableOpacity>
-            <TouchableOpacity
-              onPress={() => openEdit(item)}
-              style={styles.deleteBtn}
-            >
-              <Ionicons name="create-outline" size={18} color={c.textMuted} />
-            </TouchableOpacity>
-            <TouchableOpacity
-              onPress={() => onDelete(item)}
-              style={styles.deleteBtn}
-            >
-              <Ionicons name="trash-outline" size={18} color={c.textMuted} />
-            </TouchableOpacity>
+                ))
+            )}
           </View>
         )}
-      />
+
+        {own && (
+          <View style={styles.manageList}>
+            <Text style={styles.privacyHead}>ALL ITEMS</Text>
+            {todos.map((t) => (
+              <View key={t.id} style={styles.manageRow}>
+                <Text style={styles.manageTitle} numberOfLines={1}>
+                  {t.title}
+                </Text>
+                <TouchableOpacity
+                  onPress={() =>
+                    act((token) =>
+                      updateTodo(token, t.id, { isPrivate: !t.isPrivate })
+                    )
+                  }
+                  hitSlop={8}
+                  accessibilityLabel={
+                    t.isPrivate ? `Unhide ${t.title}` : `Hide ${t.title}`
+                  }
+                >
+                  <Ionicons
+                    name={t.isPrivate ? "eye-off" : "eye-outline"}
+                    size={17}
+                    color={t.isPrivate ? c.accent : c.textMuted}
+                  />
+                </TouchableOpacity>
+                <TouchableOpacity
+                  onPress={async () => {
+                    const ok = await confirmAction({
+                      title: "Delete this item?",
+                      message: t.title,
+                      confirmLabel: "Delete",
+                      destructive: true,
+                    });
+                    if (ok) act((token) => deleteTodo(token, t.id));
+                  }}
+                  hitSlop={8}
+                  accessibilityLabel={`Delete ${t.title}`}
+                >
+                  <Ionicons name="trash-outline" size={16} color="#dc2626" />
+                </TouchableOpacity>
+              </View>
+            ))}
+          </View>
+        )}
+      </ScrollView>
+
+      <BottomTabBar user={me} />
 
       <WebModal
-        visible={showCreate}
-        onClose={() => setShowCreate(false)}
-        title={editingId ? "Edit To-Do" : "New To-Do"}
+        visible={createOpen}
+        onClose={() => setCreateOpen(false)}
+        title="New item"
         size="md"
         footer={
           <ModalActions align="spread">
             <TouchableOpacity
               style={[styles.btn, styles.btnGhost]}
-              onPress={() => setShowCreate(false)}
-              disabled={saving}
+              onPress={() => setCreateOpen(false)}
             >
               <Text style={styles.btnGhostText}>Cancel</Text>
             </TouchableOpacity>
             <TouchableOpacity
-              style={[styles.btn, styles.btnPrimary]}
-              onPress={onSave}
-              disabled={saving}
+              style={[styles.btn, styles.btnPrimary, !title.trim() && { opacity: 0.45 }]}
+              disabled={!title.trim() || busy}
+              onPress={onCreate}
             >
-              <Text style={styles.btnPrimaryText}>
-                {saving
-                  ? "Saving..."
-                  : editingId
-                  ? "Update"
-                  : "Save"}
-              </Text>
+              <Text style={styles.btnPrimaryText}>Add to board</Text>
             </TouchableOpacity>
           </ModalActions>
         }
       >
-            <Text style={styles.label}>Title</Text>
-            <TextInput
-              style={styles.input}
-              value={newTitle}
-              onChangeText={setNewTitle}
-              placeholder="What needs doing?"
-              placeholderTextColor={c.textFaint}
-            />
+        <Text style={styles.label}>Title *</Text>
+        <TextInput
+          style={styles.input}
+          value={title}
+          onChangeText={setTitle}
+          placeholder="What needs doing"
+          placeholderTextColor={c.textFaint}
+          autoFocus
+        />
 
-            <Text style={styles.label}>Description (optional)</Text>
-            <TextInput
-              style={[styles.input, { height: 70 }]}
-              value={newDesc}
-              onChangeText={setNewDesc}
-              placeholder="Notes..."
-              placeholderTextColor={c.textFaint}
-              multiline
-            />
-
-            <Text style={styles.label}>Due date</Text>
-            <DatePickerField
-              value={newDueDate}
-              onChange={setNewDueDate}
-              placeholder="Optional — tap to pick"
-            />
-
-            <Text style={styles.label}>Reminder</Text>
-            <DateTimePickerField
-              value={newReminderAt}
-              onChange={setNewReminderAt}
-              placeholder="Optional — get a notification"
-              minimumDate={new Date()}
-            />
-            {Platform.OS === "web" && !!newReminderAt && (
-              <Text style={styles.reminderHint}>
-                Reminders are delivered on your phone (the mobile app), not in
-                the browser.
+        <Text style={styles.label}>Column</Text>
+        <View style={styles.row}>
+          {(
+            [
+              ["OPEN", "To do"],
+              ["ONGOING", "In progress"],
+              ["DONE", "Done"],
+            ] as [TodoStatus, string][]
+          ).map(([v, l]) => (
+            <TouchableOpacity
+              key={v}
+              style={[styles.pick, startIn === v && styles.pickOn]}
+              onPress={() => setStartIn(v)}
+            >
+              <Text
+                style={[styles.pickText, startIn === v && styles.pickTextOn]}
+              >
+                {l}
               </Text>
-            )}
+            </TouchableOpacity>
+          ))}
+        </View>
 
-            <Text style={styles.label}>Priority</Text>
-            <View style={styles.priorityRow}>
-              {TODO_PRIORITIES.map((p) => (
-                <TouchableOpacity
-                  key={p}
-                  style={[
-                    styles.priorityBtn,
-                    newPriority === p && {
-                      backgroundColor: priorityColor(p),
-                      borderColor: priorityColor(p) },
-                  ]}
-                  onPress={() => setNewPriority(p)}
-                >
-                  <Text
-                    style={[
-                      styles.priorityText,
-                      newPriority === p && { color: "#fff" },
-                    ]}
-                  >
-                    {p}
-                  </Text>
-                </TouchableOpacity>
-              ))}
-            </View>
-      </WebModal>
-
-      {/* FULL TASK DETAIL */}
-      <WebModal
-        visible={!!detailTodo}
-        onClose={() => setDetailTodo(null)}
-        title="Task details"
-        size="md"
-        footer={
-          detailTodo ? (
-            <ModalActions align="spread">
-              <TouchableOpacity
-                style={[styles.btn, styles.btnGhost]}
-                onPress={() => {
-                  const t = detailTodo;
-                  setDetailTodo(null);
-                  onToggle(t);
-                }}
+        <Text style={styles.label}>Priority</Text>
+        <View style={styles.row}>
+          {(["LOW", "MEDIUM", "HIGH"] as const).map((v) => (
+            <TouchableOpacity
+              key={v}
+              style={[styles.pick, priority === v && styles.pickOn]}
+              onPress={() => setPriority(v)}
+            >
+              <Text
+                style={[styles.pickText, priority === v && styles.pickTextOn]}
               >
-                <Text style={styles.btnGhostText}>
-                  {detailTodo.status === "DONE" ? "Reopen" : "Complete"}
-                </Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={[styles.btn, styles.btnPrimary]}
-                onPress={() => openEdit(detailTodo)}
-              >
-                <Text style={styles.btnPrimaryText}>Edit</Text>
-              </TouchableOpacity>
-            </ModalActions>
-          ) : null
-        }
-      >
-            {detailTodo && (
-              <>
-                <Text style={styles.detailTitle}>{detailTodo.title}</Text>
-                {!!detailTodo.description && (
-                  <Text style={styles.detailDesc}>
-                    {detailTodo.description}
-                  </Text>
-                )}
+                {v}
+              </Text>
+            </TouchableOpacity>
+          ))}
+        </View>
 
-                <View style={styles.detailRow}>
-                  <Text style={styles.detailLabel}>Status</Text>
-                  <Text style={styles.detailValue}>
-                    {detailTodo.status === "DONE" ? "Completed" : "Open"}
-                  </Text>
-                </View>
-                <View style={styles.detailRow}>
-                  <Text style={styles.detailLabel}>Priority</Text>
-                  <View
-                    style={[
-                      styles.pill,
-                      { backgroundColor: priorityColor(detailTodo.priority) },
-                    ]}
-                  >
-                    <Text style={styles.pillText}>
-                      {detailTodo.priority || "MEDIUM"}
-                    </Text>
-                  </View>
-                </View>
-                {!!detailTodo.dueDate && (
-                  <View style={styles.detailRow}>
-                    <Text style={styles.detailLabel}>Due date</Text>
-                    <Text style={styles.detailValue}>{detailTodo.dueDate}</Text>
-                  </View>
-                )}
-                {!!detailTodo.reminderAt && (
-                  <View style={styles.detailRow}>
-                    <Text style={styles.detailLabel}>Reminder</Text>
-                    <Text style={styles.detailValue}>
-                      {fmtDateTime(detailTodo.reminderAt)}
-                    </Text>
-                  </View>
-                )}
-                <View style={styles.detailRow}>
-                  <Text style={styles.detailLabel}>Created</Text>
-                  <Text style={styles.detailValue}>
-                    {fmtDateTime(detailTodo.createdAt)}
-                  </Text>
-                </View>
-                {!!detailTodo.completedAt && (
-                  <View style={styles.detailRow}>
-                    <Text style={styles.detailLabel}>Completed</Text>
-                    <Text style={styles.detailValue}>
-                      {fmtDateTime(detailTodo.completedAt)}
-                    </Text>
-                  </View>
-                )}
-              </>
-            )}
+        <Text style={styles.label}>Due date</Text>
+        <TextInput
+          style={styles.input}
+          value={due}
+          onChangeText={setDue}
+          placeholder="YYYY-MM-DD"
+          placeholderTextColor={c.textFaint}
+        />
+
+        <Text style={styles.label}>Notes</Text>
+        <TextInput
+          style={[styles.input, { minHeight: 66 }]}
+          value={desc}
+          onChangeText={setDesc}
+          placeholder="Optional"
+          placeholderTextColor={c.textFaint}
+          multiline
+          textAlignVertical="top"
+        />
+
+        <TouchableOpacity
+          style={styles.privateToggle}
+          onPress={() => setIsPrivate((v) => !v)}
+          accessibilityRole="checkbox"
+          accessibilityState={{ checked: isPrivate }}
+        >
+          <Ionicons
+            name={isPrivate ? "checkbox" : "square-outline"}
+            size={19}
+            color={isPrivate ? c.accent : c.textMuted}
+          />
+          <View style={{ flex: 1 }}>
+            <Text style={styles.privateLabel}>Keep this private</Text>
+            <Text style={styles.privateHint}>
+              Your manager won't see it — they're told only that something is
+              hidden.
+            </Text>
+          </View>
+        </TouchableOpacity>
       </WebModal>
     </SafeAreaView>
   );
 }
 
-const makeStyles = (c: any) => StyleSheet.create({
-  safe: { flex: 1, backgroundColor: c.bg },
-  loader: {
-    flex: 1,
-    backgroundColor: c.bg,
-    justifyContent: "center",
-    alignItems: "center" },
-  header: {
-    flexDirection: "row",
-    alignItems: "center",
-    paddingHorizontal: 16,
-    paddingVertical: 14,
-    borderBottomWidth: 1,
-    borderBottomColor: c.surfaceBorder,
-    gap: 12 },
-  title: { color: c.text, fontSize: 18, fontWeight: "800", flex: 1 },
-  tabs: {
-    flexDirection: "row",
-    padding: 12,
-    gap: 8,
-    borderBottomWidth: 1,
-    borderBottomColor: c.surfaceBorder },
-  tab: {
-    paddingHorizontal: 14,
-    paddingVertical: 8,
-    borderRadius: 999,
-    backgroundColor: c.surfaceMuted },
-  tabActive: { backgroundColor: c.accent },
-  tabText: { color: c.textMuted, fontSize: 12, fontWeight: "700" },
-  tabTextActive: { color: c.text },
-  row: {
-    flexDirection: "row",
-    alignItems: "center",
-    backgroundColor: c.surface,
-    padding: 12,
-    borderRadius: 12,
-    marginBottom: 8,
-    gap: 10,
-    borderWidth: 1,
-    borderColor: c.surfaceBorder },
-  checkbox: { padding: 4 },
-  rowTitle: { color: c.text, fontSize: 15, fontWeight: "600" },
-  strike: { textDecorationLine: "line-through", color: c.textMuted },
-  rowDesc: { color: c.textMuted, fontSize: 12, marginTop: 3 },
-  rowMeta: {
-    flexDirection: "row",
-    alignItems: "center",
-    flexWrap: "wrap",
-    gap: 8,
-    marginTop: 6 },
-  pill: {
-    paddingHorizontal: 8,
-    paddingVertical: 2,
-    borderRadius: 6 },
-  pillText: { color: c.text, fontSize: 10, fontWeight: "800" },
-  due: { color: c.textMuted, fontSize: 11 },
-  reminderHint: {
-    color: c.textMuted,
-    fontSize: 11,
-    fontStyle: "italic",
-    marginTop: 6 },
-  reminderTag: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 3 },
-  reminderTagText: { color: c.accent, fontSize: 11, fontWeight: "600" },
-  deleteBtn: { padding: 6 },
-  emptyWrap: { flex: 1, justifyContent: "center" },
-  empty: { alignItems: "center", gap: 10 },
-  emptyText: { color: c.textMuted, fontSize: 14 },
-  modalWrap: {
-    flex: 1,
-    justifyContent: "flex-end",
-    backgroundColor: c.overlay },
-  modal: {
-    backgroundColor: c.surface,
-    padding: 20,
-    borderTopLeftRadius: 18,
-    borderTopRightRadius: 18,
-    borderTopWidth: 1,
-    borderTopColor: c.surfaceBorder },
-  modalTitle: {
-    color: c.text,
-    fontSize: 18,
-    fontWeight: "800",
-    marginBottom: 12 },
-  label: {
-    color: c.textMuted,
-    fontSize: 11,
-    letterSpacing: 1.2,
-    fontWeight: "700",
-    marginTop: 12,
-    marginBottom: 6 },
-  input: {
-    backgroundColor: c.surfaceMuted,
-    color: c.text,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-    borderRadius: 10,
-    borderWidth: 1,
-    borderColor: c.surfaceBorder },
-  detailHeader: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center" },
-  detailTitle: {
-    color: c.text,
-    fontSize: 18,
-    fontWeight: "700",
-    marginTop: 6 },
-  detailDesc: {
-    color: c.textMuted,
-    fontSize: 14,
-    lineHeight: 20,
-    marginTop: 8 },
-  detailRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    marginTop: 14,
-    borderTopWidth: 1,
-    borderTopColor: c.surfaceBorder,
-    paddingTop: 10 },
-  detailLabel: {
-    color: c.textMuted,
-    fontSize: 11,
-    letterSpacing: 1.2,
-    fontWeight: "700" },
-  detailValue: { color: c.text, fontSize: 14, fontWeight: "600" },
-  priorityRow: { flexDirection: "row", gap: 8 },
-  priorityBtn: {
-    flex: 1,
-    paddingVertical: 10,
-    borderRadius: 10,
-    backgroundColor: c.surfaceMuted,
-    borderWidth: 1,
-    borderColor: c.surfaceBorder,
-    alignItems: "center" },
-  priorityText: { color: c.textMuted, fontSize: 12, fontWeight: "700" },
-  actions: { flexDirection: "row", gap: 10, marginTop: 18 },
-  btn: {
-    flex: 1,
-    paddingVertical: 14,
-    borderRadius: 12,
-    alignItems: "center" },
-  btnGhost: { backgroundColor: c.surfaceMuted },
-  btnGhostText: { color: c.text, fontWeight: "700" },
-  btnPrimary: { backgroundColor: c.accent },
-  btnPrimaryText: { color: "#fff", fontWeight: "800" } });
-
+const makeStyles = (c: any) =>
+  StyleSheet.create({
+    safe: { flex: 1, backgroundColor: c.bg },
+    loader: {
+      flex: 1,
+      backgroundColor: c.bg,
+      justifyContent: "center",
+      alignItems: "center",
+    },
+    content: {
+      padding: 16,
+      paddingBottom: BOTTOM_BAR_RESERVED_HEIGHT + 20,
+      gap: 14,
+    },
+    people: { gap: 6, paddingBottom: 2 },
+    person: {
+      paddingHorizontal: 13,
+      paddingVertical: 8,
+      borderRadius: 999,
+      backgroundColor: c.surfaceMuted,
+    },
+    personOn: { backgroundColor: c.accentSoft },
+    personText: { fontSize: 12.5, fontWeight: "700", color: c.textMuted },
+    personTextOn: { color: c.accentText },
+    hiddenNote: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 6,
+      paddingHorizontal: 11,
+      paddingVertical: 8,
+      borderRadius: 9,
+      backgroundColor: c.surfaceMuted,
+    },
+    hiddenText: { fontSize: 12, color: c.textMuted, fontWeight: "600" },
+    privacyList: { gap: 7 },
+    privacyHead: {
+      fontSize: 10.5,
+      fontWeight: "800",
+      color: c.textMuted,
+      letterSpacing: 0.6,
+    },
+    privacyEmpty: { fontSize: 12.5, color: c.textFaint },
+    privacyRow: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 8,
+      paddingVertical: 8,
+    },
+    privacyTitle: { flex: 1, fontSize: 13, color: c.text },
+    privacyAction: { fontSize: 12.5, fontWeight: "700", color: c.accent },
+    manageList: { gap: 2 },
+    manageRow: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 12,
+      paddingVertical: 10,
+      borderBottomWidth: 1,
+      borderBottomColor: c.surfaceBorder,
+    },
+    manageTitle: { flex: 1, fontSize: 13.5, color: c.text },
+    label: {
+      fontSize: 10.5,
+      fontWeight: "800",
+      color: c.textMuted,
+      letterSpacing: 0.4,
+      marginTop: 12,
+      marginBottom: 5,
+    },
+    input: {
+      borderWidth: 1,
+      borderColor: c.surfaceBorder,
+      borderRadius: 10,
+      paddingHorizontal: 12,
+      paddingVertical: 10,
+      backgroundColor: c.surfaceMuted,
+      color: c.text,
+      fontSize: 14,
+    },
+    row: { flexDirection: "row", gap: 6, flexWrap: "wrap" },
+    pick: {
+      paddingHorizontal: 12,
+      paddingVertical: 8,
+      borderRadius: 999,
+      backgroundColor: c.surfaceMuted,
+    },
+    pickOn: { backgroundColor: c.accentSoft },
+    pickText: { fontSize: 12.5, fontWeight: "700", color: c.textMuted },
+    pickTextOn: { color: c.accentText },
+    privateToggle: {
+      flexDirection: "row",
+      alignItems: "flex-start",
+      gap: 10,
+      marginTop: 16,
+      padding: 11,
+      borderRadius: 10,
+      backgroundColor: c.surfaceMuted,
+    },
+    privateLabel: { fontSize: 13.5, fontWeight: "700", color: c.text },
+    privateHint: {
+      fontSize: 11.5,
+      color: c.textMuted,
+      marginTop: 2,
+      lineHeight: 16,
+    },
+    btn: { paddingVertical: 11, paddingHorizontal: 18, borderRadius: 10 },
+    btnGhost: { backgroundColor: c.surfaceMuted },
+    btnGhostText: { color: c.text, fontWeight: "700", fontSize: 13 },
+    btnPrimary: { backgroundColor: c.accent },
+    btnPrimaryText: { color: "#fff", fontWeight: "800", fontSize: 13 },
+  });

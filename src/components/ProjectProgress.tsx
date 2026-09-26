@@ -23,6 +23,15 @@ export interface ProjectProgressProps {
   endDate?: string | null;
   /** Hide the schedule marker where dates aren't meaningful. */
   showSchedule?: boolean;
+  /**
+   * The authoritative percentage, when something upstream knows better than
+   * a task count — weighted phases, or a figure a manager pinned. Without
+   * it this bar recomputed from completed/total and cheerfully disagreed
+   * with the Phases tab on the same screen.
+   */
+  percentOverride?: number | null;
+  /** Shown under the bar to say where the number came from. */
+  sourceNote?: string | null;
 }
 
 /** 0–1, or null when the dates can't place today on a line. */
@@ -67,13 +76,20 @@ export const ProjectProgress = ({
   startDate,
   endDate,
   showSchedule = true,
+  percentOverride,
+  sourceNote,
 }: ProjectProgressProps) => {
   const { theme } = useTheme();
   const c = theme.colors;
   const styles = useMemo(() => makeStyles(c), [c]);
 
-  const done = total > 0 ? Math.min(1, completed / total) : 0;
-  const pct = Math.round(done * 100);
+  const pct =
+    typeof percentOverride === "number"
+      ? Math.max(0, Math.min(100, Math.round(percentOverride)))
+      : total > 0
+      ? Math.round(Math.min(1, completed / total) * 100)
+      : 0;
+  const done = pct / 100;
   const sched = showSchedule ? scheduleFraction(startDate, endDate) : null;
   const left = daysRemaining(endDate);
 
@@ -121,11 +137,18 @@ export const ProjectProgress = ({
         )}
       </View>
 
-      {sched !== null && (
+      {(sched !== null || !!sourceNote) && (
         <Text style={styles.legend}>
-          {behind
-            ? `Schedule is ${Math.round(sched * 100)}% elapsed — work is behind`
-            : `Schedule ${Math.round(sched * 100)}% elapsed`}
+          {[
+            sourceNote,
+            sched === null
+              ? null
+              : behind
+              ? `schedule ${Math.round(sched * 100)}% elapsed — work is behind`
+              : `schedule ${Math.round(sched * 100)}% elapsed`,
+          ]
+            .filter(Boolean)
+            .join(" · ")}
         </Text>
       )}
     </View>

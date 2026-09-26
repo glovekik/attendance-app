@@ -21,6 +21,10 @@ import { Project, User, hasRole } from "../../src/types";
 import { getMe } from "../../src/services/api";
 import { useTheme } from "../../src/theme/ThemeProvider";
 import { projectStatusColor } from "../../src/theme/statusColors";
+import {
+  BottomTabBar,
+  BOTTOM_BAR_RESERVED_HEIGHT,
+} from "../../src/components/BottomTabBar";
 
 export default function ProjectsList() {
   const router = useRouter();
@@ -206,6 +210,7 @@ export default function ProjectsList() {
           </View>
         )}
       </ScrollView>
+      <BottomTabBar user={me} />
     </SafeAreaView>
   );
 }
@@ -214,7 +219,8 @@ const makeStyles = (c: any) =>
   StyleSheet.create({
     safe: { flex: 1, backgroundColor: c.bg },
     container: { flex: 1 },
-    content: { padding: 20, paddingBottom: 60 },
+    // Reserve the bar's height so the last card isn't sitting under it.
+    content: { padding: 20, paddingBottom: BOTTOM_BAR_RESERVED_HEIGHT + 20 },
     loader: {
       flex: 1,
       backgroundColor: c.bg,

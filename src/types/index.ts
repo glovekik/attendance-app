@@ -728,6 +728,8 @@ export interface Project {
   code: string;
   description?: string;
   departmentId?: string | null;
+  /** Resolved name, so the UI needn't print the id or a placeholder. */
+  departmentName?: string | null;
   managerIds?: string[];
   /** @deprecated legacy alias for managerIds — still sent by the API. */
   projectManagerIds?: string[];
@@ -735,6 +737,8 @@ export interface Project {
   status: ProjectStatus;
   startDate?: string;
   endDate?: string | null;
+  /** Free-form stack tags. Always an array from the API, never null. */
+  technologies?: string[];
   /** True when the signed-in user manages this project (HR always true). */
   viewerIsManager?: boolean;
 }
@@ -766,7 +770,10 @@ export interface ProjectMemberHistoryEntry extends ProjectMember {
 }
 
 // ===== TODOS (Phase C) =====
-export type TodoStatus = "OPEN" | "DONE";
+// Three board columns. "DONE" keeps its name because the attendance
+// screen pulls `status=DONE` and the reminder cron skips it — renaming
+// would have broken both silently.
+export type TodoStatus = "OPEN" | "ONGOING" | "DONE";
 export type TodoPriority = "LOW" | "MEDIUM" | "HIGH";
 
 export const TODO_PRIORITIES: TodoPriority[] = ["LOW", "MEDIUM", "HIGH"];
@@ -779,6 +786,10 @@ export interface Todo {
   priority?: TodoPriority;
   reminderAt?: string;
   status: TodoStatus;
+  /** Hidden from the owner's manager; the server filters it out. */
+  isPrivate?: boolean;
+  userId?: string;
+  ownerName?: string | null;
   completedAt?: string | null;
   createdAt: string;
 }

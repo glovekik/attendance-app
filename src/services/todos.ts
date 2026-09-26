@@ -2,6 +2,8 @@ import { apiCall } from "./http";
 import { Todo, TodoPriority, TodoStatus } from "../types";
 
 export interface TodoPayload {
+  status?: TodoStatus;
+  isPrivate?: boolean;
   title: string;
   description?: string;
   dueDate?: string;
@@ -51,3 +53,16 @@ export const deleteTodo = (
   id: string
 ): Promise<void> =>
   apiCall(`/todos/${id}`, { method: "DELETE", token });
+
+/**
+ * A report's board, as their manager sees it — private items excluded by
+ * the server, with a count so the gap is acknowledged rather than hidden.
+ */
+export const getTodosOf = (
+  token: string,
+  userId: string
+): Promise<{
+  todos: Todo[];
+  owner: { id: string; name?: string | null };
+  hiddenCount: number;
+}> => apiCall(`/todos/of/${userId}`, { token });

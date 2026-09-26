@@ -123,7 +123,26 @@ export interface ProjectTaskPayload {
   dueDate?: string;
   reminderIntervalMinutes?: number;
   attachments?: string[];
+  /** Which phase the task belongs to; omitted means none. */
+  phaseId?: string | null;
+  /** Its share of that phase, as a percentage. */
+  weight?: number;
 }
+
+/**
+ * Replace the project's stack tags. Manager-scoped, unlike updateProject
+ * which is HR-only — the people who know the stack are the ones on it.
+ */
+export const setProjectTechnologies = (
+  token: string,
+  projectId: string,
+  technologies: string[]
+): Promise<{ technologies: string[] }> =>
+  apiCall(`/projects/${projectId}/technologies`, {
+    method: "PUT",
+    body: { technologies },
+    token,
+  });
 
 export const createProjectTask = (
   token: string,

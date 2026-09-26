@@ -1,5 +1,5 @@
 /**
- * Project Variables — the reusable snippets a project manager keeps for the
+ * Project Files — the reusable snippets a project manager keeps for the
  * team: the staging connection string, the boilerplate config, the curl
  * command everyone keeps asking for in chat.
  *
@@ -45,7 +45,12 @@ import {
   ProjectVariable,
   VariableVisibility,
 } from "../../../src/services/projectVariables";
-import { Project, ProjectMemberUser } from "../../../src/types";
+import { Project, ProjectMemberUser, User } from "../../../src/types";
+import { getMe } from "../../../src/services/api";
+import {
+  BottomTabBar,
+  BOTTOM_BAR_RESERVED_HEIGHT,
+} from "../../../src/components/BottomTabBar";
 
 const VISIBILITY: { key: VariableVisibility; label: string; hint: string }[] = [
   { key: "team", label: "Whole team", hint: "Everyone on this project" },
@@ -70,6 +75,9 @@ export default function ProjectVariables() {
   const [members, setMembers] = useState<ProjectMemberUser[]>([]);
   const [items, setItems] = useState<ProjectVariableSummary[]>([]);
   const [canManage, setCanManage] = useState(false);
+  // For the mobile bottom bar, which every other screen has and
+  // these three didn't — tapping into Projects lost the nav.
+  const [me, setMe] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -97,13 +105,15 @@ export default function ProjectVariables() {
         router.replace("/login");
         return;
       }
-      const [p, list, m] = await Promise.all([
+      const [p, meRes, list, m] = await Promise.all([
         getProject(token, id).catch(() => null),
+        getMe(token).catch(() => null),
         listProjectVariables(token, id),
         // Only needed to name people in the picker; a member never opens it.
         getProjectMembers(token, id).catch(() => ({ members: [] as any[] })),
       ]);
       setProject(p);
+      setMe(meRes);
       setItems(list.variables || []);
       setCanManage(!!list.viewerCanManage);
       setMembers(
@@ -114,7 +124,7 @@ export default function ProjectVariables() {
       setLoadError(null);
     } catch (err: any) {
       setLoadError(
-        err?.message || "Couldn't load this project's variables."
+        err?.message || "Couldn't load this project's files."
       );
     } finally {
       setLoading(false);
@@ -273,7 +283,7 @@ export default function ProjectVariables() {
           <Ionicons name="arrow-back" size={24} color={c.text} />
         </TouchableOpacity>
         <View style={{ flex: 1 }}>
-          <Text style={styles.title}>Project Variables</Text>
+          <Text style={styles.title}>Project Files</Text>
           {!!project?.name && (
             <Text style={styles.subtitle} numberOfLines={1}>
               {project.name}
@@ -289,7 +299,10 @@ export default function ProjectVariables() {
 
       <ScrollView
         contentContainerStyle={
-          items.length === 0 ? styles.emptyWrap : { padding: 12 }
+          items.length === 0
+            ? styles.emptyWrap
+            : // Clear the bottom bar, or the last file sits under it.
+              { padding: 12, paddingBottom: BOTTOM_BAR_RESERVED_HEIGHT + 12 }
         }
         refreshControl={
           <RefreshControl
@@ -315,7 +328,7 @@ export default function ProjectVariables() {
         ) : items.length === 0 ? (
           <View style={styles.empty}>
             <Ionicons name="code-slash-outline" size={42} color={c.textFaint} />
-            <Text style={styles.emptyTitle}>No variables yet</Text>
+            <Text style={styles.emptyTitle}>No files yet</Text>
             <Text style={styles.emptySub}>
               {canManage
                 ? "Save a snippet your team keeps asking for — a connection string, a config block, a curl command."
@@ -547,6 +560,7 @@ export default function ProjectVariables() {
           </View>
         )}
       </WebModal>
+      <BottomTabBar user={me} />
     </SafeAreaView>
   );
 }

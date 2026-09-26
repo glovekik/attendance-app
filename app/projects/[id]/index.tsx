@@ -9,6 +9,8 @@ import {
   TouchableOpacity,
   ActivityIndicator,
   RefreshControl,
+  Pressable,
+  Platform,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 
@@ -25,6 +27,7 @@ import {
   createProjectTask,
   deleteProjectTask,
   updateProjectTask,
+  setProjectTechnologies,
   ProjectTasksResponse,
   ProjectAttendanceResponse,
 } from "../../../src/services/projects";
@@ -33,11 +36,30 @@ import {
   ProjectMember,
   ProjectMemberHistoryEntry,
   TaskPriority,
+  TaskStatus,
   TASK_PRIORITIES,
+  User,
 } from "../../../src/types";
 import { confirmAction, notify } from "../../../src/utils/confirm";
 import { useTheme } from "../../../src/theme/ThemeProvider";
-import { ProjectProgress } from "../../../src/components/ProjectProgress";
+import { ProjectHero } from "../../../src/components/ProjectHero";
+import { ProjectBoard } from "../../../src/components/ProjectBoard";
+import { ProjectPhases } from "../../../src/components/ProjectPhases";
+import { ProjectMeetings } from "../../../src/components/ProjectMeetings";
+import {
+  PhasesResponse,
+  ProjectMeeting,
+  createProjectMeeting,
+  createProjectPhase,
+  deleteProjectMeeting,
+  deleteProjectPhase,
+  getProjectMeetings,
+  getProjectPhases,
+  setProjectProgress,
+  setTaskWeight,
+  updateProjectMeeting,
+  updateProjectPhase,
+} from "../../../src/services/projectPlanning";
 import {
   projectStatusColor,
   taskStatusColor,
@@ -45,15 +67,26 @@ import {
 import { WebModal, ModalActions } from "../../../src/components/WebModal";
 import { DatePickerField } from "../../../src/components/DatePickerField";
 import { Avatar } from "../../../src/components/Avatar";
+import { getMe } from "../../../src/services/api";
+import {
+  BottomTabBar,
+  BOTTOM_BAR_RESERVED_HEIGHT,
+} from "../../../src/components/BottomTabBar";
 
-type ProjectTab = "overview" | "tasks" | "team";
+type ProjectTab =
+  | "overview" | "phases" | "tasks" | "board"
+  | "meetings" | "team" | "files";
 
 /** Only the sections that exist today. Others join as they're built, so the
  *  bar never offers a tab that opens onto nothing. */
 const TABS: { key: ProjectTab; label: string; icon: keyof typeof Ionicons.glyphMap }[] = [
   { key: "overview", label: "Overview", icon: "grid-outline" },
+  { key: "phases", label: "Phases", icon: "layers-outline" },
   { key: "tasks", label: "Tasks", icon: "checkbox-outline" },
+  { key: "board", label: "Board", icon: "albums-outline" },
+  { key: "meetings", label: "Meetings", icon: "document-text-outline" },
   { key: "team", label: "Team", icon: "people-outline" },
+  { key: "files", label: "Files", icon: "folder-outline" },
 ];
 
 const fmtDate = (s?: string | null) => {
@@ -93,6 +126,18 @@ export default function ProjectDetail() {
   // members, tasks and attendance, and the concepts still to come (files,
   // timeline, meetings) would make a single column unusable on a phone.
   const [tab, setTab] = useState<ProjectTab>("overview");
+  // Technologies edit in place: the chips are the editor, so there's no
+  // separate form to open and no saved/unsaved ambiguity.
+  const [techInput, setTechInput] = useState("");
+  const [techSaving, setTechSaving] = useState(false);
+  // Which card's "move to" menu is open on the board.
+  const [moving, setMoving] = useState<string | null>(null);
+  const [phases, setPhases] = useState<PhasesResponse | null>(null);
+  const [meetings, setMeetings] = useState<ProjectMeeting[]>([]);
+  const [planBusy, setPlanBusy] = useState(false);
+  // For the mobile bottom bar, which every other screen has and
+  // these three didn't — tapping into Projects lost the nav.
+  const [me, setMe] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
 
@@ -102,6 +147,9 @@ export default function ProjectDetail() {
   const [cAssignee, setCAssignee] = useState<string | null>(null);
   const [cPriority, setCPriority] = useState<TaskPriority>("MEDIUM");
   const [cDue, setCDue] = useState("");
+  // Which phase a new task lands in. Set when the form is opened from a
+  // phase, so "add a task under this phase" does what it says.
+  const [cPhase, setCPhase] = useState<string | null>(null);
   const [cSaving, setCSaving] = useState(false);
 
   const isPM = !!project?.viewerIsManager;
@@ -117,14 +165,22 @@ export default function ProjectDetail() {
       // The board is members-only on the server, so it's fetched with its own
       // catch rather than inside the Promise.all — a 403 there would reject
       // the whole batch and blank a page the viewer is allowed to see.
-      const [p, m, b] = await Promise.all([
+      const [p, meRes, m, b, ph, mt] = await Promise.all([
         getProject(token, id),
+        getMe(token).catch(() => null),
         getProjectMembers(token, id),
         getProjectTasks(token, id).catch(() => null),
+        // Both degrade to nothing rather than failing the whole screen: a
+        // project with no phases or meetings is the normal starting state.
+        getProjectPhases(token, id).catch(() => null),
+        getProjectMeetings(token, id).catch(() => null),
       ]);
       setProject(p);
+      setMe(meRes);
       setMembers(m.members || []);
       setBoard(b);
+      setPhases(ph);
+      setMeetings(mt?.meetings || []);
 
       // Manager-only: asking as a plain member would 403 and blank the screen.
       if (p.viewerIsManager) {
@@ -146,6 +202,62 @@ export default function ProjectDetail() {
     load();
   }, [load]);
 
+  // Add / remove a stack tag. The server de-duplicates and trims, and we
+  // take its response as the truth rather than guessing what it stored.
+  const saveTech = async (next: string[]) => {
+    if (!project || techSaving) return;
+    setTechSaving(true);
+    const previous = project.technologies || [];
+    // Optimistic: chips are a label row, and waiting on a round-trip to see
+    // your own tag appear feels broken. Rolled back if the save fails.
+    setProject({ ...project, technologies: next });
+    try {
+      const token = await AsyncStorage.getItem("token");
+      if (!token) return;
+      const res = await setProjectTechnologies(token, String(id), next);
+      setProject((cur) => (cur ? { ...cur, technologies: res.technologies } : cur));
+      setTechInput("");
+    } catch (err: any) {
+      setProject((cur) => (cur ? { ...cur, technologies: previous } : cur));
+      notify("Couldn't save", err?.message || "");
+    } finally {
+      setTechSaving(false);
+    }
+  };
+
+  // Move a task between board columns. Tap-to-move rather than drag: drag
+  // across web and native, inside a scroll view, on both touch and mouse, is
+  // a reliable source of bugs — and a menu works with a keyboard.
+  const moveTask = async (taskId: string, status: TaskStatus) => {
+    setMoving(null);
+    try {
+      const token = await AsyncStorage.getItem("token");
+      if (!token) return;
+      await updateProjectTask(token, String(id), taskId, { status });
+      await load();
+    } catch (err: any) {
+      notify("Couldn't move the task", err?.message || "");
+    }
+  };
+
+  // One helper for every planning write: they all end in "reload so the
+  // numbers on screen match the server", and repeating that per action is
+  // how one of them ends up forgotten.
+  const planAction = async (fn: (token: string) => Promise<unknown>) => {
+    if (planBusy) return;
+    setPlanBusy(true);
+    try {
+      const token = await AsyncStorage.getItem("token");
+      if (!token) return;
+      await fn(token);
+      await load();
+    } catch (err: any) {
+      notify("Couldn't save", err?.message || "");
+    } finally {
+      setPlanBusy(false);
+    }
+  };
+
   const loadHistory = useCallback(async () => {
     if (!id) return;
     const token = await AsyncStorage.getItem("token");
@@ -159,12 +271,13 @@ export default function ProjectDetail() {
     }
   }, [id]);
 
-  const openCreate = () => {
+  const openCreate = (phaseId: string | null = null) => {
     setCTitle("");
     setCDesc("");
     setCAssignee(null);
     setCPriority("MEDIUM");
     setCDue("");
+    setCPhase(phaseId);
     setCreateOpen(true);
   };
 
@@ -188,6 +301,13 @@ export default function ProjectDetail() {
         assigneeId: cAssignee,
         priority: cPriority,
         dueDate: cDue.trim() || undefined,
+        phaseId: cPhase,
+        // Claim whatever the phase has left, so a new task is counted
+        // rather than silently contributing nothing.
+        weight: cPhase
+          ? phases?.phases.find((p) => p.id === cPhase)?.taskWeightRemaining ||
+            0
+          : undefined,
       });
       setCreateOpen(false);
       load();
@@ -287,70 +407,73 @@ export default function ProjectDetail() {
           />
         }
       >
-        <View style={styles.header}>
-          <TouchableOpacity
-            style={styles.backBtn}
-            onPress={() =>
-              router.canGoBack() ? router.back() : router.replace("/projects")
-            }
-          >
-            <Ionicons name="chevron-back" size={22} color={c.text} />
-          </TouchableOpacity>
+        <ProjectHero
+          name={project.name}
+          status={project.status}
+          code={project.code}
+          managerNames={managerNames}
+          // One number for the page, from the same rollup the Phases tab
+          // uses — this used to recompute from task counts and disagree.
+          percent={phases?.progress.percent ?? 0}
+          sourceNote={
+            phases?.progress.source === "manual"
+              ? `set by hand · tasks say ${phases.progress.derived}%`
+              : phases?.progress.source === "phases"
+              ? "weighted across phases"
+              : null
+          }
+          startDate={project.startDate}
+          endDate={project.endDate}
+          onBack={() =>
+            router.canGoBack() ? router.back() : router.replace("/projects")
+          }
+          onChat={() => router.push(`/chat/project/${id}` as any)}
+          stats={[
+            {
+              icon: "checkbox-outline",
+              label: "Tasks",
+              value: `${board?.counts.COMPLETED ?? 0}/${board?.total ?? 0}`,
+              onPress: () => setTab("board"),
+            },
+            {
+              icon: "layers-outline",
+              label: "Phases",
+              value: String(phases?.phases.length ?? 0),
+              onPress: () => setTab("phases"),
+            },
+            {
+              icon: "people-outline",
+              label: "Team",
+              value: String(members.length),
+              onPress: () => setTab("team"),
+            },
+            {
+              icon: "document-text-outline",
+              label: "Meetings",
+              value: String(meetings.length),
+              onPress: () => setTab("meetings"),
+            },
+          ]}
+        />
 
-          <View style={{ flex: 1 }}>
-            <Text style={styles.title}>{project.name}</Text>
-            <Text style={styles.subtitle}>
-              Manager: {managerNames || "—"}
-            </Text>
-          </View>
-
-          <TouchableOpacity
-            style={styles.chatBtn}
-            onPress={() => router.push(`/chat/project/${id}` as any)}
-          >
-            <Ionicons name="chatbubbles-outline" size={20} color="#fff" />
-          </TouchableOpacity>
-        </View>
-
-        <View style={styles.metaRow}>
-          <View style={[styles.chip, { backgroundColor: sc.bg }]}>
-            <Text style={[styles.chipText, { color: sc.fg }]}>
-              {project.status}
-            </Text>
-          </View>
-          {!!project.code && (
-            <View style={styles.chip}>
-              <Text style={[styles.chipText, { color: c.textMuted }]}>
-                {project.code}
-              </Text>
-            </View>
-          )}
-          {!!board && (
-            <View style={styles.chip}>
-              <Text style={[styles.chipText, { color: c.textMuted }]}>
-                {board.counts.COMPLETED}/{board.total} done
-              </Text>
-            </View>
-          )}
-        </View>
-
-        {/* Progress — derived, so it can't disagree with the task board. */}
-        <View style={styles.progressCard}>
-          <ProjectProgress
-            completed={board?.counts.COMPLETED ?? 0}
-            total={board?.total ?? 0}
-            startDate={project.startDate}
-            endDate={project.endDate}
-          />
-        </View>
-
-        <View style={styles.tabBar}>
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          contentContainerStyle={styles.tabBar}
+        >
           {TABS.map((t) => {
             const on = tab === t.key;
             return (
-              <TouchableOpacity
+              <Pressable
                 key={t.key}
-                style={[styles.tab, on && styles.tabOn]}
+                style={({ hovered, pressed }: any) => [
+                  styles.tab,
+                  // A tab you can't tell is clickable until you click it
+                  // isn't a tab; hover is the affordance on web.
+                  !on && hovered && styles.tabHover,
+                  on && styles.tabOn,
+                  pressed && styles.tabPressed,
+                ]}
                 onPress={() => setTab(t.key)}
                 accessibilityRole="tab"
                 accessibilityState={{ selected: on }}
@@ -363,35 +486,239 @@ export default function ProjectDetail() {
                 <Text style={[styles.tabText, on && styles.tabTextOn]}>
                   {t.label}
                 </Text>
-              </TouchableOpacity>
+              </Pressable>
             );
           })}
-        </View>
+        </ScrollView>
 
         {tab === "overview" && (
           <>
-            <Text style={styles.section}>ABOUT</Text>
-            <View style={styles.membersBox}>
-              <Text style={styles.overviewDesc}>
-                {project.description?.trim() || "No description yet."}
-              </Text>
-              <View style={styles.factGrid}>
-                {[
-                  ["Starts", fmtDate(project.startDate)],
-                  ["Ends", fmtDate(project.endDate)],
-                  ["Code", project.code || "—"],
-                  ["Manager", managerNames || "—"],
-                  ["Team", `${members.length} member${members.length === 1 ? "" : "s"}`],
-                  ["Status", project.status],
-                ].map(([k, v]) => (
-                  <View key={k} style={styles.fact}>
-                    <Text style={styles.factKey}>{k}</Text>
-                    <Text style={styles.factVal}>{v}</Text>
-                  </View>
-                ))}
+            {/* Description reads as prose; the facts read as a list with
+                icons. The previous version gave both the same treatment, so
+                a six-word status looked as important as the summary. */}
+            {!!project.description?.trim() && (
+              <View style={styles.aboutCard}>
+                <Text style={styles.aboutText}>{project.description}</Text>
               </View>
+            )}
+
+            <Text style={styles.section}>DETAILS</Text>
+            <View style={styles.detailCard}>
+              {(
+                [
+                  ["calendar-outline", "Starts", fmtDate(project.startDate)],
+                  ["flag-outline", "Target end", fmtDate(project.endDate)],
+                  ["pricetag-outline", "Code", project.code || "—"],
+                  ["person-outline", "Manager", managerNames || "—"],
+                  ["business-outline", "Department", project.departmentName || "—"],
+                ] as [keyof typeof Ionicons.glyphMap, string, string][]
+              ).map(([icon, label, value], i, arr) => (
+                <View
+                  key={label}
+                  style={[
+                    styles.detailRow,
+                    i === arr.length - 1 && { borderBottomWidth: 0 },
+                  ]}
+                >
+                  <View style={styles.detailIcon}>
+                    <Ionicons name={icon} size={14} color={c.textMuted} />
+                  </View>
+                  <Text style={styles.detailLabel}>{label}</Text>
+                  <Text style={styles.detailValue} numberOfLines={1}>
+                    {value}
+                  </Text>
+                </View>
+              ))}
+            </View>
+
+            <View style={styles.techHead}>
+              <Text style={[styles.section, styles.techHeadLabel]}>
+                TECHNOLOGIES
+              </Text>
+              {!!(project.technologies || []).length && (
+                <Text style={styles.techCount}>
+                  {(project.technologies || []).length}
+                </Text>
+              )}
+            </View>
+
+            <View style={styles.techCard}>
+              {!(project.technologies || []).length ? (
+                <View style={styles.techEmpty}>
+                  <Ionicons
+                    name="code-slash-outline"
+                    size={22}
+                    color={c.textFaint}
+                  />
+                  <Text style={styles.techEmptyText}>
+                    {isPM
+                      ? "Tag the stack so anyone joining knows what they're walking into."
+                      : "No technologies recorded yet."}
+                  </Text>
+                </View>
+              ) : (
+                <View style={styles.techWrap}>
+                  {(project.technologies || []).map((t) => (
+                    <View key={t} style={styles.techChip}>
+                      <View style={styles.techDot} />
+                      <Text style={styles.techText}>{t}</Text>
+                      {isPM && (
+                        <TouchableOpacity
+                          onPress={() =>
+                            saveTech(
+                              (project.technologies || []).filter(
+                                (x) => x !== t
+                              )
+                            )
+                          }
+                          disabled={techSaving}
+                          hitSlop={10}
+                          accessibilityRole="button"
+                          accessibilityLabel={`Remove ${t}`}
+                        >
+                          <Ionicons
+                            name="close-circle"
+                            size={15}
+                            color={c.accentText}
+                          />
+                        </TouchableOpacity>
+                      )}
+                    </View>
+                  ))}
+                </View>
+              )}
+
+              {isPM && (
+                <View style={styles.techAddRow}>
+                  <Ionicons
+                    name="add-circle-outline"
+                    size={17}
+                    color={c.textMuted}
+                  />
+                  <TextInput
+                    style={styles.techInput}
+                    value={techInput}
+                    onChangeText={setTechInput}
+                    placeholder="Add — FastAPI, React Native, MongoDB…"
+                    placeholderTextColor={c.textFaint}
+                    editable={!techSaving}
+                    onSubmitEditing={() => {
+                      const t = techInput.trim();
+                      if (t) saveTech([...(project.technologies || []), t]);
+                    }}
+                    returnKeyType="done"
+                    accessibilityLabel="Add a technology"
+                  />
+                  {!!techInput.trim() && (
+                    <TouchableOpacity
+                      style={styles.techAddBtn}
+                      disabled={techSaving}
+                      onPress={() =>
+                        saveTech([
+                          ...(project.technologies || []),
+                          techInput.trim(),
+                        ])
+                      }
+                    >
+                      <Text style={styles.techAddText}>Add</Text>
+                    </TouchableOpacity>
+                  )}
+                </View>
+              )}
             </View>
           </>
+        )}
+
+        {tab === "phases" && (
+          <ProjectPhases
+            phases={phases?.phases || []}
+            progress={
+              phases?.progress || {
+                percent: 0, derived: 0, source: "tasks",
+                taskTotal: board?.total ?? 0,
+                taskCompleted: board?.counts.COMPLETED ?? 0,
+              }
+            }
+            budget={
+              phases?.weight || {
+                allocated: 0, remaining: 100, balanced: false,
+              }
+            }
+            canManage={isPM}
+            busy={planBusy}
+            onAdd={(name, weight) =>
+              planAction((t) =>
+                createProjectPhase(t, String(id), { name, weight })
+              )
+            }
+            onSetWeight={(phaseId, weight) =>
+              planAction((t) =>
+                updateProjectPhase(t, String(id), phaseId, { weight })
+              )
+            }
+            onDelete={(ph) =>
+              planAction((t) => deleteProjectPhase(t, String(id), ph.id))
+            }
+            onAddTask={(phaseId) => openCreate(phaseId)}
+            onSetTaskWeight={(taskId, weight) =>
+              planAction((t) => setTaskWeight(t, String(id), taskId, weight))
+            }
+            onOverride={(percent) =>
+              planAction((t) => setProjectProgress(t, String(id), percent))
+            }
+          />
+        )}
+
+        {tab === "meetings" && (
+          <ProjectMeetings
+            meetings={meetings}
+            busy={planBusy}
+            onCreate={(body) =>
+              planAction((t) => createProjectMeeting(t, String(id), body))
+            }
+            onUpdate={(mid, body) =>
+              planAction((t) => updateProjectMeeting(t, String(id), mid, body))
+            }
+            onDelete={(m) =>
+              planAction((t) => deleteProjectMeeting(t, String(id), m.id))
+            }
+          />
+        )}
+
+        {tab === "files" && (
+          <View style={{ marginTop: 14, gap: 12 }}>
+            <Text style={styles.emptyHint}>
+              Files are the snippets, configs and credentials this project
+              keeps — each one visible to the managers, to named people, or
+              to the whole team.
+            </Text>
+            <TouchableOpacity
+              style={styles.filesBtn}
+              onPress={() => router.push(`/projects/${id}/variables` as any)}
+            >
+              <Ionicons name="folder-open-outline" size={17} color="#fff" />
+              <Text style={styles.filesBtnText}>Open files</Text>
+            </TouchableOpacity>
+          </View>
+        )}
+
+        {/* BOARD */}
+        {tab === "board" && (
+          <View style={{ marginTop: 14 }}>
+            {!board ? (
+              <Text style={styles.emptyHint}>
+                The task board isn't available for this project.
+              </Text>
+            ) : (
+              <ProjectBoard
+                tasks={board.tasks}
+                counts={board.counts}
+                canManage={isPM}
+                onMove={moveTask}
+                onQuickAdd={() => openCreate()}
+              />
+            )}
+          </View>
         )}
 
         {/* MEMBERS */}
@@ -421,6 +748,28 @@ export default function ProjectDetail() {
                   {m.user?.jobTitle || "—"}  ·  since {fmtDate(m.joinedAt)}
                 </Text>
               </View>
+              {/* Workload, from the board already loaded — no extra request,
+                  and it can't disagree with what the Board tab shows. */}
+              {(() => {
+                const open = (board?.tasks || []).filter(
+                  (t) =>
+                    t.assignee?.id === m.userId && t.status !== "COMPLETED"
+                ).length;
+                const done = (board?.tasks || []).filter(
+                  (t) =>
+                    t.assignee?.id === m.userId && t.status === "COMPLETED"
+                ).length;
+                if (!open && !done) return null;
+                return (
+                  <View style={styles.loadPill}>
+                    <Text style={styles.loadOpen}>{open}</Text>
+                    <Text style={styles.loadLabel}>open</Text>
+                    {!!done && (
+                      <Text style={styles.loadDone}>· {done} done</Text>
+                    )}
+                  </View>
+                );
+              })()}
               {m.role === "manager" && (
                 <View style={styles.chip}>
                   <Text style={[styles.chipText, { color: c.accent }]}>
@@ -490,15 +839,8 @@ export default function ProjectDetail() {
                 member: what they can actually open is decided per file on the
                 server, so a member with no readable files still gets a
                 meaningful empty state rather than a missing button. */}
-            <TouchableOpacity
-              style={styles.varsBtn}
-              onPress={() => router.push(`/projects/${id}/variables` as any)}
-            >
-              <Ionicons name="code-slash-outline" size={16} color={c.accent} />
-              <Text style={styles.varsBtnText}>Variables</Text>
-            </TouchableOpacity>
             {isPM && (
-              <TouchableOpacity style={styles.addTaskBtn} onPress={openCreate}>
+              <TouchableOpacity style={styles.addTaskBtn} onPress={() => openCreate()}>
                 <Ionicons name="add" size={18} color="#fff" />
                 <Text style={styles.addTaskText}>Assign</Text>
               </TouchableOpacity>
@@ -603,11 +945,20 @@ export default function ProjectDetail() {
         )}
       </ScrollView>
 
+      <BottomTabBar user={me} />
+
       {/* CREATE TASK */}
       <WebModal
         visible={createOpen}
         onClose={() => setCreateOpen(false)}
-        title={`New task · ${project.name}`}
+        title={
+          cPhase
+            ? `New task · ${
+                phases?.phases.find((p) => p.id === cPhase)?.name ||
+                project.name
+              }`
+            : `New task · ${project.name}`
+        }
         size="md"
         footer={
           <ModalActions align="spread">
@@ -654,6 +1005,34 @@ export default function ProjectDetail() {
         </ScrollView>
 
         <Text style={styles.label}>Title *</Text>
+        <Text style={styles.label}>Phase</Text>
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          contentContainerStyle={{ gap: 6, paddingBottom: 10 }}
+        >
+          <TouchableOpacity
+            style={[styles.phasePick, !cPhase && styles.phasePickOn]}
+            onPress={() => setCPhase(null)}
+          >
+            <Text style={[styles.phasePickText, !cPhase && styles.phasePickTextOn]}>
+              No phase
+            </Text>
+          </TouchableOpacity>
+          {(phases?.phases || []).map((ph) => (
+            <TouchableOpacity
+              key={ph.id}
+              style={[styles.phasePick, cPhase === ph.id && styles.phasePickOn]}
+              onPress={() => setCPhase(ph.id)}
+            >
+              <Text
+                style={[styles.phasePickText, cPhase === ph.id && styles.phasePickTextOn]}
+              >
+                {ph.name}
+              </Text>
+            </TouchableOpacity>
+          ))}
+        </ScrollView>
         <TextInput
           style={styles.input}
           value={cTitle}
@@ -779,14 +1158,151 @@ const TaskRow = ({
 
 const makeStyles = (c: any) =>
   StyleSheet.create({
-    progressCard: {
+    section: {
+      color: c.textMuted,
+      fontSize: 12,
+      letterSpacing: 1.5,
+      fontWeight: "700",
+      marginBottom: 10,
+      marginTop: 14,
+    },
+    subSection: {
+      color: c.textMuted,
+      fontSize: 11,
+      letterSpacing: 1,
+      fontWeight: "700",
+      marginBottom: 8,
+      marginTop: 8,
+    },
+    techHead: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 8,
+      marginTop: 14,
+      marginBottom: 10,
+    },
+    // `section` carries its own margins for standalone use; inside the row
+    // they pushed the label out of line with the badge beside it.
+    techHeadLabel: { marginBottom: 0, marginTop: 0 },
+    techCount: {
+      fontSize: 11,
+      fontWeight: "800",
+      color: c.textMuted,
+      backgroundColor: c.surfaceMuted,
+      paddingHorizontal: 7,
+      paddingVertical: 2,
+      borderRadius: 999,
+      overflow: "hidden",
+    },
+    techCard: {
       backgroundColor: c.surface,
       borderWidth: 1,
       borderColor: c.surfaceBorder,
       borderRadius: 14,
       padding: 14,
-      marginTop: 14,
+      gap: 12,
     },
+    techEmpty: { alignItems: "center", gap: 7, paddingVertical: 14 },
+    techEmptyText: {
+      fontSize: 12.5,
+      color: c.textMuted,
+      textAlign: "center",
+      lineHeight: 18,
+      maxWidth: 280,
+    },
+    techDot: {
+      width: 5,
+      height: 5,
+      borderRadius: 3,
+      backgroundColor: c.accentText,
+      opacity: 0.55,
+    },
+    techWrap: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
+    techChip: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 6,
+      backgroundColor: c.accentSoft,
+      borderRadius: 999,
+      paddingHorizontal: 11,
+      paddingVertical: 6,
+    },
+    techText: { fontSize: 13, fontWeight: "700", color: c.accentText },
+    techAddRow: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 8,
+      borderTopWidth: 1,
+      borderTopColor: c.surfaceBorder,
+      paddingTop: 12,
+    },
+    techInput: {
+      flex: 1,
+      paddingVertical: 6,
+      color: c.text,
+      fontSize: 14,
+    },
+    techAddBtn: {
+      paddingHorizontal: 13,
+      paddingVertical: 7,
+      borderRadius: 8,
+      backgroundColor: c.accent,
+    },
+    techAddText: { color: "#fff", fontWeight: "800", fontSize: 12.5 },
+    emptyHint: { fontSize: 13, color: c.textFaint, lineHeight: 19 },
+    filesBtn: {
+      flexDirection: "row",
+      alignItems: "center",
+      justifyContent: "center",
+      gap: 8,
+      backgroundColor: c.accent,
+      borderRadius: 11,
+      paddingVertical: 12,
+    },
+    filesBtnText: { color: "#fff", fontWeight: "800", fontSize: 13.5 },
+    loadPill: {
+      flexDirection: "row",
+      alignItems: "baseline",
+      gap: 4,
+      paddingHorizontal: 9,
+      paddingVertical: 4,
+      borderRadius: 999,
+      backgroundColor: c.surfaceMuted,
+    },
+    loadOpen: { fontSize: 13, fontWeight: "800", color: c.text },
+    loadLabel: { fontSize: 10.5, color: c.textMuted, fontWeight: "600" },
+    loadDone: { fontSize: 10.5, color: c.textFaint },
+    card: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 10,
+      paddingVertical: 11,
+      borderBottomWidth: 1,
+      borderBottomColor: c.surfaceBorder,
+    },
+    cardTitle: { fontSize: 14, color: c.text, fontWeight: "600" },
+    cardMeta: { fontSize: 11, color: c.textMuted, marginTop: 2 },
+    // Anchored to the card rather than a modal: the menu has two options and
+    // a sheet would be heavier than the action it performs.
+    moveMenu: {
+      position: "absolute",
+      right: 0,
+      top: 34,
+      zIndex: 10,
+      backgroundColor: c.surface,
+      borderWidth: 1,
+      borderColor: c.surfaceBorder,
+      borderRadius: 10,
+      paddingVertical: 4,
+      minWidth: 132,
+      shadowColor: "#000",
+      shadowOpacity: 0.12,
+      shadowRadius: 10,
+      shadowOffset: { width: 0, height: 4 },
+      elevation: 4,
+    },
+    moveItem: { paddingVertical: 10, paddingHorizontal: 12 },
+    moveText: { fontSize: 13, color: c.text, fontWeight: "600" },
     tabBar: {
       flexDirection: "row",
       gap: 6,
@@ -796,8 +1312,10 @@ const makeStyles = (c: any) =>
       padding: 4,
     },
     tab: {
-      flex: 1,
+      // Sized to its label rather than an equal share: seven tabs at flex:1
+      // leaves ~50px each on a phone, which clips every word.
       flexDirection: "row",
+      paddingHorizontal: 14,
       alignItems: "center",
       justifyContent: "center",
       gap: 5,
@@ -805,9 +1323,62 @@ const makeStyles = (c: any) =>
       paddingVertical: 10,
       borderRadius: 9,
     },
-    tabOn: { backgroundColor: c.accentSoft },
+    tabHover: { backgroundColor: c.surface },
+    tabPressed: { opacity: 0.7 },
+    tabOn: {
+      backgroundColor: c.surface,
+      ...Platform.select({
+        web: { boxShadow: "0 1px 3px rgba(16,16,24,0.10)" as any },
+        default: {
+          shadowColor: "#000",
+          shadowOpacity: 0.08,
+          shadowRadius: 3,
+          shadowOffset: { width: 0, height: 1 },
+        },
+      }),
+    },
     tabText: { fontSize: 13, fontWeight: "700", color: c.textMuted },
-    tabTextOn: { color: c.accentText },
+    tabTextOn: { color: c.accent },
+    aboutCard: {
+      backgroundColor: c.surface,
+      borderWidth: 1,
+      borderColor: c.surfaceBorder,
+      borderRadius: 14,
+      padding: 15,
+      marginTop: 14,
+    },
+    aboutText: { fontSize: 14.5, lineHeight: 22, color: c.text },
+    detailCard: {
+      backgroundColor: c.surface,
+      borderWidth: 1,
+      borderColor: c.surfaceBorder,
+      borderRadius: 14,
+      paddingHorizontal: 14,
+    },
+    detailRow: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 10,
+      paddingVertical: 12,
+      borderBottomWidth: 1,
+      borderBottomColor: c.surfaceBorder,
+    },
+    detailIcon: {
+      width: 26,
+      height: 26,
+      borderRadius: 8,
+      alignItems: "center",
+      justifyContent: "center",
+      backgroundColor: c.surfaceMuted,
+    },
+    detailLabel: { flex: 1, fontSize: 13, color: c.textMuted },
+    detailValue: {
+      fontSize: 13.5,
+      color: c.text,
+      fontWeight: "700",
+      maxWidth: "55%",
+      textAlign: "right",
+    },
     overviewDesc: {
       fontSize: 14,
       lineHeight: 21,
@@ -828,7 +1399,8 @@ const makeStyles = (c: any) =>
     factVal: { fontSize: 14, color: c.text, fontWeight: "600" },
     safe: { flex: 1, backgroundColor: c.bg },
     container: { flex: 1 },
-    content: { padding: 20, paddingBottom: 60 },
+    // Reserve the bar's height so the last row isn't under it.
+    content: { padding: 20, paddingBottom: BOTTOM_BAR_RESERVED_HEIGHT + 20 },
     loader: {
       flex: 1,
       backgroundColor: c.bg,
@@ -836,23 +1408,6 @@ const makeStyles = (c: any) =>
       alignItems: "center",
     },
 
-    header: {
-      flexDirection: "row",
-      alignItems: "center",
-      marginBottom: 18,
-      marginTop: 10,
-      gap: 12,
-    },
-    backBtn: {
-      width: 42,
-      height: 42,
-      borderRadius: 12,
-      backgroundColor: c.surface,
-      justifyContent: "center",
-      alignItems: "center",
-      borderWidth: 1,
-      borderColor: c.surfaceBorder,
-    },
     chatBtn: {
       width: 42,
       height: 42,
@@ -860,27 +1415,6 @@ const makeStyles = (c: any) =>
       backgroundColor: "#0ea5e9",
       justifyContent: "center",
       alignItems: "center",
-    },
-    title: { color: c.text, fontSize: 24, fontWeight: "800" },
-    subtitle: { color: c.textMuted, fontSize: 13, marginTop: 3 },
-
-    metaRow: { flexDirection: "row", gap: 6, flexWrap: "wrap" },
-
-    section: {
-      color: c.textMuted,
-      fontSize: 12,
-      letterSpacing: 1.5,
-      fontWeight: "700",
-      marginBottom: 10,
-      marginTop: 14,
-    },
-    subSection: {
-      color: c.textMuted,
-      fontSize: 11,
-      letterSpacing: 1,
-      fontWeight: "700",
-      marginBottom: 8,
-      marginTop: 8,
     },
 
     membersBox: {
@@ -919,18 +1453,15 @@ const makeStyles = (c: any) =>
     linkBtnText: { color: c.accent, fontSize: 13, fontWeight: "700" },
 
     headerActions: { flexDirection: "row", alignItems: "center", gap: 8 },
-  varsBtn: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 5,
-    paddingHorizontal: 11,
-    paddingVertical: 7,
-    borderRadius: 9,
-    backgroundColor: c.accentSoft,
-    borderWidth: 1,
-    borderColor: c.accent,
-  },
-  varsBtnText: { color: c.accentText, fontSize: 12.5, fontWeight: "700" },
+    phasePick: {
+      paddingHorizontal: 11,
+      paddingVertical: 7,
+      borderRadius: 999,
+      backgroundColor: c.surfaceMuted,
+    },
+    phasePickOn: { backgroundColor: c.accentSoft },
+    phasePickText: { fontSize: 12.5, fontWeight: "700", color: c.textMuted },
+    phasePickTextOn: { color: c.accentText },
   tasksHeader: {
       flexDirection: "row",
       alignItems: "center",
