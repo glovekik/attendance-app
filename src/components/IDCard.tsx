@@ -35,8 +35,8 @@ const HAIRLINE = "#EEF0F3";
 
 const COMPANY = "4SightAI";
 const ADDRESS_LINES = [
-  "1-1-565/307, Golconda X Road, Bakaram,",
-  "Musheerabad (ND), Hyderabad – 500020, Telangana",
+  "6-3-1089/B/2/1, S.V's Srikar Heights, 2nd Floor,",
+  "Gulmohar Avenue, Somajiguda, Hyderabad - 500082, Telangana",
 ];
 
 // Kept in step with the server-rendered badge (backend/assets/company-logo.png,
