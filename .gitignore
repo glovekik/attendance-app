@@ -58,3 +58,6 @@ app-example
 fcm-*.json
 
 .vercel
+
+# Firebase Hosting deploy cache (written by firebase-tools on deploy)
+.firebase/
