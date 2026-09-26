@@ -18,6 +18,7 @@ import { getDashboardManager } from "../src/services/dashboard";
 import { getMe } from "../src/services/api";
 import { DashboardManager, User } from "../src/types";
 import { useTheme } from "../src/theme/ThemeProvider";
+import { formatPercent } from "../src/utils/percent";
 import {
   BottomTabBar,
   BOTTOM_BAR_RESERVED_HEIGHT } from "../src/components/BottomTabBar";
@@ -486,10 +487,7 @@ export default function ManagerHub() {
   );
 }
 
-const fmtPct = (v: number | null | undefined) => {
-  if (v === null || v === undefined || !Number.isFinite(v)) return "—";
-  return `${Math.round(v)}%`;
-};
+const fmtPct = formatPercent;
 
 const Section = ({
   title,

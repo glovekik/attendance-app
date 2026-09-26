@@ -38,6 +38,7 @@ import { DatePickerField } from "../../src/components/DatePickerField";
 import { WebModal, ModalActions } from "../../src/components/WebModal";
 import { Avatar } from "../../src/components/Avatar";
 import { useTheme } from "../../src/theme/ThemeProvider";
+import { formatHours, formatTotalHours } from "../../src/utils/duration";
 import { notify } from "../../src/utils/confirm";
 import { AttendanceCalendar } from "../../src/components/AttendanceCalendar";
 import { ATT } from "../../src/theme/attendanceColors";
@@ -67,13 +68,9 @@ const startOfWeek = (d: Date) => {
   x.setHours(0, 0, 0, 0);
   return x;
 };
-// hoursWorked (a decimal) → "8h 12m" for a human-readable duration.
-const fmtHours = (h?: number | null) => {
-  if (!h || h <= 0) return "—";
-  const hh = Math.floor(h);
-  const mm = Math.round((h - hh) * 60);
-  return mm ? `${hh}h ${mm}m` : `${hh}h`;
-};
+// Was a local copy of formatHours that padded no minutes ("8h 5m") and
+// could carry wrong ("1h 60m"). The shared one is tested for both.
+const fmtHours = formatHours;
 
 const PRESENT_STATUSES = ["PRESENT", "CHECKED_IN", "COMPLETED"];
 const isPresent = (r: TeamAttendanceRow) => PRESENT_STATUSES.includes(r.status);
@@ -663,7 +660,7 @@ export default function TeamMemberDetail() {
                     <StatBlock c={c} label="Present" value={weekStats.present} tone="ok" />
                     <StatBlock c={c} label="Late" value={weekStats.late} tone="warn" />
                     <StatBlock c={c} label="No record" value={weekStats.noRecord} tone="bad" />
-                    <StatBlock c={c} label="Hours" value={Math.round(weekStats.hours * 10) / 10} />
+                    <StatBlock c={c} label="Hours" value={formatTotalHours(weekStats.hours)} />
                   </View>
 
                   {/* expand toggle */}
@@ -782,7 +779,7 @@ export default function TeamMemberDetail() {
                 </View>
                 <View style={styles.mHeroDivider} />
                 <View style={styles.mHeroCell}>
-                  <Text style={styles.mHeroValue}>{Math.round(monthStats.hours * 10) / 10}h</Text>
+                  <Text style={styles.mHeroValue}>{formatTotalHours(monthStats.hours)}</Text>
                   <Text style={styles.mHeroLabel}>Hours worked</Text>
                 </View>
               </View>
@@ -1191,7 +1188,8 @@ function StatBlock({
 }: {
   c: any;
   label: string;
-  value: number;
+  // A count for most blocks, a formatted duration ("41h 20m") for Hours.
+  value: number | string;
   tone?: "ok" | "warn" | "bad";
 }) {
   const color =

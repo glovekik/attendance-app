@@ -328,7 +328,7 @@ export default function MyTimesheet() {
 
       Alert.alert(
         "Loaded from file",
-        `${res.totalHours} h read in. Nothing has been sent yet — review it, then press Send to manager.${
+        `${formatTotalHours(res.totalHours)} read in. Nothing has been sent yet — review it, then press Send to manager.${
           warn.length ? `\n\n${warn.join("\n\n")}` : ""
         }`
       );

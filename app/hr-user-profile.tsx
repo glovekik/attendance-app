@@ -486,7 +486,7 @@ export default function HrUserProfile() {
             {pctMode && (
               <Text style={amtStyles.preview}>
                 {basis > 0
-                  ? `= ₹${derivedAmount?.toLocaleString()} (of ₹${basis.toLocaleString()})`
+                  ? `= ₹${derivedAmount?.toLocaleString("en-IN")} (of ₹${basis.toLocaleString("en-IN")})`
                   : "Set Basic first to compute amount"}
               </Text>
             )}

@@ -33,6 +33,8 @@ import { refreshSession, clearSession } from "../src/services/session";
 import { dateToYMD } from "../src/components/WebDateField";
 
 import { useTheme } from "../src/theme/ThemeProvider";
+import { formatHours } from "../src/utils/duration";
+import { formatPercent } from "../src/utils/percent";
 import {
   BottomTabBar,
   BOTTOM_BAR_RESERVED_HEIGHT } from "../src/components/BottomTabBar";
@@ -546,7 +548,7 @@ export default function Home() {
               />
               <SimpleKpi
                 label="This week"
-                value={`${dash.avgHoursPerDayThisWeek ?? "—"}h`}
+                value={formatHours(dash.avgHoursPerDayThisWeek)}
                 sub="avg / day"
                 icon="stopwatch-outline"
                 tint={c.pastelPeach}
@@ -772,10 +774,7 @@ export default function Home() {
 // Helpers / sub-components
 // =============================================================
 
-const fmtPct = (v: number | null | undefined): string => {
-  if (v === null || v === undefined || !Number.isFinite(v)) return "—";
-  return `${Math.round(v)}%`;
-};
+const fmtPct = formatPercent;
 
 const todayStatusInfo = (
   today: any,

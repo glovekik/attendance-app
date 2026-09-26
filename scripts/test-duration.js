@@ -25,8 +25,11 @@ const eq = (name, got, want) => {
   else { F++; console.log(`  FAIL  ${name}\n        got ${JSON.stringify(got)} want ${JSON.stringify(want)}`); }
 };
 
-// The exact number the user reported.
+// The exact numbers reported, both times. The second came from the dashboard
+// KPI, which was still building its own string and never called this at all —
+// so the helper was right and unused, which a test of the helper can't catch.
 eq("9.8 reads as 9h 48m, not 9.80h", formatHours(9.8), "9h 48m");
+eq("9.87 reads as 9h 52m, not 9.87h", formatHours(9.87), "9h 52m");
 
 // Real values pulled from production attendance rows.
 eq("9.01 -> 9h 01m", formatHours(9.01), "9h 01m");
