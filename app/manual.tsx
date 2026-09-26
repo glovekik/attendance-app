@@ -31,6 +31,7 @@ import {
 import { addManualEntry } from "../src/services/api";
 
 import { useTheme } from "../src/theme/ThemeProvider";
+import { wallClockIsoFromDates } from "../src/utils/wallclock";
 import { notify, notifySuccess } from "../src/utils/confirm";
 const isWeb = Platform.OS === "web";
 
@@ -122,11 +123,8 @@ export default function Manual() {
     return `${yyyy}-${mm}-${dd}`;
   };
 
-  const combine = (d: Date, t: Date) => {
-    const out = new Date(d);
-    out.setHours(t.getHours(), t.getMinutes(), 0, 0);
-    return out.toISOString();
-  };
+  // A typed office time, sent unconverted — see src/utils/wallclock.ts.
+  const combine = (d: Date, t: Date) => wallClockIsoFromDates(d, t);
 
   const requiresTime = type === "OFFICE" || type === "WFH";
 

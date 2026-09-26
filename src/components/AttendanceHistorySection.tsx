@@ -45,6 +45,7 @@ import { listHolidays } from "../services/holidays";
 
 import { AttendanceCorrection, User, hasRole } from "../types";
 import { useTheme } from "../theme/ThemeProvider";
+import { wallClockIso } from "../utils/wallclock";
 import { notify, confirmAction } from "../utils/confirm";
 
 const isWeb = Platform.OS === "web";
@@ -124,11 +125,9 @@ export function AttendanceHistorySection({
       hour12: true,
     });
 
-  const combine = (baseDateStr: string, t: Date) => {
-    const base = new Date(`${baseDateStr}T00:00:00`);
-    base.setHours(t.getHours(), t.getMinutes(), 0, 0);
-    return base.toISOString();
-  };
+  // The time the employee typed is an office time; send it as one. See
+  // src/utils/wallclock.ts for why toISOString() was wrong here.
+  const combine = (baseDateStr: string, t: Date) => wallClockIso(baseDateStr, t);
 
   const showSuccess = (message: string) => notify("Done", message);
   const showError = (err: any) =>

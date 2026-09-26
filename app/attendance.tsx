@@ -51,6 +51,7 @@ import { confirmAction, notify } from "../src/utils/confirm";
 import { useResponsive, getResponsiveSpacing } from "../src/utils/responsive";
 import { PageHeader } from "../src/components/PageHeader";
 import { formatHours } from "../src/utils/duration";
+import { wallClockIsoFromHM } from "../src/utils/wallclock";
 
 // LEAVE and HOLIDAY are intentionally not selectable here: leave days are
 // set automatically when a leave request is approved, and holidays are
@@ -349,11 +350,12 @@ export default function Attendance() {
       setCoSubmitting(true);
       const token = await AsyncStorage.getItem("token");
       if (!token) return;
-      const [y, m, d] = rec.date.split("-").map(Number);
       const [hh, mm] = coTime.split(":").map(Number);
-      // Combine the record's date with the entered time as local wall-clock
-      // (same convention History's correction form uses).
-      const iso = new Date(y, m - 1, d, hh, mm, 0).toISOString();
+      // The record's date plus the time they entered, as office wall-clock.
+      // Building a Date and calling toISOString() re-read those hours in the
+      // device's timezone, so the same entry meant different things on a
+      // phone and on a desktop left on UTC.
+      const iso = wallClockIsoFromHM(rec.date, hh, mm);
       await requestCorrection(token, rec.id, {
         requestedCheckOut: iso,
         reason: coReason.trim(),

@@ -27,6 +27,7 @@ import { Ionicons } from "@expo/vector-icons";
 import DateTimePicker from "@react-native-community/datetimepicker";
 
 import { useTheme } from "../src/theme/ThemeProvider";
+import { wallClockIsoFromDates } from "../src/utils/wallclock";
 import {notify, notifySuccess} from "../src/utils/confirm";
 import {
   WebDateField,
@@ -154,11 +155,8 @@ export default function ManualRequest() {
     setModalVisible(true);
   };
 
-  const combine = (d: Date, t: Date) => {
-    const out = new Date(d);
-    out.setHours(t.getHours(), t.getMinutes(), 0, 0);
-    return out.toISOString();
-  };
+  // A typed office time, sent unconverted — see src/utils/wallclock.ts.
+  const combine = (d: Date, t: Date) => wallClockIsoFromDates(d, t);
 
   const submit = async () => {
     if (saving) return;
